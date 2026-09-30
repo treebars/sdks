@@ -1,0 +1,6065 @@
+{
+  "about": "Cases every Treebars SDK runs against its own implementation, shared so that the SDKs cannot disagree. Generated; do not edit.",
+  "layout": {
+    "modal": {
+      "max_width": 320,
+      "margin": 16
+    },
+    "banner": {
+      "margin": 16,
+      "thumbnail": 48
+    },
+    "fullscreen": {
+      "tablet_content_max_width": 560
+    },
+    "card": {
+      "icon": 40
+    },
+    "title": {
+      "size": 16,
+      "weight": 700
+    },
+    "body": {
+      "size": 13,
+      "line_height": 18
+    },
+    "button": {
+      "min_height": 44,
+      "weight": 600
+    },
+    "countdown": {
+      "size": 22,
+      "weight": 600
+    },
+    "dismiss": {
+      "target": 44
+    },
+    "form": {
+      "thanks_ms": 2500,
+      "problem_colour": "#B42318FF"
+    },
+    "words": {
+      "send": "Send",
+      "thanks": "Thank you.",
+      "choose": "Choose…"
+    }
+  },
+  "plans": [
+    {
+      "id": "RP-001",
+      "name": "a modal: its picture 2:1 on top, two lines of title and four of body, the first button filled",
+      "decisions": [
+        "image-aspect",
+        "lines",
+        "buttons-primary",
+        "buttons-cap",
+        "backdrop-tap",
+        "back"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-001",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "image_url": "https://cdn.example/spring.jpg",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "image_alt": "A red winter coat on a model",
+            "buttons": [
+              {
+                "label": "Shop now",
+                "action": "deep_link",
+                "value": "shop://sale"
+              },
+              {
+                "label": "Later",
+                "action": "dismiss"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": {
+          "url": "https://cdn.example/spring.jpg",
+          "alt": "A red winter coat on a model",
+          "placement": "top",
+          "aspect": "2:1"
+        },
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "Shop now",
+            "action": "deep_link",
+            "style": "primary",
+            "value": "shop://sale",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": "shop://sale"
+          },
+          {
+            "index": 2,
+            "label": "Later",
+            "action": "dismiss",
+            "style": "secondary",
+            "value": null,
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": null
+          }
+        ],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-002",
+      "name": "the same modal on iOS is the same plan: nothing draws differently by platform",
+      "decisions": [
+        "platform"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "ios",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-001",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "image_url": "https://cdn.example/spring.jpg",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "image_alt": "A red winter coat on a model",
+            "buttons": [
+              {
+                "label": "Shop now",
+                "action": "deep_link",
+                "value": "shop://sale"
+              },
+              {
+                "label": "Later",
+                "action": "dismiss"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": {
+          "url": "https://cdn.example/spring.jpg",
+          "alt": "A red winter coat on a model",
+          "placement": "top",
+          "aspect": "2:1"
+        },
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "Shop now",
+            "action": "deep_link",
+            "style": "primary",
+            "value": "shop://sale",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": "shop://sale"
+          },
+          {
+            "index": 2,
+            "label": "Later",
+            "action": "dismiss",
+            "style": "secondary",
+            "value": null,
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": null
+          }
+        ],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-003",
+      "name": "the same modal on a tablet is the phone’s modal",
+      "decisions": [
+        "tablet"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "tablet",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-001",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "image_url": "https://cdn.example/spring.jpg",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "image_alt": "A red winter coat on a model",
+            "buttons": [
+              {
+                "label": "Shop now",
+                "action": "deep_link",
+                "value": "shop://sale"
+              },
+              {
+                "label": "Later",
+                "action": "dismiss"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": {
+          "url": "https://cdn.example/spring.jpg",
+          "alt": "A red winter coat on a model",
+          "placement": "top",
+          "aspect": "2:1"
+        },
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "Shop now",
+            "action": "deep_link",
+            "style": "primary",
+            "value": "shop://sale",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": "shop://sale"
+          },
+          {
+            "index": 2,
+            "label": "Later",
+            "action": "dismiss",
+            "style": "secondary",
+            "value": null,
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": null
+          }
+        ],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-004",
+      "name": "a modal that only its button closes",
+      "decisions": [
+        "back"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-002",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "dismissible": false,
+            "buttons": [
+              {
+                "label": "Got it",
+                "action": "url",
+                "value": "https://shop.example/terms"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "Got it",
+            "action": "url",
+            "style": "primary",
+            "value": "https://shop.example/terms",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": "https://shop.example/terms"
+          }
+        ],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": false,
+          "corner": "top_end",
+          "backdrop_tap": false,
+          "back": false,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-005",
+      "name": "an older server’s third button is not drawn",
+      "decisions": [
+        "buttons-cap"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-003",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "buttons": [
+              {
+                "label": "Open",
+                "action": "url",
+                "value": "https://shop.example"
+              },
+              {
+                "label": "Tell me",
+                "action": "track_event",
+                "event_name": "promo_interest"
+              },
+              {
+                "label": "No",
+                "action": "dismiss"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "Open",
+            "action": "url",
+            "style": "primary",
+            "value": "https://shop.example",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": "https://shop.example"
+          },
+          {
+            "index": 2,
+            "label": "Tell me",
+            "action": "track_event",
+            "style": "secondary",
+            "value": null,
+            "event_name": "promo_interest",
+            "key": null,
+            "data": null,
+            "destination": null
+          }
+        ],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-006",
+      "name": "a banner at the top: its picture a leading thumbnail, one line of title and two of body, one button beside the words",
+      "decisions": [
+        "banner-image",
+        "lines",
+        "banner-button",
+        "buttons-cap",
+        "animation",
+        "back"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-004",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "image_url": "https://cdn.example/spring.jpg",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "banner",
+            "position": "top",
+            "image_alt": "A red winter coat on a model",
+            "buttons": [
+              {
+                "label": "Copy code",
+                "action": "copy",
+                "value": "SPRING30"
+              },
+              {
+                "label": "Later",
+                "action": "dismiss"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "banner",
+        "edge": "top",
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": false,
+        "content_max_width": null,
+        "animation": "slide_top",
+        "image": {
+          "url": "https://cdn.example/spring.jpg",
+          "alt": "A red winter coat on a model",
+          "placement": "leading",
+          "aspect": "1:1"
+        },
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 1
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 2
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "Copy code",
+            "action": "copy",
+            "style": "primary",
+            "value": "SPRING30",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": null
+          }
+        ],
+        "buttons_at": "trailing",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": false,
+          "back": false,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-007",
+      "name": "a banner that names no position is at the bottom",
+      "decisions": [
+        "animation"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-005",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "banner"
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "banner",
+        "edge": "bottom",
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": false,
+        "content_max_width": null,
+        "animation": "slide_bottom",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 1
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 2
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [],
+        "buttons_at": "trailing",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": false,
+          "back": false,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-008",
+      "name": "a banner told `center` is at the bottom",
+      "decisions": [],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-006",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "banner",
+            "position": "center"
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "banner",
+        "edge": "bottom",
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": false,
+        "content_max_width": null,
+        "animation": "slide_bottom",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 1
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 2
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [],
+        "buttons_at": "trailing",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": false,
+          "back": false,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-009",
+      "name": "a fullscreen: picture 16:9, words never cut, buttons pinned to the bottom, the close control top-start",
+      "decisions": [
+        "image-aspect",
+        "lines",
+        "fullscreen-buttons",
+        "fullscreen-close"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-007",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "image_url": "https://cdn.example/spring.jpg",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "fullscreen",
+            "image_alt": "A red winter coat on a model",
+            "buttons": [
+              {
+                "label": "Shop now",
+                "action": "deep_link",
+                "value": "shop://sale"
+              },
+              {
+                "label": "Later",
+                "action": "dismiss"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "fullscreen",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": false,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": {
+          "url": "https://cdn.example/spring.jpg",
+          "alt": "A red winter coat on a model",
+          "placement": "top",
+          "aspect": "16:9"
+        },
+        "title": {
+          "text": "Spring sale",
+          "max_lines": null
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": null
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "Shop now",
+            "action": "deep_link",
+            "style": "primary",
+            "value": "shop://sale",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": "shop://sale"
+          },
+          {
+            "index": 2,
+            "label": "Later",
+            "action": "dismiss",
+            "style": "secondary",
+            "value": null,
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": null
+          }
+        ],
+        "buttons_at": "bottom",
+        "dismiss": {
+          "control": true,
+          "corner": "top_start",
+          "backdrop_tap": false,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-010",
+      "name": "a fullscreen on a tablet holds its words to a reading width",
+      "decisions": [
+        "tablet"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "tablet",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-007",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "image_url": "https://cdn.example/spring.jpg",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "fullscreen",
+            "image_alt": "A red winter coat on a model",
+            "buttons": [
+              {
+                "label": "Shop now",
+                "action": "deep_link",
+                "value": "shop://sale"
+              },
+              {
+                "label": "Later",
+                "action": "dismiss"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "fullscreen",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": false,
+        "content_max_width": 560,
+        "animation": "fade",
+        "image": {
+          "url": "https://cdn.example/spring.jpg",
+          "alt": "A red winter coat on a model",
+          "placement": "top",
+          "aspect": "16:9"
+        },
+        "title": {
+          "text": "Spring sale",
+          "max_lines": null
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": null
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "Shop now",
+            "action": "deep_link",
+            "style": "primary",
+            "value": "shop://sale",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": "shop://sale"
+          },
+          {
+            "index": 2,
+            "label": "Later",
+            "action": "dismiss",
+            "style": "secondary",
+            "value": null,
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": null
+          }
+        ],
+        "buttons_at": "bottom",
+        "dismiss": {
+          "control": true,
+          "corner": "top_start",
+          "backdrop_tap": false,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-011",
+      "name": "a fullscreen that cannot be closed but by its button",
+      "decisions": [
+        "back"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-008",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "fullscreen",
+            "dismissible": false,
+            "buttons": [
+              {
+                "label": "Continue",
+                "action": "dismiss"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "fullscreen",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": false,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": null
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": null
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "Continue",
+            "action": "dismiss",
+            "style": "primary",
+            "value": null,
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": null
+          }
+        ],
+        "buttons_at": "bottom",
+        "dismiss": {
+          "control": false,
+          "corner": "top_start",
+          "backdrop_tap": false,
+          "back": false,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-012",
+      "name": "a typed nudge from an older server is the bar it most resembles, at its edge",
+      "decisions": [
+        "nudge"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-009",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "nudge",
+            "position": "top",
+            "buttons": [
+              {
+                "label": "See it",
+                "action": "deep_link",
+                "value": "shop://new"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "banner",
+        "edge": "top",
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": false,
+        "content_max_width": null,
+        "animation": "slide_top",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 1
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 2
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "See it",
+            "action": "deep_link",
+            "style": "primary",
+            "value": "shop://new",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": "shop://new"
+          }
+        ],
+        "buttons_at": "trailing",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": false,
+          "back": false,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-013",
+      "name": "a layout this build does not know is a modal",
+      "decisions": [],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-010",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "popover"
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-014",
+      "name": "a markup body is the core’s WebView host’s, never a renderer’s",
+      "decisions": [
+        "markup"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-011",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "",
+          "body": "",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "body_mode": "html",
+            "html": "<p>Hi</p>"
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "markup"
+      }
+    },
+    {
+      "id": "RP-015",
+      "name": "a legacy `layout: html` is a markup body",
+      "decisions": [
+        "markup"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-012",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "",
+          "body": "",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "html",
+            "html": "<p>Hi</p>"
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "markup"
+      }
+    },
+    {
+      "id": "RP-016",
+      "name": "`body_mode: standard` is asked before the legacy spelling, and the shape is then the legacy spelling’s fullscreen",
+      "decisions": [],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-013",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "html",
+            "body_mode": "standard"
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "fullscreen",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": false,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": null
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": null
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [],
+        "buttons_at": "bottom",
+        "dismiss": {
+          "control": true,
+          "corner": "top_start",
+          "backdrop_tap": false,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-020",
+      "name": "a dark device and a message with a dark variant: its dark tokens",
+      "decisions": [
+        "dark"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "dark",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-014",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal"
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        },
+        "style_dark": {
+          "accent": "#8B80FF",
+          "on_accent": "#0B0B14",
+          "surface": "#16161D",
+          "on_surface": "#F4F4F6",
+          "on_surface_muted": "#A1A1AA",
+          "backdrop": "#000000B3",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "dark",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#8B80FFFF",
+          "on_accent": "#0B0B14FF",
+          "surface": "#16161DFF",
+          "on_surface": "#F4F4F6FF",
+          "on_surface_muted": "#A1A1AAFF",
+          "backdrop": "#000000B3",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-021",
+      "name": "a dark device and a message without one: the light tokens, and the plan says so",
+      "decisions": [
+        "dark"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "dark",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-015",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal"
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-022",
+      "name": "a light device draws the light tokens whatever the dark variant says",
+      "decisions": [
+        "dark"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-016",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal"
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        },
+        "style_dark": {
+          "accent": "#8B80FF",
+          "on_accent": "#0B0B14",
+          "surface": "#16161D",
+          "on_surface": "#F4F4F6",
+          "on_surface_muted": "#A1A1AA",
+          "backdrop": "#000000B3",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-023",
+      "name": "a message with no tokens of its own: the project’s from the sync",
+      "decisions": [
+        "tokens-default"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": {
+          "accent": "#C2410C",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 4,
+          "font_family": "",
+          "button_shape": "pill"
+        }
+      },
+      "row": {
+        "delivery_id": "d-017",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal"
+          }
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#C2410CFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 4,
+          "button_radius": 999,
+          "font_family": null
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-024",
+      "name": "no tokens anywhere: the default preset, which is the demo’s fallback",
+      "decisions": [
+        "tokens-default"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-018",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal"
+          }
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#5B4DF5FF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 8,
+          "button_radius": 8,
+          "font_family": null
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-025",
+      "name": "every colour spelling, and the ones that are none — each is the preset’s",
+      "decisions": [
+        "colours"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-019",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal"
+          }
+        },
+        "style": {
+          "accent": "#0a7",
+          "on_accent": "#fffc",
+          "surface": "rgb(255, 250, 240)",
+          "on_surface": "  #111827  ",
+          "on_surface_muted": "blue",
+          "backdrop": "rgba(0, 0, 0, 0.45)",
+          "radius": 0,
+          "font_family": "   ",
+          "button_shape": "pill"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#00AA77FF",
+          "on_accent": "#FFFFFFCC",
+          "surface": "#FFFAF0FF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#00000073",
+          "radius": 0,
+          "button_radius": 999,
+          "font_family": null
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-026",
+      "name": "square buttons on a round card",
+      "decisions": [
+        "colours"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-020",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal"
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 20,
+          "font_family": "Inter",
+          "button_shape": "square"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 20,
+          "button_radius": 0,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-027",
+      "name": "a negative radius is the preset’s, and a rounded button follows the card",
+      "decisions": [
+        "colours"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-021",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal"
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "rgba(300, 0, 0, 2)",
+          "radius": -4,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#FF0000FF",
+          "radius": 8,
+          "button_radius": 8,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-030",
+      "name": "right to left: the close control and the corners follow it",
+      "decisions": [
+        "direction"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-022",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "تخفيضات الربيع",
+          "body": "خصم ثلاثين بالمئة على كل شيء حتى الأحد.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "direction": "rtl",
+            "buttons": [
+              {
+                "label": "Shop now",
+                "action": "deep_link",
+                "value": "shop://sale"
+              },
+              {
+                "label": "Later",
+                "action": "dismiss"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "rtl",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "تخفيضات الربيع",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "خصم ثلاثين بالمئة على كل شيء حتى الأحد.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "Shop now",
+            "action": "deep_link",
+            "style": "primary",
+            "value": "shop://sale",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": "shop://sale"
+          },
+          {
+            "index": 2,
+            "label": "Later",
+            "action": "dismiss",
+            "style": "secondary",
+            "value": null,
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": null
+          }
+        ],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-040",
+      "name": "a link carries its key-values in its address; a custom button hands the app its keys",
+      "decisions": [
+        "destination"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-023",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "buttons": [
+              {
+                "label": "See the sale",
+                "action": "url",
+                "value": "https://shop.example/sale?screen=sale&source=t11",
+                "data": {
+                  "screen": "sale",
+                  "source": "t11"
+                }
+              },
+              {
+                "label": "Personalise",
+                "action": "custom",
+                "data": {
+                  "sku": "42",
+                  "size": "M"
+                }
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "See the sale",
+            "action": "url",
+            "style": "primary",
+            "value": "https://shop.example/sale?screen=sale&source=t11",
+            "event_name": null,
+            "key": null,
+            "data": {
+              "screen": "sale",
+              "source": "t11"
+            },
+            "destination": "https://shop.example/sale?screen=sale&source=t11"
+          },
+          {
+            "index": 2,
+            "label": "Personalise",
+            "action": "custom",
+            "style": "secondary",
+            "value": null,
+            "event_name": null,
+            "key": null,
+            "data": {
+              "sku": "42",
+              "size": "M"
+            },
+            "destination": null
+          }
+        ],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-041",
+      "name": "call and copy, done by the core",
+      "decisions": [
+        "device-actions"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-024",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "buttons": [
+              {
+                "label": "Call us",
+                "action": "call",
+                "value": "+15551234567"
+              },
+              {
+                "label": "Copy code",
+                "action": "copy",
+                "value": "SPRING30"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "Call us",
+            "action": "call",
+            "style": "primary",
+            "value": "+15551234567",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": null
+          },
+          {
+            "index": 2,
+            "label": "Copy code",
+            "action": "copy",
+            "style": "secondary",
+            "value": "SPRING30",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": null
+          }
+        ],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-042",
+      "name": "share and the store’s own review, which the web does not draw and an app does",
+      "decisions": [
+        "store-review",
+        "device-actions"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-025",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "buttons": [
+              {
+                "label": "Tell a friend",
+                "action": "share",
+                "value": "Thirty percent off at shop.example"
+              },
+              {
+                "label": "Rate us",
+                "action": "store_review"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "Tell a friend",
+            "action": "share",
+            "style": "primary",
+            "value": "Thirty percent off at shop.example",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": null
+          },
+          {
+            "index": 2,
+            "label": "Rate us",
+            "action": "store_review",
+            "style": "secondary",
+            "value": null,
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": null
+          }
+        ],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-043",
+      "name": "an event and a trait go nowhere",
+      "decisions": [
+        "destination"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-026",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "buttons": [
+              {
+                "label": "Interested",
+                "action": "track_event",
+                "event_name": "promo_interest"
+              },
+              {
+                "label": "Join the newsletter",
+                "action": "set_attribute",
+                "key": "newsletter",
+                "value": "yes"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "Interested",
+            "action": "track_event",
+            "style": "primary",
+            "value": null,
+            "event_name": "promo_interest",
+            "key": null,
+            "data": null,
+            "destination": null
+          },
+          {
+            "index": 2,
+            "label": "Join the newsletter",
+            "action": "set_attribute",
+            "style": "secondary",
+            "value": "yes",
+            "event_name": null,
+            "key": "newsletter",
+            "data": null,
+            "destination": null
+          }
+        ],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-044",
+      "name": "the push opt-in link is the core’s to answer, and goes nowhere",
+      "decisions": [
+        "destination"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-027",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "buttons": [
+              {
+                "label": "Turn on",
+                "action": "deep_link",
+                "value": "treebars://push-permission"
+              },
+              {
+                "label": "Not now",
+                "action": "dismiss"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "Turn on",
+            "action": "deep_link",
+            "style": "primary",
+            "value": "treebars://push-permission",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": null
+          },
+          {
+            "index": 2,
+            "label": "Not now",
+            "action": "dismiss",
+            "style": "secondary",
+            "value": null,
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": null
+          }
+        ],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-045",
+      "name": "a button this build cannot do is not drawn, and the next keeps its own number",
+      "decisions": [
+        "buttons-unknown"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-028",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "buttons": [
+              {
+                "label": "Buzz",
+                "action": "vibrate"
+              },
+              {
+                "label": "Open",
+                "action": "deep_link",
+                "value": "shop://open"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 2,
+            "label": "Open",
+            "action": "deep_link",
+            "style": "primary",
+            "value": "shop://open",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": "shop://open"
+          }
+        ],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-050",
+      "name": "a banner that closes itself after five seconds",
+      "decisions": [],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-029",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "banner",
+            "position": "bottom",
+            "display": {
+              "auto_dismiss_seconds": 5
+            }
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "banner",
+        "edge": "bottom",
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": false,
+        "content_max_width": null,
+        "animation": "slide_bottom",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 1
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 2
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [],
+        "buttons_at": "trailing",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": false,
+          "back": false,
+          "after_ms": 5000
+        }
+      }
+    },
+    {
+      "id": "RP-051",
+      "name": "a carousel of three under the words, with the message’s own picture above",
+      "decisions": [
+        "slides-and-image",
+        "slides-movement"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-030",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "image_url": "https://cdn.example/spring.jpg",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "image_alt": "A red winter coat on a model",
+            "slides": [
+              {
+                "image_url": "https://cdn.example/1.jpg",
+                "image_alt": "A blue jacket",
+                "title": "Jackets",
+                "body": "From 49"
+              },
+              {
+                "image_url": "https://cdn.example/2.jpg",
+                "title": "Boots"
+              },
+              {
+                "image_url": "https://cdn.example/3.jpg",
+                "image_alt": "A green scarf",
+                "body": "Knitted by hand"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": {
+          "url": "https://cdn.example/spring.jpg",
+          "alt": "A red winter coat on a model",
+          "placement": "top",
+          "aspect": "2:1"
+        },
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": {
+          "items": [
+            {
+              "image_url": "https://cdn.example/1.jpg",
+              "image_alt": "A blue jacket",
+              "title": "Jackets",
+              "body": "From 49"
+            },
+            {
+              "image_url": "https://cdn.example/2.jpg",
+              "image_alt": null,
+              "title": "Boots",
+              "body": null
+            },
+            {
+              "image_url": "https://cdn.example/3.jpg",
+              "image_alt": "A green scarf",
+              "title": null,
+              "body": "Knitted by hand"
+            }
+          ],
+          "controls": true
+        },
+        "countdown": null,
+        "form": null,
+        "buttons": [],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-052",
+      "name": "one card is not a carousel to move",
+      "decisions": [
+        "slides-movement"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-031",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "slides": [
+              {
+                "image_url": "https://cdn.example/1.jpg",
+                "image_alt": "A blue jacket"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": {
+          "items": [
+            {
+              "image_url": "https://cdn.example/1.jpg",
+              "image_alt": "A blue jacket",
+              "title": null,
+              "body": null
+            }
+          ],
+          "controls": false
+        },
+        "countdown": null,
+        "form": null,
+        "buttons": [],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-053",
+      "name": "a countdown to an instant in UTC with milliseconds",
+      "decisions": [
+        "countdown"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-032",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "countdown_to": "2026-10-01T12:00:00.000Z"
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": {
+          "to_ms": 1790856000000
+        },
+        "form": null,
+        "buttons": [],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-054",
+      "name": "a countdown to an instant with an offset and six decimals",
+      "decisions": [
+        "countdown"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-033",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "countdown_to": "2026-10-01T14:00:00.123456+02:00"
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": {
+          "to_ms": 1790856000123
+        },
+        "form": null,
+        "buttons": [],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-055",
+      "name": "a countdown with no seconds",
+      "decisions": [
+        "countdown"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-034",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "countdown_to": "2026-10-01T12:00Z"
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": {
+          "to_ms": 1790856000000
+        },
+        "form": null,
+        "buttons": [],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-056",
+      "name": "a countdown that is not an instant is not drawn",
+      "decisions": [
+        "countdown"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-035",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "countdown_to": "next Friday"
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-057",
+      "name": "a countdown to a day that does not exist is not drawn",
+      "decisions": [
+        "countdown"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-036",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "countdown_to": "2026-02-30T00:00:00Z"
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-060",
+      "name": "every kind of field, as the apps draw it",
+      "decisions": [
+        "form-choice",
+        "form-dropdown",
+        "form-date",
+        "form-multi",
+        "form-rating",
+        "form-nps"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-037",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "form": {
+              "submit_label": "Join",
+              "thanks": "Welcome aboard.",
+              "fields": [
+                {
+                  "id": "name",
+                  "kind": "text",
+                  "label": "Name",
+                  "required": true,
+                  "placeholder": "Your name"
+                },
+                {
+                  "id": "about",
+                  "kind": "textarea",
+                  "label": "Anything else?",
+                  "placeholder": "Tell us"
+                },
+                {
+                  "id": "email",
+                  "kind": "email",
+                  "label": "Email",
+                  "required": true,
+                  "placeholder": "you@example.com",
+                  "save_as": "email"
+                },
+                {
+                  "id": "phone",
+                  "kind": "phone",
+                  "label": "Phone",
+                  "placeholder": "+1 555 123 4567"
+                },
+                {
+                  "id": "age",
+                  "kind": "number",
+                  "label": "Age",
+                  "placeholder": "34",
+                  "trait": "age"
+                },
+                {
+                  "id": "birthday",
+                  "kind": "date",
+                  "label": "Birthday"
+                },
+                {
+                  "id": "size",
+                  "kind": "choice",
+                  "label": "Size",
+                  "options": [
+                    "S",
+                    "M",
+                    "L"
+                  ]
+                },
+                {
+                  "id": "plan",
+                  "kind": "dropdown",
+                  "label": "Plan",
+                  "options": [
+                    "Free",
+                    "Pro",
+                    "Team"
+                  ],
+                  "placeholder": "Pick a plan",
+                  "trait": "plan"
+                },
+                {
+                  "id": "likes",
+                  "kind": "multi_choice",
+                  "label": "What do you like?",
+                  "options": [
+                    "Shoes",
+                    "Bags",
+                    "Outdoors"
+                  ]
+                },
+                {
+                  "id": "stars",
+                  "kind": "rating",
+                  "label": "How was it?",
+                  "required": true
+                },
+                {
+                  "id": "nps",
+                  "kind": "nps",
+                  "label": "Would you recommend us?"
+                }
+              ]
+            }
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": {
+          "fields": [
+            {
+              "id": "name",
+              "kind": "text",
+              "label": "Name",
+              "required": true,
+              "control": "text",
+              "keyboard": "text",
+              "multiline": false,
+              "placeholder": "Your name",
+              "options": null,
+              "scale": null,
+              "glyph": null
+            },
+            {
+              "id": "about",
+              "kind": "textarea",
+              "label": "Anything else?",
+              "required": false,
+              "control": "text",
+              "keyboard": "text",
+              "multiline": true,
+              "placeholder": "Tell us",
+              "options": null,
+              "scale": null,
+              "glyph": null
+            },
+            {
+              "id": "email",
+              "kind": "email",
+              "label": "Email",
+              "required": true,
+              "control": "text",
+              "keyboard": "email",
+              "multiline": false,
+              "placeholder": "you@example.com",
+              "options": null,
+              "scale": null,
+              "glyph": null
+            },
+            {
+              "id": "phone",
+              "kind": "phone",
+              "label": "Phone",
+              "required": false,
+              "control": "text",
+              "keyboard": "phone",
+              "multiline": false,
+              "placeholder": "+1 555 123 4567",
+              "options": null,
+              "scale": null,
+              "glyph": null
+            },
+            {
+              "id": "age",
+              "kind": "number",
+              "label": "Age",
+              "required": false,
+              "control": "text",
+              "keyboard": "decimal",
+              "multiline": false,
+              "placeholder": "34",
+              "options": null,
+              "scale": null,
+              "glyph": null
+            },
+            {
+              "id": "birthday",
+              "kind": "date",
+              "label": "Birthday",
+              "required": false,
+              "control": "date",
+              "keyboard": null,
+              "multiline": false,
+              "placeholder": null,
+              "options": null,
+              "scale": null,
+              "glyph": null
+            },
+            {
+              "id": "size",
+              "kind": "choice",
+              "label": "Size",
+              "required": false,
+              "control": "chips",
+              "keyboard": null,
+              "multiline": false,
+              "placeholder": null,
+              "options": [
+                "S",
+                "M",
+                "L"
+              ],
+              "scale": null,
+              "glyph": null
+            },
+            {
+              "id": "plan",
+              "kind": "dropdown",
+              "label": "Plan",
+              "required": false,
+              "control": "menu",
+              "keyboard": null,
+              "multiline": false,
+              "placeholder": "Pick a plan",
+              "options": [
+                "Free",
+                "Pro",
+                "Team"
+              ],
+              "scale": null,
+              "glyph": null
+            },
+            {
+              "id": "likes",
+              "kind": "multi_choice",
+              "label": "What do you like?",
+              "required": false,
+              "control": "multi_chips",
+              "keyboard": null,
+              "multiline": false,
+              "placeholder": null,
+              "options": [
+                "Shoes",
+                "Bags",
+                "Outdoors"
+              ],
+              "scale": null,
+              "glyph": null
+            },
+            {
+              "id": "stars",
+              "kind": "rating",
+              "label": "How was it?",
+              "required": true,
+              "control": "scale",
+              "keyboard": null,
+              "multiline": false,
+              "placeholder": null,
+              "options": null,
+              "scale": [
+                1,
+                2,
+                3,
+                4,
+                5
+              ],
+              "glyph": "star"
+            },
+            {
+              "id": "nps",
+              "kind": "nps",
+              "label": "Would you recommend us?",
+              "required": false,
+              "control": "scale",
+              "keyboard": null,
+              "multiline": false,
+              "placeholder": null,
+              "options": null,
+              "scale": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10
+              ],
+              "glyph": "number"
+            }
+          ],
+          "submit_label": "Join",
+          "thanks": "Welcome aboard."
+        },
+        "buttons": [],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-061",
+      "name": "a form’s defaults: Send, Thank you., Choose…, and a kind this build does not know is a text box",
+      "decisions": [
+        "form-dropdown"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-038",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "form": {
+              "fields": [
+                {
+                  "id": "plan",
+                  "kind": "dropdown",
+                  "label": "Plan",
+                  "options": [
+                    "Free",
+                    "Pro"
+                  ]
+                },
+                {
+                  "id": "sign",
+                  "kind": "signature",
+                  "label": "Sign here",
+                  "placeholder": "Your name"
+                }
+              ]
+            }
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": {
+          "fields": [
+            {
+              "id": "plan",
+              "kind": "dropdown",
+              "label": "Plan",
+              "required": false,
+              "control": "menu",
+              "keyboard": null,
+              "multiline": false,
+              "placeholder": "Choose…",
+              "options": [
+                "Free",
+                "Pro"
+              ],
+              "scale": null,
+              "glyph": null
+            },
+            {
+              "id": "sign",
+              "kind": "signature",
+              "label": "Sign here",
+              "required": false,
+              "control": "text",
+              "keyboard": "text",
+              "multiline": false,
+              "placeholder": "Your name",
+              "options": null,
+              "scale": null,
+              "glyph": null
+            }
+          ],
+          "submit_label": "Send",
+          "thanks": "Thank you."
+        },
+        "buttons": [],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-062",
+      "name": "a form with no fields is no form",
+      "decisions": [],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-039",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "form": {
+              "fields": [],
+              "submit_label": "Send"
+            }
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 2
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 4
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-063",
+      "name": "a form on a banner",
+      "decisions": [
+        "form-rating"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-040",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "banner",
+            "position": "bottom",
+            "form": {
+              "fields": [
+                {
+                  "id": "stars",
+                  "kind": "rating",
+                  "label": "Rate your order",
+                  "required": true
+                }
+              ]
+            }
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "banner",
+        "edge": "bottom",
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": false,
+        "content_max_width": null,
+        "animation": "slide_bottom",
+        "image": null,
+        "title": {
+          "text": "Spring sale",
+          "max_lines": 1
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": 2
+        },
+        "slides": null,
+        "countdown": null,
+        "form": {
+          "fields": [
+            {
+              "id": "stars",
+              "kind": "rating",
+              "label": "Rate your order",
+              "required": true,
+              "control": "scale",
+              "keyboard": null,
+              "multiline": false,
+              "placeholder": null,
+              "options": null,
+              "scale": [
+                1,
+                2,
+                3,
+                4,
+                5
+              ],
+              "glyph": "star"
+            }
+          ],
+          "submit_label": "Send",
+          "thanks": "Thank you."
+        },
+        "buttons": [],
+        "buttons_at": "trailing",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": false,
+          "back": false,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-070",
+      "name": "a basic card from the sync: its icon and what it shows, a tap, a button, pinned, a category",
+      "decisions": [
+        "card"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-041",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Your order is on its way",
+          "body": "It left the warehouse this morning and should arrive on Thursday.",
+          "image_url": "https://cdn.example/spring.jpg",
+          "in_app": {
+            "surface": "inbox",
+            "layout": "modal",
+            "card": {
+              "template": "basic",
+              "icon_url": "https://cdn.example/icon.png",
+              "image_alt": "The shop’s logo",
+              "action": {
+                "type": "deep_link",
+                "value": "shop://orders/4417"
+              },
+              "pinned": true,
+              "category": "Orders",
+              "cta": {
+                "label": "Track it",
+                "action": {
+                  "type": "url",
+                  "value": "https://shop.example/track/4417"
+                }
+              },
+              "expires_after_seen_days": 7
+            }
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "card",
+        "template": "basic",
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "image": {
+          "url": "https://cdn.example/icon.png",
+          "alt": "The shop’s logo",
+          "placement": "leading",
+          "aspect": "1:1"
+        },
+        "title": {
+          "text": "Your order is on its way",
+          "max_lines": 1
+        },
+        "body": {
+          "text": "It left the warehouse this morning and should arrive on Thursday.",
+          "max_lines": 2
+        },
+        "destination": "shop://orders/4417",
+        "cta": {
+          "label": "Track it",
+          "destination": "https://shop.example/track/4417"
+        },
+        "pinned": true,
+        "category": "Orders"
+      }
+    },
+    {
+      "id": "RP-071",
+      "name": "an illustration card from the feed: the message’s picture above its words",
+      "decisions": [
+        "card"
+      ],
+      "from": "feed",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "group_id": "g-042",
+        "campaign_id": "c-render",
+        "channel_type": "in_app",
+        "device_count": 1,
+        "created_at": "2026-09-28T09:00:00.000Z",
+        "read_at": null,
+        "content": {
+          "title": "New in: rain jackets",
+          "body": "Light, packable and fully taped.",
+          "image_url": "https://cdn.example/spring.jpg",
+          "in_app": {
+            "surface": "inbox",
+            "layout": "modal",
+            "card": {
+              "template": "illustration",
+              "image_alt": "A red winter coat on a model",
+              "action": {
+                "type": "url",
+                "value": "https://shop.example/rain"
+              }
+            }
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "card",
+        "template": "illustration",
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "image": {
+          "url": "https://cdn.example/spring.jpg",
+          "alt": "A red winter coat on a model",
+          "placement": "top",
+          "aspect": "2:1"
+        },
+        "title": {
+          "text": "New in: rain jackets",
+          "max_lines": 1
+        },
+        "body": {
+          "text": "Light, packable and fully taped.",
+          "max_lines": 2
+        },
+        "destination": "https://shop.example/rain",
+        "cta": null,
+        "pinned": false,
+        "category": null
+      }
+    },
+    {
+      "id": "RP-072",
+      "name": "a feed row with no card keeps its picture as the icon and its deep link as the tap",
+      "decisions": [
+        "card"
+      ],
+      "from": "feed",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "group_id": "g-043",
+        "campaign_id": "c-render",
+        "channel_type": "in_app",
+        "device_count": 1,
+        "created_at": "2026-09-28T09:00:00.000Z",
+        "read_at": null,
+        "content": {
+          "title": "Welcome back",
+          "body": "Your basket is where you left it.",
+          "image_url": "https://cdn.example/spring.jpg",
+          "deep_link": "shop://basket",
+          "in_app": {
+            "surface": "inbox",
+            "layout": "modal"
+          }
+        }
+      },
+      "expect": {
+        "kind": "card",
+        "template": "basic",
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#5B4DF5FF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 8,
+          "button_radius": 8,
+          "font_family": null
+        },
+        "image": {
+          "url": "https://cdn.example/spring.jpg",
+          "alt": null,
+          "placement": "leading",
+          "aspect": "1:1"
+        },
+        "title": {
+          "text": "Welcome back",
+          "max_lines": 1
+        },
+        "body": {
+          "text": "Your basket is where you left it.",
+          "max_lines": 2
+        },
+        "destination": "shop://basket",
+        "cta": null,
+        "pinned": false,
+        "category": null
+      }
+    },
+    {
+      "id": "RP-073",
+      "name": "a card’s button with nowhere to go is not drawn",
+      "decisions": [
+        "card"
+      ],
+      "from": "feed",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "group_id": "g-044",
+        "campaign_id": "c-render",
+        "channel_type": "in_app",
+        "device_count": 1,
+        "created_at": "2026-09-28T09:00:00.000Z",
+        "read_at": null,
+        "content": {
+          "title": "Points",
+          "body": "You have 120 points.",
+          "in_app": {
+            "surface": "inbox",
+            "layout": "modal",
+            "direction": "rtl",
+            "card": {
+              "template": "basic",
+              "cta": {
+                "label": "Open",
+                "action": {
+                  "type": "url",
+                  "value": ""
+                }
+              }
+            }
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "card",
+        "template": "basic",
+        "appearance": "light",
+        "direction": "rtl",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "image": null,
+        "title": {
+          "text": "Points",
+          "max_lines": 1
+        },
+        "body": {
+          "text": "You have 120 points.",
+          "max_lines": 2
+        },
+        "destination": null,
+        "cta": null,
+        "pinned": false,
+        "category": null
+      }
+    },
+    {
+      "id": "RP-076",
+      "name": "a dark phone draws a feed card in its dark tokens: the feed ships them beside the light ones",
+      "decisions": [
+        "dark",
+        "card"
+      ],
+      "from": "feed",
+      "env": {
+        "appearance": "dark",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "group_id": "g-045",
+        "campaign_id": "c-render",
+        "channel_type": "in_app",
+        "device_count": 1,
+        "created_at": "2026-09-28T09:00:00.000Z",
+        "read_at": null,
+        "content": {
+          "title": "Your order is on its way",
+          "body": "Arriving Thursday.",
+          "in_app": {
+            "surface": "inbox",
+            "layout": "modal",
+            "card": {
+              "template": "basic",
+              "icon_url": "https://cdn.example/icon.png"
+            }
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        },
+        "style_dark": {
+          "accent": "#8B80FF",
+          "on_accent": "#0B0B14",
+          "surface": "#16161D",
+          "on_surface": "#F4F4F6",
+          "on_surface_muted": "#A1A1AA",
+          "backdrop": "#000000B3",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "card",
+        "template": "basic",
+        "appearance": "dark",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#8B80FFFF",
+          "on_accent": "#0B0B14FF",
+          "surface": "#16161DFF",
+          "on_surface": "#F4F4F6FF",
+          "on_surface_muted": "#A1A1AAFF",
+          "backdrop": "#000000B3",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "image": {
+          "url": "https://cdn.example/icon.png",
+          "alt": null,
+          "placement": "leading",
+          "aspect": "1:1"
+        },
+        "title": {
+          "text": "Your order is on its way",
+          "max_lines": 1
+        },
+        "body": {
+          "text": "Arriving Thursday.",
+          "max_lines": 2
+        },
+        "destination": null,
+        "cta": null,
+        "pinned": false,
+        "category": null
+      }
+    },
+    {
+      "id": "RP-077",
+      "name": "a card from the sync with no action of its own taps through to the message’s deep link",
+      "decisions": [
+        "card"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "delivery_id": "d-046",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Welcome back",
+          "body": "Your basket is where you left it.",
+          "deep_link": "shop://basket",
+          "in_app": {
+            "surface": "inbox",
+            "layout": "modal",
+            "card": {
+              "template": "basic",
+              "icon_url": "https://cdn.example/icon.png"
+            }
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "card",
+        "template": "basic",
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "image": {
+          "url": "https://cdn.example/icon.png",
+          "alt": null,
+          "placement": "leading",
+          "aspect": "1:1"
+        },
+        "title": {
+          "text": "Welcome back",
+          "max_lines": 1
+        },
+        "body": {
+          "text": "Your basket is where you left it.",
+          "max_lines": 2
+        },
+        "destination": "shop://basket",
+        "cta": null,
+        "pinned": false,
+        "category": null
+      }
+    },
+    {
+      "id": "RP-074",
+      "name": "a card whose body is markup is the WebView’s",
+      "decisions": [
+        "markup"
+      ],
+      "from": "feed",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "group_id": "g-047",
+        "campaign_id": "c-render",
+        "channel_type": "in_app",
+        "device_count": 1,
+        "created_at": "2026-09-28T09:00:00.000Z",
+        "read_at": null,
+        "content": {
+          "in_app": {
+            "surface": "inbox",
+            "layout": "modal",
+            "body_mode": "html",
+            "html": "<p>Hi</p>"
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "markup"
+      }
+    },
+    {
+      "id": "RP-075",
+      "name": "a push in the feed is not an in-app message to draw",
+      "decisions": [],
+      "from": "feed",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null
+      },
+      "row": {
+        "group_id": "g-048",
+        "campaign_id": "c-render",
+        "channel_type": "push",
+        "device_count": 1,
+        "created_at": "2026-09-28T09:00:00.000Z",
+        "read_at": null,
+        "content": {
+          "title": "Your order shipped",
+          "body": "Track it in the app.",
+          "deep_link": "shop://orders"
+        }
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "RP-080",
+      "name": "a modal at an accessibility text size: its title and body never cut, because it scrolls; everything else as at the default size",
+      "decisions": [
+        "text-scale",
+        "lines"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null,
+        "text_size": "large"
+      },
+      "row": {
+        "delivery_id": "d-001",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "image_url": "https://cdn.example/spring.jpg",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "image_alt": "A red winter coat on a model",
+            "buttons": [
+              {
+                "label": "Shop now",
+                "action": "deep_link",
+                "value": "shop://sale"
+              },
+              {
+                "label": "Later",
+                "action": "dismiss"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": {
+          "url": "https://cdn.example/spring.jpg",
+          "alt": "A red winter coat on a model",
+          "placement": "top",
+          "aspect": "2:1"
+        },
+        "title": {
+          "text": "Spring sale",
+          "max_lines": null
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": null
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "Shop now",
+            "action": "deep_link",
+            "style": "primary",
+            "value": "shop://sale",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": "shop://sale"
+          },
+          {
+            "index": 2,
+            "label": "Later",
+            "action": "dismiss",
+            "style": "secondary",
+            "value": null,
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": null
+          }
+        ],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": true,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-081",
+      "name": "the banner the largest text size broke on the iPhone: its words never cut, and its one button under them rather than beside them",
+      "decisions": [
+        "text-scale",
+        "lines",
+        "banner-button"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "ios",
+        "device_class": "mobile",
+        "fallback_tokens": null,
+        "text_size": "large"
+      },
+      "row": {
+        "delivery_id": "d-081",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Free delivery today",
+          "body": "On every order, no minimum, until midnight.",
+          "image_url": "https://cdn.example/delivery.jpg",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "banner",
+            "position": "top",
+            "image_alt": "A delivery van at a front door",
+            "buttons": [
+              {
+                "label": "Shop",
+                "action": "deep_link",
+                "value": "shop://home"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "banner",
+        "edge": "top",
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": false,
+        "content_max_width": null,
+        "animation": "slide_top",
+        "image": {
+          "url": "https://cdn.example/delivery.jpg",
+          "alt": "A delivery van at a front door",
+          "placement": "leading",
+          "aspect": "1:1"
+        },
+        "title": {
+          "text": "Free delivery today",
+          "max_lines": null
+        },
+        "body": {
+          "text": "On every order, no minimum, until midnight.",
+          "max_lines": null
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "Shop",
+            "action": "deep_link",
+            "style": "primary",
+            "value": "shop://home",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": "shop://home"
+          }
+        ],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": false,
+          "back": false,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-082",
+      "name": "the same banner on Android at an accessibility text size is the same plan",
+      "decisions": [
+        "text-scale",
+        "platform"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null,
+        "text_size": "large"
+      },
+      "row": {
+        "delivery_id": "d-081",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Free delivery today",
+          "body": "On every order, no minimum, until midnight.",
+          "image_url": "https://cdn.example/delivery.jpg",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "banner",
+            "position": "top",
+            "image_alt": "A delivery van at a front door",
+            "buttons": [
+              {
+                "label": "Shop",
+                "action": "deep_link",
+                "value": "shop://home"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "banner",
+        "edge": "top",
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": false,
+        "content_max_width": null,
+        "animation": "slide_top",
+        "image": {
+          "url": "https://cdn.example/delivery.jpg",
+          "alt": "A delivery van at a front door",
+          "placement": "leading",
+          "aspect": "1:1"
+        },
+        "title": {
+          "text": "Free delivery today",
+          "max_lines": null
+        },
+        "body": {
+          "text": "On every order, no minimum, until midnight.",
+          "max_lines": null
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "Shop",
+            "action": "deep_link",
+            "style": "primary",
+            "value": "shop://home",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": "shop://home"
+          }
+        ],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": true,
+          "corner": "top_end",
+          "backdrop_tap": false,
+          "back": false,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-083",
+      "name": "a modal only its button closes, with a long body, at an accessibility text size: never cut, so its button is reached by scrolling and never lost",
+      "decisions": [
+        "text-scale",
+        "lines",
+        "back"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null,
+        "text_size": "large"
+      },
+      "row": {
+        "delivery_id": "d-083",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Before you carry on, please read our new terms",
+          "body": "We have changed how we look after your orders, your payments and your returns. The new terms take effect on the first of next month and apply to every order placed from then on, including the ones already in your basket. Nothing about your account changes until you have read them, and you can read them again at any time from the Help page.",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "modal",
+            "dismissible": false,
+            "buttons": [
+              {
+                "label": "I have read them",
+                "action": "url",
+                "value": "https://shop.example/terms"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "modal",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": true,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": null,
+        "title": {
+          "text": "Before you carry on, please read our new terms",
+          "max_lines": null
+        },
+        "body": {
+          "text": "We have changed how we look after your orders, your payments and your returns. The new terms take effect on the first of next month and apply to every order placed from then on, including the ones already in your basket. Nothing about your account changes until you have read them, and you can read them again at any time from the Help page.",
+          "max_lines": null
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "I have read them",
+            "action": "url",
+            "style": "primary",
+            "value": "https://shop.example/terms",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": "https://shop.example/terms"
+          }
+        ],
+        "buttons_at": "content",
+        "dismiss": {
+          "control": false,
+          "corner": "top_end",
+          "backdrop_tap": false,
+          "back": false,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-084",
+      "name": "a fullscreen at an accessibility text size is the fullscreen at the default size: it was never cut, and its buttons stay pinned",
+      "decisions": [
+        "text-scale",
+        "lines",
+        "fullscreen-buttons"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null,
+        "text_size": "large"
+      },
+      "row": {
+        "delivery_id": "d-007",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Spring sale",
+          "body": "Thirty percent off everything until Sunday.",
+          "image_url": "https://cdn.example/spring.jpg",
+          "in_app": {
+            "surface": "overlay",
+            "layout": "fullscreen",
+            "image_alt": "A red winter coat on a model",
+            "buttons": [
+              {
+                "label": "Shop now",
+                "action": "deep_link",
+                "value": "shop://sale"
+              },
+              {
+                "label": "Later",
+                "action": "dismiss"
+              }
+            ]
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "overlay",
+        "shape": "fullscreen",
+        "edge": null,
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "backdrop": false,
+        "content_max_width": null,
+        "animation": "fade",
+        "image": {
+          "url": "https://cdn.example/spring.jpg",
+          "alt": "A red winter coat on a model",
+          "placement": "top",
+          "aspect": "16:9"
+        },
+        "title": {
+          "text": "Spring sale",
+          "max_lines": null
+        },
+        "body": {
+          "text": "Thirty percent off everything until Sunday.",
+          "max_lines": null
+        },
+        "slides": null,
+        "countdown": null,
+        "form": null,
+        "buttons": [
+          {
+            "index": 1,
+            "label": "Shop now",
+            "action": "deep_link",
+            "style": "primary",
+            "value": "shop://sale",
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": "shop://sale"
+          },
+          {
+            "index": 2,
+            "label": "Later",
+            "action": "dismiss",
+            "style": "secondary",
+            "value": null,
+            "event_name": null,
+            "key": null,
+            "data": null,
+            "destination": null
+          }
+        ],
+        "buttons_at": "bottom",
+        "dismiss": {
+          "control": true,
+          "corner": "top_start",
+          "backdrop_tap": false,
+          "back": true,
+          "after_ms": null
+        }
+      }
+    },
+    {
+      "id": "RP-085",
+      "name": "a card at an accessibility text size keeps its one line of title and two of body: the switch is an overlay’s, and an inbox list stays scannable",
+      "decisions": [
+        "text-scale",
+        "card"
+      ],
+      "from": "sync",
+      "env": {
+        "appearance": "light",
+        "platform": "android",
+        "device_class": "mobile",
+        "fallback_tokens": null,
+        "text_size": "large"
+      },
+      "row": {
+        "delivery_id": "d-041",
+        "campaign_id": "c-render",
+        "content": {
+          "title": "Your order is on its way",
+          "body": "It left the warehouse this morning and should arrive on Thursday.",
+          "image_url": "https://cdn.example/spring.jpg",
+          "in_app": {
+            "surface": "inbox",
+            "layout": "modal",
+            "card": {
+              "template": "basic",
+              "icon_url": "https://cdn.example/icon.png",
+              "image_alt": "The shop’s logo",
+              "action": {
+                "type": "deep_link",
+                "value": "shop://orders/4417"
+              },
+              "pinned": true,
+              "category": "Orders",
+              "cta": {
+                "label": "Track it",
+                "action": {
+                  "type": "url",
+                  "value": "https://shop.example/track/4417"
+                }
+              },
+              "expires_after_seen_days": 7
+            }
+          }
+        },
+        "style": {
+          "accent": "#0A7A5A",
+          "on_accent": "#FFFFFF",
+          "surface": "#FFFFFF",
+          "on_surface": "#111827",
+          "on_surface_muted": "#6B7280",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "font_family": "Inter",
+          "button_shape": "rounded"
+        }
+      },
+      "expect": {
+        "kind": "card",
+        "template": "basic",
+        "appearance": "light",
+        "direction": "ltr",
+        "tokens": {
+          "accent": "#0A7A5AFF",
+          "on_accent": "#FFFFFFFF",
+          "surface": "#FFFFFFFF",
+          "on_surface": "#111827FF",
+          "on_surface_muted": "#6B7280FF",
+          "backdrop": "#0F172A99",
+          "radius": 12,
+          "button_radius": 12,
+          "font_family": "Inter"
+        },
+        "image": {
+          "url": "https://cdn.example/icon.png",
+          "alt": "The shop’s logo",
+          "placement": "leading",
+          "aspect": "1:1"
+        },
+        "title": {
+          "text": "Your order is on its way",
+          "max_lines": 1
+        },
+        "body": {
+          "text": "It left the warehouse this morning and should arrive on Thursday.",
+          "max_lines": 2
+        },
+        "destination": "shop://orders/4417",
+        "cta": {
+          "label": "Track it",
+          "destination": "https://shop.example/track/4417"
+        },
+        "pinned": true,
+        "category": "Orders"
+      }
+    }
+  ],
+  "countdown_text": [
+    {
+      "name": "ended",
+      "to_ms": 1789999999000,
+      "now_ms": 1790000000000,
+      "text": ""
+    },
+    {
+      "name": "exactly now",
+      "to_ms": 1790000000000,
+      "now_ms": 1790000000000,
+      "text": ""
+    },
+    {
+      "name": "half a second left",
+      "to_ms": 1790000000500,
+      "now_ms": 1790000000000,
+      "text": "00:00:00"
+    },
+    {
+      "name": "under a minute",
+      "to_ms": 1790000059000,
+      "now_ms": 1790000000000,
+      "text": "00:00:59"
+    },
+    {
+      "name": "an hour, two minutes and three seconds",
+      "to_ms": 1790003723000,
+      "now_ms": 1790000000000,
+      "text": "01:02:03"
+    },
+    {
+      "name": "the last second of the first day",
+      "to_ms": 1790086399999,
+      "now_ms": 1790000000000,
+      "text": "23:59:59"
+    },
+    {
+      "name": "exactly a day",
+      "to_ms": 1790086400000,
+      "now_ms": 1790000000000,
+      "text": "1d 00:00:00"
+    },
+    {
+      "name": "two days and some",
+      "to_ms": 1790187989000,
+      "now_ms": 1790000000000,
+      "text": "2d 04:13:09"
+    },
+    {
+      "name": "twelve days and a second",
+      "to_ms": 1791036801000,
+      "now_ms": 1790000000000,
+      "text": "12d 00:00:01"
+    }
+  ],
+  "form_checks": [
+    {
+      "id": "FC-01",
+      "name": "a required field left empty",
+      "fields": [
+        {
+          "id": "name",
+          "kind": "text",
+          "label": "Name",
+          "required": true
+        }
+      ],
+      "answers": {},
+      "problem": "Name is required.",
+      "sent": null
+    },
+    {
+      "id": "FC-02",
+      "name": "a required field of spaces is empty",
+      "fields": [
+        {
+          "id": "name",
+          "kind": "text",
+          "label": "Name",
+          "required": true
+        }
+      ],
+      "answers": {
+        "name": "   "
+      },
+      "problem": "Name is required.",
+      "sent": null
+    },
+    {
+      "id": "FC-03",
+      "name": "an optional field left empty is not sent",
+      "fields": [
+        {
+          "id": "email",
+          "kind": "email",
+          "label": "Email"
+        }
+      ],
+      "answers": {
+        "email": ""
+      },
+      "problem": null,
+      "sent": {}
+    },
+    {
+      "id": "FC-04",
+      "name": "an email without a domain",
+      "fields": [
+        {
+          "id": "email",
+          "kind": "email",
+          "label": "Email"
+        }
+      ],
+      "answers": {
+        "email": "me@home"
+      },
+      "problem": "Email is not an email address.",
+      "sent": null
+    },
+    {
+      "id": "FC-05",
+      "name": "an email is sent trimmed",
+      "fields": [
+        {
+          "id": "email",
+          "kind": "email",
+          "label": "Email"
+        }
+      ],
+      "answers": {
+        "email": "  me@example.com "
+      },
+      "problem": null,
+      "sent": {
+        "email": "me@example.com"
+      }
+    },
+    {
+      "id": "FC-06",
+      "name": "six digits are not a phone number",
+      "fields": [
+        {
+          "id": "phone",
+          "kind": "phone",
+          "label": "Phone"
+        }
+      ],
+      "answers": {
+        "phone": "555-123"
+      },
+      "problem": "Phone is not a phone number.",
+      "sent": null
+    },
+    {
+      "id": "FC-07",
+      "name": "digits are counted as 0-9: Arabic-Indic digits are not",
+      "fields": [
+        {
+          "id": "phone",
+          "kind": "phone",
+          "label": "Phone"
+        }
+      ],
+      "answers": {
+        "phone": "٠١٢٣٤٥٦٧٨٩"
+      },
+      "problem": "Phone is not a phone number.",
+      "sent": null
+    },
+    {
+      "id": "FC-08",
+      "name": "a phone number is sent as written",
+      "fields": [
+        {
+          "id": "phone",
+          "kind": "phone",
+          "label": "Phone"
+        }
+      ],
+      "answers": {
+        "phone": "+1 (555) 123-4567"
+      },
+      "problem": null,
+      "sent": {
+        "phone": "+1 (555) 123-4567"
+      }
+    },
+    {
+      "id": "FC-09",
+      "name": "a number in the one grammar is sent as a number",
+      "fields": [
+        {
+          "id": "age",
+          "kind": "number",
+          "label": "Age"
+        },
+        {
+          "id": "score",
+          "kind": "number",
+          "label": "Score"
+        }
+      ],
+      "answers": {
+        "age": " 34 ",
+        "score": "1e3"
+      },
+      "problem": null,
+      "sent": {
+        "age": 34,
+        "score": 1000
+      }
+    },
+    {
+      "id": "FC-10",
+      "name": "hex is not a number here",
+      "fields": [
+        {
+          "id": "age",
+          "kind": "number",
+          "label": "Age"
+        }
+      ],
+      "answers": {
+        "age": "0x10"
+      },
+      "problem": "Age needs a number.",
+      "sent": null
+    },
+    {
+      "id": "FC-11",
+      "name": "a number with words after it",
+      "fields": [
+        {
+          "id": "age",
+          "kind": "number",
+          "label": "Age"
+        }
+      ],
+      "answers": {
+        "age": "12abc"
+      },
+      "problem": "Age needs a number.",
+      "sent": null
+    },
+    {
+      "id": "FC-12",
+      "name": "a day that does not exist",
+      "fields": [
+        {
+          "id": "birthday",
+          "kind": "date",
+          "label": "Birthday"
+        }
+      ],
+      "answers": {
+        "birthday": "2026-02-30"
+      },
+      "problem": "Birthday needs a date, as YYYY-MM-DD.",
+      "sent": null
+    },
+    {
+      "id": "FC-13",
+      "name": "a leap day that does",
+      "fields": [
+        {
+          "id": "birthday",
+          "kind": "date",
+          "label": "Birthday"
+        }
+      ],
+      "answers": {
+        "birthday": "2024-02-29"
+      },
+      "problem": null,
+      "sent": {
+        "birthday": "2024-02-29"
+      }
+    },
+    {
+      "id": "FC-14",
+      "name": "several choices, sent in the author’s order whatever order they were tapped in",
+      "fields": [
+        {
+          "id": "likes",
+          "kind": "multi_choice",
+          "label": "What do you like?",
+          "options": [
+            "Shoes",
+            "Bags",
+            "Outdoors"
+          ]
+        }
+      ],
+      "answers": {
+        "likes": [
+          "Outdoors",
+          "Shoes"
+        ]
+      },
+      "problem": null,
+      "sent": {
+        "likes": "Shoes,Outdoors"
+      }
+    },
+    {
+      "id": "FC-15",
+      "name": "several choices, required, none picked",
+      "fields": [
+        {
+          "id": "likes",
+          "kind": "multi_choice",
+          "label": "What do you like?",
+          "options": [
+            "Shoes",
+            "Bags",
+            "Outdoors"
+          ],
+          "required": true
+        }
+      ],
+      "answers": {
+        "likes": []
+      },
+      "problem": "What do you like? is required.",
+      "sent": null
+    },
+    {
+      "id": "FC-16",
+      "name": "a picked nought is an answer, not an empty field",
+      "fields": [
+        {
+          "id": "nps",
+          "kind": "nps",
+          "label": "Would you recommend us?",
+          "required": true
+        },
+        {
+          "id": "stars",
+          "kind": "rating",
+          "label": "How was it?"
+        }
+      ],
+      "answers": {
+        "nps": 0,
+        "stars": 4
+      },
+      "problem": null,
+      "sent": {
+        "nps": 0,
+        "stars": 4
+      }
+    },
+    {
+      "id": "FC-17",
+      "name": "the first problem from the top is the one said",
+      "fields": [
+        {
+          "id": "name",
+          "kind": "text",
+          "label": "Name",
+          "required": true
+        },
+        {
+          "id": "email",
+          "kind": "email",
+          "label": "Email"
+        }
+      ],
+      "answers": {
+        "email": "nope"
+      },
+      "problem": "Name is required.",
+      "sent": null
+    },
+    {
+      "id": "FC-18",
+      "name": "one of a list and a dropdown are sent as picked",
+      "fields": [
+        {
+          "id": "size",
+          "kind": "choice",
+          "label": "Size",
+          "options": [
+            "S",
+            "M"
+          ]
+        },
+        {
+          "id": "plan",
+          "kind": "dropdown",
+          "label": "Plan",
+          "options": [
+            "Free",
+            "Pro"
+          ]
+        }
+      ],
+      "answers": {
+        "size": "M",
+        "plan": "Pro"
+      },
+      "problem": null,
+      "sent": {
+        "size": "M",
+        "plan": "Pro"
+      }
+    },
+    {
+      "id": "FC-19",
+      "name": "a number typed as nothing but spaces is empty",
+      "fields": [
+        {
+          "id": "age",
+          "kind": "number",
+          "label": "Age",
+          "required": true
+        }
+      ],
+      "answers": {
+        "age": "  "
+      },
+      "problem": "Age is required.",
+      "sent": null
+    }
+  ]
+}

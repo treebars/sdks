@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A push template's body: the stylised basic, and both timers. One layout for the collapsed and
+  the expanded view — `PushTemplates.kt` hides what a view does not show — because two copies of the same rows are two
+  places for a colour to be set in one and forgotten in the other. The system draws the header, the actions and the
+  expand arrow around it (DecoratedCustomViewStyle); Android 12 and later always do, whatever an app asks.
+
+  Every id and every resource is prefixed `treebars_push_`: a library's resources merge into the host app's, and an
+  unprefixed `title` would collide with one of theirs.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/treebars_push_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingTop="@dimen/treebars_push_padding"
+    android:paddingBottom="@dimen/treebars_push_padding"
+    android:paddingStart="@dimen/treebars_push_padding"
+    android:paddingEnd="@dimen/treebars_push_padding">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/treebars_push_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="@android:style/TextAppearance.Material.Notification.Title" />
+
+        <!-- A countdown to the timer's end: `setChronometerCountDown`, drawn by the system, so it ticks with no wakeups. -->
+        <Chronometer
+            android:id="@+id/treebars_push_timer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textAppearance="@android:style/TextAppearance.Material.Notification.Title"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/treebars_push_body"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:textAppearance="@android:style/TextAppearance.Material.Notification" />
+
+    <ProgressBar
+        android:id="@+id/treebars_push_progress"
+        style="@android:style/Widget.Material.ProgressBar.Horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:max="1000"
+        android:progressTint="@color/treebars_push_progress"
+        android:visibility="gone" />
+
+    <ImageView
+        android:id="@+id/treebars_push_image"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/treebars_push_image_height"
+        android:layout_marginTop="8dp"
+        android:adjustViewBounds="true"
+        android:scaleType="centerCrop"
+        android:visibility="gone" />
+</LinearLayout>

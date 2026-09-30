@@ -1,0 +1,1461 @@
+{
+  "_about": "Cases every Treebars SDK runs against its own implementation, shared so that the SDKs cannot disagree. Generated; do not edit.",
+  "cases": [
+    {
+      "name": "one dismissal however it is asked for; only dismissMessage closes",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [
+            "day_completed",
+            "offer_claimed"
+          ],
+          "traits": [
+            "streak"
+          ]
+        },
+        "stored": {}
+      },
+      "signed_in": true,
+      "steps": [
+        {
+          "call": "trackDismiss",
+          "args": [
+            "close-btn"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "dismissMessage",
+          "args": [],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "_link",
+          "args": [
+            "treebars://dismiss",
+            false
+          ],
+          "answer": {
+            "ok": true
+          }
+        }
+      ],
+      "events": [
+        [
+          "in_app_dismissed",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "element": "close-btn"
+          }
+        ]
+      ],
+      "closes": 2,
+      "dismissed": 2
+    },
+    {
+      "name": "a click and a navigation from one handler are one press, then it goes",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [
+            "day_completed",
+            "offer_claimed"
+          ],
+          "traits": [
+            "streak"
+          ]
+        },
+        "stored": {}
+      },
+      "signed_in": true,
+      "steps": [
+        {
+          "call": "openWebURL",
+          "args": [
+            "https://shop.example/sale"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackClick",
+          "args": [
+            1
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "turn": true
+        }
+      ],
+      "events": [
+        [
+          "in_app_clicked",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "destination": "https://shop.example/sale",
+            "element": "1",
+            "button_index": 1
+          }
+        ]
+      ],
+      "opened": [
+        [
+          "https://shop.example/sale",
+          "openWebURL"
+        ]
+      ],
+      "spent": 1
+    },
+    {
+      "name": "trackClick(0) keeps its id, and a URL that would run is refused",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [
+            "day_completed",
+            "offer_claimed"
+          ],
+          "traits": [
+            "streak"
+          ]
+        },
+        "stored": {}
+      },
+      "signed_in": true,
+      "steps": [
+        {
+          "call": "trackClick",
+          "args": [
+            0
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "turn": true
+        },
+        {
+          "call": "openDeepLink",
+          "args": [
+            "javascript:alert(1)"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "invalid_url"
+          }
+        },
+        {
+          "call": "openDeepLink",
+          "args": [
+            "java\tscript:alert(1)"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "invalid_url"
+          }
+        }
+      ],
+      "events": [
+        [
+          "in_app_clicked",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "element": "0"
+          }
+        ]
+      ]
+    },
+    {
+      "name": "a declared event is recorded with the campaign; others are refused",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [
+            "day_completed",
+            "offer_claimed"
+          ],
+          "traits": [
+            "streak"
+          ]
+        },
+        "stored": {}
+      },
+      "signed_in": true,
+      "steps": [
+        {
+          "call": "trackEvent",
+          "args": [
+            "day_completed",
+            {
+              "day": 3
+            },
+            {},
+            {},
+            false,
+            false
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "made_up"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "undeclared"
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "in_app_clicked"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "reserved"
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "session_start"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "reserved"
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "undefined"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "invalid_name"
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "day_completed",
+            "{\"day\":4}"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "repeat"
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "offer_claimed",
+            "{\"plan\":\"annual\"}",
+            {
+              "where": {
+                "latitude": 30,
+                "longitude": 31
+              }
+            }
+          ],
+          "answer": {
+            "ok": true
+          }
+        }
+      ],
+      "events": [
+        [
+          "day_completed",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "day": 3
+          }
+        ],
+        [
+          "offer_claimed",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "plan": "annual",
+            "where": {
+              "latitude": 30,
+              "longitude": 31
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "name": "twenty events a display",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [
+            "e0",
+            "e1",
+            "e2",
+            "e3",
+            "e4",
+            "e5",
+            "e6",
+            "e7",
+            "e8",
+            "e9",
+            "e10",
+            "e11",
+            "e12",
+            "e13",
+            "e14",
+            "e15",
+            "e16",
+            "e17",
+            "e18",
+            "e19",
+            "e20",
+            "e21",
+            "e22",
+            "e23",
+            "e24"
+          ],
+          "traits": []
+        },
+        "stored": {}
+      },
+      "signed_in": true,
+      "steps": [
+        {
+          "call": "trackEvent",
+          "args": [
+            "e0"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e1"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e2"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e3"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e4"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e5"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e6"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e7"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e8"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e9"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e10"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e11"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e12"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e13"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e14"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e15"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e16"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e17"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e18"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e19"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e20"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "limit"
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e21"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "limit"
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e22"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "limit"
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e23"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "limit"
+          }
+        },
+        {
+          "call": "trackEvent",
+          "args": [
+            "e24"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "limit"
+          }
+        }
+      ],
+      "event_count": 20
+    },
+    {
+      "name": "identity refused; declared traits only, on a signed-in person",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [
+            "day_completed",
+            "offer_claimed"
+          ],
+          "traits": [
+            "streak"
+          ]
+        },
+        "stored": {}
+      },
+      "signed_in": true,
+      "steps": [
+        {
+          "call": "identifyUser",
+          "args": [
+            "u_2"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "identity_from_message"
+          }
+        },
+        {
+          "call": "setAlias",
+          "args": [
+            "a"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "identity_from_message"
+          }
+        },
+        {
+          "call": "setUserAttribute",
+          "args": [
+            "streak",
+            3
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "setUserAttribute",
+          "args": [
+            "vip",
+            true
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "undeclared"
+          }
+        },
+        {
+          "call": "setUserAttribute",
+          "args": [
+            "email",
+            "a@b.co"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "reserved"
+          }
+        },
+        {
+          "call": "setUserAttribute",
+          "args": [
+            "streak",
+            {
+              "nested": 1
+            }
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "invalid_value"
+          }
+        },
+        {
+          "call": "setFirstName",
+          "args": [
+            "Ada"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "setGender",
+          "args": [
+            "robot"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "invalid_value"
+          }
+        },
+        {
+          "call": "setBirthDate",
+          "args": [
+            "1990-04-02"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "setUserLocation",
+          "args": [
+            30.04,
+            31.23
+          ],
+          "answer": {
+            "ok": true
+          }
+        }
+      ],
+      "traits": [
+        {
+          "streak": 3
+        },
+        {
+          "first_name": "Ada"
+        },
+        {
+          "birth_date": "1990-04-02"
+        },
+        {
+          "location": {
+            "latitude": 30.04,
+            "longitude": 31.23
+          }
+        }
+      ]
+    },
+    {
+      "name": "a visitor's traits are set as a signed-in person's are, on the anonymous person",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [
+            "day_completed",
+            "offer_claimed"
+          ],
+          "traits": [
+            "streak"
+          ]
+        },
+        "stored": {}
+      },
+      "signed_in": false,
+      "steps": [
+        {
+          "call": "setFirstName",
+          "args": [
+            "Ada"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "setUserAttribute",
+          "args": [
+            "streak",
+            1
+          ],
+          "answer": {
+            "ok": true
+          }
+        }
+      ],
+      "traits": [
+        {
+          "first_name": "Ada"
+        },
+        {
+          "streak": 1
+        }
+      ]
+    },
+    {
+      "name": "an address is an opt-in, never who somebody is",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [
+            "day_completed",
+            "offer_claimed"
+          ],
+          "traits": [
+            "streak"
+          ]
+        },
+        "stored": {}
+      },
+      "signed_in": false,
+      "steps": [
+        {
+          "call": "setEmailId",
+          "args": [
+            "ada@example.com"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "setMobileNumber",
+          "args": [
+            "+20 100 555 0101"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "setEmailId",
+          "args": [
+            "not an address"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "invalid_value"
+          }
+        }
+      ],
+      "events": [
+        [
+          "in_app_opted_in",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "email": "ada@example.com"
+          }
+        ],
+        [
+          "in_app_opted_in",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "phone": "+20 100 555 0101"
+          }
+        ]
+      ]
+    },
+    {
+      "name": "screens, completion and a form from the runtime, and a press filed under the screen it was on",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [
+            "day_completed",
+            "offer_claimed"
+          ],
+          "traits": [
+            "streak"
+          ]
+        },
+        "stored": {}
+      },
+      "signed_in": true,
+      "steps": [
+        {
+          "call": "_screen",
+          "args": [
+            "welcome",
+            0,
+            null,
+            "start"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "_screen",
+          "args": [
+            "interests",
+            1,
+            "welcome",
+            "next"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "_submit",
+          "args": [
+            {
+              "interests": [
+                "tech",
+                "shoes"
+              ],
+              "agree": true
+            },
+            {
+              "email": "ada@example.com",
+              "streak": "2",
+              "vip": "yes"
+            }
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "_complete",
+          "args": [
+            2
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackClick",
+          "args": [
+            "next"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "_screen",
+          "args": [
+            "thanks",
+            2,
+            "interests",
+            "next"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "turn": true
+        }
+      ],
+      "events": [
+        [
+          "in_app_screen_viewed",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "screen": "welcome",
+            "index": 0,
+            "how": "start"
+          }
+        ],
+        [
+          "in_app_screen_viewed",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "screen": "interests",
+            "index": 1,
+            "from": "welcome",
+            "how": "next"
+          }
+        ],
+        [
+          "in_app_form_submitted",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "screen": "interests",
+            "responses": {
+              "interests": "tech,shoes",
+              "agree": "true"
+            },
+            "email": "ada@example.com"
+          }
+        ],
+        [
+          "in_app_completed",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "screen": "interests",
+            "screens_seen": 2
+          }
+        ],
+        [
+          "in_app_screen_viewed",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "screen": "thanks",
+            "index": 2,
+            "from": "interests",
+            "how": "next"
+          }
+        ],
+        [
+          "in_app_clicked",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "screen": "interests",
+            "element": "next"
+          }
+        ]
+      ],
+      "traits": [
+        {
+          "streak": "2"
+        }
+      ]
+    },
+    {
+      "name": "a link is read as every renderer reads one",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [
+            "day_completed",
+            "offer_claimed"
+          ],
+          "traits": [
+            "streak"
+          ]
+        },
+        "stored": {}
+      },
+      "signed_in": true,
+      "steps": [
+        {
+          "call": "_link",
+          "args": [
+            "treebars://click/2",
+            false
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "turn": true
+        },
+        {
+          "call": "_link",
+          "args": [
+            "https://shop.example/terms",
+            true
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "turn": true
+        },
+        {
+          "call": "_link",
+          "args": [
+            "javascript:alert(1)",
+            false
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "invalid_url"
+          }
+        }
+      ],
+      "events": [
+        [
+          "in_app_clicked",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "element": "2",
+            "button_index": 2
+          }
+        ],
+        [
+          "in_app_clicked",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "destination": "https://shop.example/terms"
+          }
+        ]
+      ],
+      "opened": [
+        [
+          "https://shop.example/terms",
+          "_link_new"
+        ]
+      ],
+      "spent": 0
+    },
+    {
+      "name": "custom actions and screens reach the app with their keys",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [
+            "day_completed",
+            "offer_claimed"
+          ],
+          "traits": [
+            "streak"
+          ]
+        },
+        "stored": {}
+      },
+      "signed_in": true,
+      "steps": [
+        {
+          "call": "customAction",
+          "args": [
+            {
+              "screen": "sale",
+              "type": "riddle_prize"
+            }
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "turn": true
+        },
+        {
+          "call": "customAction",
+          "args": [
+            "{\"offer\":\"x\"}"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "turn": true
+        }
+      ],
+      "events": [
+        [
+          "in_app_clicked",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "action": "custom",
+            "values": {
+              "screen": "sale",
+              "type": "riddle_prize"
+            }
+          }
+        ],
+        [
+          "in_app_clicked",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "action": "custom",
+            "values": {
+              "offer": "x"
+            }
+          }
+        ]
+      ],
+      "clicked": 2
+    },
+    {
+      "name": "a value kept for the person in the campaign, read back and forgotten",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [
+            "day_completed",
+            "offer_claimed"
+          ],
+          "traits": [
+            "streak"
+          ]
+        },
+        "stored": {
+          "streak": 2
+        }
+      },
+      "signed_in": true,
+      "steps": [
+        {
+          "call": "getStoredValue",
+          "args": [
+            "streak"
+          ],
+          "answer": 2
+        },
+        {
+          "call": "setStoredValue",
+          "args": [
+            "streak",
+            3
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "getStoredValue",
+          "args": [
+            "streak"
+          ],
+          "answer": 3
+        },
+        {
+          "call": "setStoredValue",
+          "args": [
+            "streak",
+            null
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "getStoredValue",
+          "args": [
+            "streak"
+          ],
+          "answer": null
+        },
+        {
+          "call": "setStoredValue",
+          "args": [
+            "bad key",
+            1
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "invalid_name"
+          }
+        },
+        {
+          "call": "setStoredValue",
+          "args": [
+            "big",
+            "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "invalid_value"
+          }
+        }
+      ],
+      "events": [
+        [
+          "in_app_value_stored",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "key": "streak",
+            "value": 3
+          }
+        ],
+        [
+          "in_app_value_stored",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "key": "streak",
+            "value": null
+          }
+        ]
+      ]
+    },
+    {
+      "name": "a test send's value lasts the display",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": null,
+        "declared": {
+          "events": [],
+          "traits": []
+        },
+        "stored": {}
+      },
+      "signed_in": true,
+      "steps": [
+        {
+          "call": "setStoredValue",
+          "args": [
+            "streak",
+            1
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "no_campaign"
+          }
+        },
+        {
+          "call": "getStoredValue",
+          "args": [
+            "streak"
+          ],
+          "answer": 1
+        }
+      ],
+      "events": []
+    },
+    {
+      "name": "a rating, and a pool the server does not answer",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [
+            "day_completed",
+            "offer_claimed"
+          ],
+          "traits": [
+            "streak"
+          ]
+        },
+        "stored": {}
+      },
+      "signed_in": true,
+      "steps": [
+        {
+          "call": "trackRating",
+          "args": [
+            4.5
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "trackRating",
+          "args": [
+            "five"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "invalid_value"
+          }
+        },
+        {
+          "call": "claimReward",
+          "args": [
+            "wheel"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "not_available"
+          }
+        }
+      ],
+      "events": [
+        [
+          "in_app_rated",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "rating": 4.5
+          }
+        ]
+      ]
+    },
+    {
+      "name": "a quiz reaches its result",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [],
+          "traits": []
+        },
+        "stored": {}
+      },
+      "signed_in": false,
+      "steps": [
+        {
+          "call": "_quiz",
+          "args": [
+            "style_quiz",
+            2,
+            3
+          ],
+          "answer": {
+            "ok": true
+          }
+        }
+      ],
+      "events": [
+        [
+          "in_app_quiz_completed",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "quiz": "style_quiz",
+            "score": 2,
+            "total": 3
+          }
+        ]
+      ]
+    },
+    {
+      "name": "a reward the server decides",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [],
+          "traits": []
+        },
+        "stored": {}
+      },
+      "signed_in": false,
+      "rewards": {
+        "wheel": {
+          "won": true,
+          "prize": "10% off",
+          "prize_id": "off",
+          "code": "AUTUMN-7"
+        }
+      },
+      "steps": [
+        {
+          "call": "claimReward",
+          "args": [
+            "wheel"
+          ],
+          "answer": {
+            "won": true,
+            "prize": "10% off",
+            "prize_id": "off",
+            "code": "AUTUMN-7"
+          }
+        },
+        {
+          "call": "claimReward",
+          "args": [
+            "Big Wheel!"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "invalid_name"
+          }
+        },
+        {
+          "call": "claimReward",
+          "args": [
+            "gone"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "not_available"
+          }
+        }
+      ],
+      "events": [
+        [
+          "in_app_reward_claimed",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "pool": "wheel",
+            "won": true,
+            "prize": "10% off"
+          }
+        ]
+      ]
+    }
+  ]
+}

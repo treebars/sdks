@@ -1,0 +1,335 @@
+{
+  "//": "Cases every Treebars SDK runs against its own implementation, shared so that the SDKs cannot disagree. Generated; do not edit.",
+  "now_ms": 1790000000000,
+  "policy": {
+    "retries": 2,
+    "budget_ms": 8000,
+    "retry_after_statuses": [
+      429,
+      503
+    ],
+    "backoff_base_seconds": 2,
+    "backoff_cap_seconds": 60
+  },
+  "scenarios": [
+    {
+      "id": "RC-001",
+      "name": "a 503 with Retry-After: 1 is asked again after that second, and the answer is the page's",
+      "answers": [
+        {
+          "status": 503,
+          "retry_after": "1",
+          "took_ms": 50
+        },
+        {
+          "status": 200,
+          "answer": true,
+          "took_ms": 50
+        }
+      ],
+      "random": [
+        0.2
+      ],
+      "expect": {
+        "requests": 2,
+        "waits": [
+          1000
+        ],
+        "outcome": "answer"
+      }
+    },
+    {
+      "id": "RC-002",
+      "name": "a 429 with no Retry-After waits the jitter, twice",
+      "answers": [
+        {
+          "status": 429,
+          "took_ms": 30
+        },
+        {
+          "status": 429,
+          "took_ms": 30
+        },
+        {
+          "status": 200,
+          "answer": true
+        }
+      ],
+      "random": [
+        0.5,
+        0.25
+      ],
+      "expect": {
+        "requests": 3,
+        "waits": [
+          1000,
+          1000
+        ],
+        "outcome": "answer"
+      }
+    },
+    {
+      "id": "RC-003",
+      "name": "a jitter longer than the Retry-After is the wait, so a crowd refused at once does not return at once",
+      "answers": [
+        {
+          "status": 503,
+          "retry_after": "1"
+        },
+        {
+          "status": 200,
+          "answer": true
+        }
+      ],
+      "random": [
+        0.9
+      ],
+      "expect": {
+        "requests": 2,
+        "waits": [
+          1800
+        ],
+        "outcome": "answer"
+      }
+    },
+    {
+      "id": "RC-004",
+      "name": "refused three times, it stops and the page is told failed",
+      "answers": [
+        {
+          "status": 503,
+          "retry_after": "1"
+        },
+        {
+          "status": 503,
+          "retry_after": "1"
+        },
+        {
+          "status": 503,
+          "retry_after": "1"
+        }
+      ],
+      "random": [
+        0,
+        0
+      ],
+      "expect": {
+        "requests": 3,
+        "waits": [
+          1000,
+          1000
+        ],
+        "outcome": "failed"
+      }
+    },
+    {
+      "id": "RC-005",
+      "name": "a Retry-After past the budget is not waited for: failed at once",
+      "answers": [
+        {
+          "status": 429,
+          "retry_after": "60"
+        }
+      ],
+      "random": [
+        0
+      ],
+      "expect": {
+        "requests": 1,
+        "waits": [],
+        "outcome": "failed"
+      }
+    },
+    {
+      "id": "RC-006",
+      "name": "no answer is asked again, and is offline if one never comes",
+      "answers": [
+        {
+          "status": null,
+          "took_ms": 100
+        },
+        {
+          "status": null,
+          "took_ms": 100
+        },
+        {
+          "status": null,
+          "took_ms": 100
+        }
+      ],
+      "random": [
+        0.5,
+        0.5
+      ],
+      "expect": {
+        "requests": 3,
+        "waits": [
+          1000,
+          2000
+        ],
+        "outcome": "offline"
+      }
+    },
+    {
+      "id": "RC-007",
+      "name": "no answer, then the answer",
+      "answers": [
+        {
+          "status": null
+        },
+        {
+          "status": 200,
+          "answer": true
+        }
+      ],
+      "random": [
+        0.1
+      ],
+      "expect": {
+        "requests": 2,
+        "waits": [
+          200
+        ],
+        "outcome": "answer"
+      }
+    },
+    {
+      "id": "RC-008",
+      "name": "a 404 is not asked again",
+      "answers": [
+        {
+          "status": 404
+        }
+      ],
+      "random": [],
+      "expect": {
+        "requests": 1,
+        "waits": [],
+        "outcome": "not_available"
+      }
+    },
+    {
+      "id": "RC-009",
+      "name": "a 500 is not asked again, and a Retry-After on it is nobody's promise",
+      "answers": [
+        {
+          "status": 500,
+          "retry_after": "1"
+        }
+      ],
+      "random": [],
+      "expect": {
+        "requests": 1,
+        "waits": [],
+        "outcome": "failed"
+      }
+    },
+    {
+      "id": "RC-010",
+      "name": "a request that hung has spent the budget, so it is not asked again",
+      "answers": [
+        {
+          "status": null,
+          "took_ms": 15000
+        }
+      ],
+      "random": [
+        0
+      ],
+      "expect": {
+        "requests": 1,
+        "waits": [],
+        "outcome": "offline"
+      }
+    },
+    {
+      "id": "RC-011",
+      "name": "near the end of the budget, a wait that does not fit ends the asking",
+      "answers": [
+        {
+          "status": 503,
+          "retry_after": "1",
+          "took_ms": 3000
+        },
+        {
+          "status": 503,
+          "retry_after": "2",
+          "took_ms": 3000
+        }
+      ],
+      "random": [
+        0,
+        0
+      ],
+      "expect": {
+        "requests": 2,
+        "waits": [
+          1000
+        ],
+        "outcome": "failed"
+      }
+    },
+    {
+      "id": "RC-012",
+      "name": "a Retry-After date is read as the instant it names",
+      "answers": [
+        {
+          "status": 503,
+          "retry_after": "Mon, 21 Sep 2026 14:13:23 GMT"
+        },
+        {
+          "status": 200,
+          "answer": true
+        }
+      ],
+      "random": [
+        0
+      ],
+      "expect": {
+        "requests": 2,
+        "waits": [
+          3000
+        ],
+        "outcome": "answer"
+      }
+    },
+    {
+      "id": "RC-013",
+      "name": "the last answer names the outcome: a 503 and then a 404 is not_available",
+      "answers": [
+        {
+          "status": 503,
+          "retry_after": "1"
+        },
+        {
+          "status": 404
+        }
+      ],
+      "random": [
+        0
+      ],
+      "expect": {
+        "requests": 2,
+        "waits": [
+          1000
+        ],
+        "outcome": "not_available"
+      }
+    },
+    {
+      "id": "RC-014",
+      "name": "a 200 that carried no answer is failed, and not asked again",
+      "answers": [
+        {
+          "status": 200
+        }
+      ],
+      "random": [],
+      "expect": {
+        "requests": 1,
+        "waits": [],
+        "outcome": "failed"
+      }
+    }
+  ]
+}

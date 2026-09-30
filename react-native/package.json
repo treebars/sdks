@@ -1,0 +1,63 @@
+{
+  "name": "@treebars/react-native-sdk",
+  "version": "0.3.0",
+  "description": "React Native SDK for Treebars analytics and engagement",
+  "//publish": [
+    "`files` keeps the tarball to what a consumer needs: the TypeScript, both native halves and the",
+    "podspec. `android/src` and `android/build.gradle` rather than `android`, because the directory",
+    "also holds `build/` and `.gradle/`.",
+    "",
+    "`publishConfig.access` because a scoped package publishes as private by default.",
+    "",
+    "`main` and `types` are the TypeScript source: Metro transpiles it, and it typechecks cleanly under",
+    "the strictest settings a consumer is likely to have. The native halves build against",
+    "`com.treebars:sdk-android` from Maven Central and the `TreebarsCore` pod, so this package is",
+    "published after both."
+  ],
+  "license": "MIT",
+  "homepage": "https://treebars.com/docs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/treebars/sdks.git",
+    "directory": "react-native"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "src",
+    "ios",
+    "android/src",
+    "android/build.gradle",
+    "TreebarsSdk.podspec"
+  ],
+  "main": "src/index.ts",
+  "react-native": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "dev": "tsc --watch",
+    "test": "vitest run"
+  },
+  "codegenConfig": {
+    "name": "RNTreebarsSpec",
+    "type": "modules",
+    "jsSrcsDir": "src",
+    "android": {
+      "javaPackageName": "com.treebars.sdk.rn"
+    }
+  },
+  "peerDependencies": {
+    "@react-native-async-storage/async-storage": ">=1.0.0",
+    "react-native": ">=0.76"
+  },
+  "peerDependenciesMeta": {
+    "@react-native-async-storage/async-storage": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.7"
+  }
+}

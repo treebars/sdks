@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A push template's sizes. A collapsed custom notification is 64 dp tall on the common OEMs
+  and an expanded one 256 dp, so the image heights leave room for a title and a line of body under them.
+-->
+<resources>
+    <dimen name="treebars_push_padding">8dp</dimen>
+    <dimen name="treebars_push_image_height">152dp</dimen>
+    <dimen name="treebars_push_banner_height">180dp</dimen>
+    <dimen name="treebars_push_banner_collapsed_height">64dp</dimen>
+</resources>

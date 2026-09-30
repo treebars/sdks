@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+
+    /*
+     * `node16`, not the implicit `node` that `module: "commonjs"` selects.
+     *
+     * React Native publishes no top-level `types` field — its declarations are reachable
+     * only through the `exports` map (`"types": "./types_generated/index.d.ts"`), which classic
+     * node resolution cannot read. Every `import { … } from 'react-native'` therefore resolved
+     * to an implicit `any` and `strict` turned that into TS7016, so this package has not built
+     * at all. The compiler said as much in the error and named the three settings that fix it.
+     *
+     * `node16` rather than `bundler` because the output is still CommonJS — `bundler` is not
+     * allowed alongside it — and CommonJS is what a React Native consumer expects here. The
+     * package has no `"type": "module"`, so relative imports still need no file extensions.
+     */
+    "module": "node16",
+    "moduleResolution": "node16",
+
+    "declaration": true,
+    "outDir": "dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,143 @@
+{
+  "//": "Cases every Treebars SDK runs against its own implementation, shared so that the SDKs cannot disagree. Generated; do not edit.",
+  "cases": [
+    {
+      "name": "stylised basic, every colour",
+      "template": {
+        "kind": "stylized",
+        "background_color": "#1F2937",
+        "title_color": "#FFFFFF",
+        "body_color": "#E5E7EB",
+        "app_name_color": "#FACC15",
+        "controls": "light"
+      },
+      "timer": null,
+      "wire": {
+        "kind": "stylized",
+        "background_color": "#1F2937",
+        "title_color": "#FFFFFF",
+        "body_color": "#E5E7EB",
+        "app_name_color": "#FACC15",
+        "controls": "light"
+      },
+      "parsed": {
+        "kind": "stylized",
+        "background": -14735049,
+        "title": -1,
+        "body": -1710101,
+        "appName": -340971,
+        "controlsLight": true,
+        "textOverlay": false,
+        "collapsedImage": null,
+        "fit": false,
+        "timerColor": null,
+        "startsAt": null,
+        "endsAt": null
+      }
+    },
+    {
+      "name": "image banner with the words over it and its own collapsed image",
+      "template": {
+        "kind": "image_banner",
+        "text_overlay": true,
+        "collapsed_image_url": "https://cdn.example.com/banner-small.png",
+        "image_scale": "fit",
+        "title_color": "#FFFFFF"
+      },
+      "timer": null,
+      "wire": {
+        "kind": "image_banner",
+        "title_color": "#FFFFFF",
+        "collapsed_image_url": "https://cdn.example.com/banner-small.png",
+        "image_scale": "fit",
+        "text_overlay": true
+      },
+      "parsed": {
+        "kind": "image_banner",
+        "background": null,
+        "title": -1,
+        "body": null,
+        "appName": null,
+        "controlsLight": false,
+        "textOverlay": true,
+        "collapsedImage": "https://cdn.example.com/banner-small.png",
+        "fit": true,
+        "timerColor": null,
+        "startsAt": null,
+        "endsAt": null
+      }
+    },
+    {
+      "name": "timer: the authored end never rides, only the two moments",
+      "template": {
+        "kind": "timer",
+        "timer": {
+          "ends": "duration",
+          "minutes": 90
+        },
+        "timer_color": "#DC2626",
+        "background_color": "#FFFFFF"
+      },
+      "timer": {
+        "starts_at": 1789473600000,
+        "ends_at": 1789479000000
+      },
+      "wire": {
+        "kind": "timer",
+        "background_color": "#FFFFFF",
+        "timer_color": "#DC2626",
+        "starts_at": 1789473600000,
+        "ends_at": 1789479000000
+      },
+      "parsed": {
+        "kind": "timer",
+        "background": -1,
+        "title": null,
+        "body": null,
+        "appName": null,
+        "controlsLight": false,
+        "textOverlay": false,
+        "collapsedImage": null,
+        "fit": false,
+        "timerColor": -2349530,
+        "startsAt": 1789473600000,
+        "endsAt": 1789479000000
+      }
+    },
+    {
+      "name": "timer with a progress bar, no colours: the system's own",
+      "template": {
+        "kind": "timer_progress",
+        "timer": {
+          "ends": "campaign_time",
+          "at": "18:00",
+          "time_zone": "Asia/Riyadh"
+        },
+        "text_overlay": false
+      },
+      "timer": {
+        "starts_at": 1789473600000,
+        "ends_at": 1789495200000
+      },
+      "wire": {
+        "kind": "timer_progress",
+        "starts_at": 1789473600000,
+        "ends_at": 1789495200000
+      },
+      "parsed": {
+        "kind": "timer_progress",
+        "background": null,
+        "title": null,
+        "body": null,
+        "appName": null,
+        "controlsLight": false,
+        "textOverlay": false,
+        "collapsedImage": null,
+        "fit": false,
+        "timerColor": null,
+        "startsAt": 1789473600000,
+        "endsAt": 1789495200000
+      }
+    }
+  ]
+}

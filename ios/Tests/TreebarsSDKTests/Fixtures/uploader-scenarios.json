@@ -1,0 +1,2878 @@
+{
+  "//": "Cases every Treebars SDK runs against its own implementation, shared so that the SDKs cannot disagree. Generated; do not edit.",
+  "epoch_ms": 1789473600000,
+  "write_key": "pk_test_fixture",
+  "policy": {
+    "batch_size": 50,
+    "drain_max_batches": 10,
+    "backoff_base_seconds": 2,
+    "backoff_cap_seconds": 60,
+    "retry_after_statuses": [
+      429,
+      503
+    ],
+    "retry_after_max_seconds": 3600,
+    "auth_statuses": [
+      401,
+      403
+    ],
+    "auth_cooldown_seconds": 3600
+  },
+  "scenarios": [
+    {
+      "id": "UP-001",
+      "rule": "acknowledgement, drain",
+      "name": "an acknowledged batch is removed, and one flush drains the queue batch by batch",
+      "batch_size": 2,
+      "queue": [
+        "e1",
+        "e2",
+        "e3",
+        "e4",
+        "e5"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              },
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e3",
+                  "e4"
+                ]
+              },
+              {
+                "batch_id": "b3",
+                "events": [
+                  "e5"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-002",
+      "rule": "acknowledgement",
+      "name": "any 2xx is an acknowledgement, not only 200",
+      "batch_size": 1,
+      "queue": [
+        "e1",
+        "e2"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 202
+            },
+            {
+              "status": 204
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              },
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-003",
+      "rule": "persisted pending batch, backoff",
+      "name": "a network failure keeps the sealed batch, out of the queue, behind a jittered gate",
+      "batch_size": 2,
+      "queue": [
+        "e1",
+        "e2",
+        "e3"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "network_error": true
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [
+              "e3"
+            ],
+            "attempt": 1,
+            "next_allowed_at": 1000
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-004",
+      "rule": "persisted pending batch, backoff, drain",
+      "name": "every retry resends the same batch, nothing is sent before the gate, and an acknowledgement resumes the drain",
+      "batch_size": 2,
+      "queue": [
+        "e1",
+        "e2",
+        "e3"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 503
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [
+              "e3"
+            ],
+            "attempt": 1,
+            "next_allowed_at": 1000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 999,
+          "expect": {
+            "sent": [],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [
+              "e3"
+            ],
+            "attempt": 1,
+            "next_allowed_at": 1000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 500
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [
+              "e3"
+            ],
+            "attempt": 2,
+            "next_allowed_at": 3000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 3000,
+          "responses": [
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              },
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e3"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-005",
+      "rule": "persisted pending batch, relaunch",
+      "name": "a relaunch resends the pending batch with its batch_id before anything tracked since",
+      "batch_size": 2,
+      "queue": [
+        "e1",
+        "e2"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "network_error": true
+            }
+          ],
+          "random": [
+            0.25
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 1,
+            "next_allowed_at": 500
+          }
+        },
+        {
+          "do": "track",
+          "events": [
+            "e3"
+          ]
+        },
+        {
+          "do": "relaunch",
+          "expect": {
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [
+              "e3"
+            ],
+            "attempt": 1,
+            "next_allowed_at": 500
+          }
+        },
+        {
+          "do": "flush",
+          "at": 500,
+          "responses": [
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              },
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e3"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-006",
+      "rule": "persisted pending batch",
+      "name": "events tracked while a batch is pending go in the next batch, and the pending one never grows",
+      "batch_size": 3,
+      "queue": [
+        "e1",
+        "e2"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 500
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 1,
+            "next_allowed_at": 1000
+          }
+        },
+        {
+          "do": "track",
+          "events": [
+            "e3",
+            "e4"
+          ]
+        },
+        {
+          "do": "flush",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              },
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e3",
+                  "e4"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-007",
+      "rule": "drain",
+      "name": "one flush sends at most drain_max_batches batches, and the next flush carries on",
+      "batch_size": 1,
+      "queue": [
+        "e1",
+        "e2",
+        "e3",
+        "e4",
+        "e5",
+        "e6",
+        "e7",
+        "e8",
+        "e9",
+        "e10",
+        "e11",
+        "e12"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              },
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e2"
+                ]
+              },
+              {
+                "batch_id": "b3",
+                "events": [
+                  "e3"
+                ]
+              },
+              {
+                "batch_id": "b4",
+                "events": [
+                  "e4"
+                ]
+              },
+              {
+                "batch_id": "b5",
+                "events": [
+                  "e5"
+                ]
+              },
+              {
+                "batch_id": "b6",
+                "events": [
+                  "e6"
+                ]
+              },
+              {
+                "batch_id": "b7",
+                "events": [
+                  "e7"
+                ]
+              },
+              {
+                "batch_id": "b8",
+                "events": [
+                  "e8"
+                ]
+              },
+              {
+                "batch_id": "b9",
+                "events": [
+                  "e9"
+                ]
+              },
+              {
+                "batch_id": "b10",
+                "events": [
+                  "e10"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": [
+              "e11",
+              "e12"
+            ]
+          }
+        },
+        {
+          "do": "flush",
+          "at": 1,
+          "responses": [
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b11",
+                "events": [
+                  "e11"
+                ]
+              },
+              {
+                "batch_id": "b12",
+                "events": [
+                  "e12"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-008",
+      "rule": "drain",
+      "name": "the drain stops at the first failure and seals nothing further",
+      "batch_size": 1,
+      "queue": [
+        "e1",
+        "e2",
+        "e3"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 200
+            },
+            {
+              "status": 502
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              },
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [
+              "e3"
+            ],
+            "attempt": 1,
+            "next_allowed_at": 1000
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-009",
+      "rule": "backoff",
+      "name": "backoff is full jitter under a doubling ceiling that stops at the cap, and success resets it",
+      "batch_size": 1,
+      "queue": [
+        "e1"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "network_error": true
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 1,
+            "next_allowed_at": 1000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 1000,
+          "responses": [
+            {
+              "network_error": true
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 2,
+            "next_allowed_at": 3000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 3000,
+          "responses": [
+            {
+              "status": 500
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 3,
+            "next_allowed_at": 7000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 7000,
+          "responses": [
+            {
+              "status": 500
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 4,
+            "next_allowed_at": 15000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 15000,
+          "responses": [
+            {
+              "status": 504
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 5,
+            "next_allowed_at": 31000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 31000,
+          "responses": [
+            {
+              "network_error": true
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 6,
+            "next_allowed_at": 61000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 61000,
+          "responses": [
+            {
+              "network_error": true
+            }
+          ],
+          "random": [
+            0.999
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 7,
+            "next_allowed_at": 120940
+          }
+        },
+        {
+          "do": "flush",
+          "at": 120940,
+          "responses": [
+            {
+              "network_error": true
+            }
+          ],
+          "random": [
+            0
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 8,
+            "next_allowed_at": 120940
+          }
+        },
+        {
+          "do": "flush",
+          "at": 120940,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-010",
+      "rule": "retry-after",
+      "name": "429 honours Retry-After in seconds: no random delay is drawn, and nothing is sent before it",
+      "batch_size": 2,
+      "queue": [
+        "e1",
+        "e2"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 429,
+              "retry_after": "30"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 1,
+            "next_allowed_at": 30000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 29999,
+          "expect": {
+            "sent": [],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 1,
+            "next_allowed_at": 30000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 30000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-011",
+      "rule": "retry-after",
+      "name": "503 honours Retry-After as an HTTP date, measured from now",
+      "batch_size": 2,
+      "queue": [
+        "e1",
+        "e2"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 500,
+          "responses": [
+            {
+              "status": 503,
+              "retry_after": "Tue, 15 Sep 2026 12:02:00 GMT"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 1,
+            "next_allowed_at": 120000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 119999,
+          "expect": {
+            "sent": [],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 1,
+            "next_allowed_at": 120000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 120000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-012",
+      "rule": "retry-after",
+      "name": "Retry-After is capped at retry_after_max_seconds, in both of its forms",
+      "batch_size": 1,
+      "queue": [
+        "e1"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 429,
+              "retry_after": "86400"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 1,
+            "next_allowed_at": 3600000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 3600000,
+          "responses": [
+            {
+              "status": 503,
+              "retry_after": "Wed, 16 Sep 2026 12:00:00 GMT"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 2,
+            "next_allowed_at": 7200000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 7200000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-013",
+      "rule": "retry-after, backoff",
+      "name": "a Retry-After that is absent, unreadable, zero, negative, fractional, past, or on another status falls back to jitter",
+      "batch_size": 1,
+      "queue": [
+        "e1"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 429
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 1,
+            "next_allowed_at": 1000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 429,
+              "retry_after": "soon"
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 2,
+            "next_allowed_at": 3000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 3000,
+          "responses": [
+            {
+              "status": 503,
+              "retry_after": "0"
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 3,
+            "next_allowed_at": 7000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 7000,
+          "responses": [
+            {
+              "status": 503,
+              "retry_after": "Tue, 15 Sep 2026 11:59:00 GMT"
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 4,
+            "next_allowed_at": 15000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 15000,
+          "responses": [
+            {
+              "status": 429,
+              "retry_after": "-5"
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 5,
+            "next_allowed_at": 31000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 31000,
+          "responses": [
+            {
+              "status": 429,
+              "retry_after": "1.5"
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 6,
+            "next_allowed_at": 61000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 61000,
+          "responses": [
+            {
+              "status": 500,
+              "retry_after": "30"
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 7,
+            "next_allowed_at": 91000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 91000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-014",
+      "rule": "retry-after, relaunch",
+      "name": "a relaunch does not hammer: the Retry-After gate is persisted and still holds",
+      "batch_size": 2,
+      "queue": [
+        "e1",
+        "e2"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 429,
+              "retry_after": "120"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 1,
+            "next_allowed_at": 120000
+          }
+        },
+        {
+          "do": "relaunch",
+          "expect": {
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 1,
+            "next_allowed_at": 120000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 60000,
+          "expect": {
+            "sent": [],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 1,
+            "next_allowed_at": 120000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 120000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-015",
+      "rule": "auth cooldown, relaunch",
+      "name": "401 keeps the batch and starts a persisted cooldown that a relaunch does not reset",
+      "batch_size": 2,
+      "queue": [
+        "e1",
+        "e2",
+        "e3"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 401
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [
+              "e3"
+            ],
+            "auth_blocked_until": 3600000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 60000,
+          "expect": {
+            "sent": [],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [
+              "e3"
+            ],
+            "auth_blocked_until": 3600000
+          }
+        },
+        {
+          "do": "relaunch",
+          "expect": {
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [
+              "e3"
+            ],
+            "auth_blocked_until": 3600000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 3599999,
+          "expect": {
+            "sent": [],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [
+              "e3"
+            ],
+            "auth_blocked_until": 3600000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 3600000,
+          "responses": [
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              },
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e3"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-016",
+      "rule": "auth cooldown",
+      "name": "403 starts the same cooldown, and a build with a different write key is not held to it",
+      "batch_size": 2,
+      "queue": [
+        "e1",
+        "e2"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 403
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [],
+            "auth_blocked_until": 3600000
+          }
+        },
+        {
+          "do": "relaunch",
+          "write_key": "pk_test_rotated",
+          "expect": {
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [],
+            "auth_blocked_until": 3600000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-017",
+      "rule": "auth cooldown",
+      "name": "the first send after a cooldown is a probe, and a second refusal starts another cooldown",
+      "batch_size": 1,
+      "queue": [
+        "e1"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 401
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "auth_blocked_until": 3600000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 3600000,
+          "responses": [
+            {
+              "status": 401
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "auth_blocked_until": 7200000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 7200000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-018",
+      "rule": "split",
+      "name": "413 splits the batch in half, each half gets a derived batch_id, and the halves are sent in turn",
+      "batch_size": 4,
+      "queue": [
+        "e1",
+        "e2",
+        "e3",
+        "e4"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 413
+            },
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2",
+                  "e3",
+                  "e4"
+                ]
+              },
+              {
+                "batch_id": "b1.0",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              },
+              {
+                "batch_id": "b1.1",
+                "events": [
+                  "e3",
+                  "e4"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-019",
+      "rule": "split, relaunch",
+      "name": "a split is persisted: a failure on the first half keeps both halves pending across a relaunch",
+      "batch_size": 3,
+      "queue": [
+        "e1",
+        "e2",
+        "e3"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 413
+            },
+            {
+              "status": 500
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2",
+                  "e3"
+                ]
+              },
+              {
+                "batch_id": "b1.0",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1.0",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              },
+              {
+                "batch_id": "b1.1",
+                "events": [
+                  "e3"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 1,
+            "next_allowed_at": 1000
+          }
+        },
+        {
+          "do": "relaunch",
+          "expect": {
+            "pending": [
+              {
+                "batch_id": "b1.0",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              },
+              {
+                "batch_id": "b1.1",
+                "events": [
+                  "e3"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 1,
+            "next_allowed_at": 1000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1.0",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              },
+              {
+                "batch_id": "b1.1",
+                "events": [
+                  "e3"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-020",
+      "rule": "split, drop",
+      "name": "a half that is still too large splits again, and a single event still too large is dropped, which ends the flush",
+      "batch_size": 4,
+      "queue": [
+        "e1",
+        "e2",
+        "e3",
+        "e4",
+        "e5"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 413
+            },
+            {
+              "status": 413
+            },
+            {
+              "status": 200
+            },
+            {
+              "status": 413
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2",
+                  "e3",
+                  "e4"
+                ]
+              },
+              {
+                "batch_id": "b1.0",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              },
+              {
+                "batch_id": "b1.0.0",
+                "events": [
+                  "e1"
+                ]
+              },
+              {
+                "batch_id": "b1.0.1",
+                "events": [
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1.1",
+                "events": [
+                  "e3",
+                  "e4"
+                ]
+              }
+            ],
+            "queue": [
+              "e5"
+            ],
+            "dropped": [
+              "e2"
+            ]
+          }
+        },
+        {
+          "do": "flush",
+          "at": 1,
+          "responses": [
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1.1",
+                "events": [
+                  "e3",
+                  "e4"
+                ]
+              },
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e5"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-021",
+      "rule": "drop",
+      "name": "any other 4xx drops the batch, resets the backoff, and ends the flush",
+      "batch_size": 2,
+      "queue": [
+        "e1",
+        "e2",
+        "e3",
+        "e4",
+        "e5"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 500
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [
+              "e3",
+              "e4",
+              "e5"
+            ],
+            "attempt": 1,
+            "next_allowed_at": 1000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 400
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": [
+              "e3",
+              "e4",
+              "e5"
+            ],
+            "dropped": [
+              "e1",
+              "e2"
+            ]
+          }
+        },
+        {
+          "do": "flush",
+          "at": 1001,
+          "responses": [
+            {
+              "status": 422
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e3",
+                  "e4"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": [
+              "e5"
+            ],
+            "dropped": [
+              "e3",
+              "e4"
+            ]
+          }
+        },
+        {
+          "do": "flush",
+          "at": 1002,
+          "responses": [
+            {
+              "status": 404
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b3",
+                "events": [
+                  "e5"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": [],
+            "dropped": [
+              "e5"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-022",
+      "rule": "retry-after, clock",
+      "name": "a clock set backwards cannot hold uploads past the retry gate's own ceiling",
+      "batch_size": 1,
+      "queue": [
+        "e1"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 429,
+              "retry_after": "60"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 1,
+            "next_allowed_at": 60000
+          }
+        },
+        {
+          "do": "flush",
+          "at": -86400000,
+          "expect": {
+            "sent": [],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 1,
+            "next_allowed_at": -82800000
+          }
+        },
+        {
+          "do": "flush",
+          "at": -82800000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-023",
+      "rule": "auth cooldown, clock",
+      "name": "a clock set backwards cannot hold uploads past the auth cooldown's own length",
+      "batch_size": 1,
+      "queue": [
+        "e1"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 401
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "auth_blocked_until": 3600000
+          }
+        },
+        {
+          "do": "flush",
+          "at": -86400000,
+          "expect": {
+            "sent": [],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "auth_blocked_until": -82800000
+          }
+        },
+        {
+          "do": "flush",
+          "at": -82800000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-024",
+      "rule": "drain",
+      "name": "a flush with nothing queued and nothing pending sends nothing",
+      "batch_size": 2,
+      "queue": [],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "expect": {
+            "sent": [],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-025",
+      "rule": "page hide",
+      "platforms": [
+        "web"
+      ],
+      "name": "page hide sends the pending batch under its own batch_id, and keeps it until an acknowledgement",
+      "batch_size": 2,
+      "queue": [
+        "e1",
+        "e2",
+        "e3"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 500
+            }
+          ],
+          "random": [
+            0.5
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [
+              "e3"
+            ],
+            "attempt": 1,
+            "next_allowed_at": 1000
+          }
+        },
+        {
+          "do": "beacon",
+          "at": 1000,
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [
+              "e3"
+            ],
+            "attempt": 1,
+            "next_allowed_at": 1000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              },
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e3"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-026",
+      "rule": "page hide, persisted pending batch",
+      "platforms": [
+        "web"
+      ],
+      "name": "page hide with nothing pending seals and persists a batch before sending it, and a second hide sends that same batch",
+      "batch_size": 2,
+      "queue": [
+        "e1",
+        "e2",
+        "e3"
+      ],
+      "steps": [
+        {
+          "do": "beacon",
+          "at": 0,
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [
+              "e3"
+            ]
+          }
+        },
+        {
+          "do": "beacon",
+          "at": 1,
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [
+              "e3"
+            ]
+          }
+        },
+        {
+          "do": "flush",
+          "at": 2,
+          "responses": [
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              },
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e3"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "UP-027",
+      "rule": "page hide, retry-after, auth cooldown",
+      "platforms": [
+        "web"
+      ],
+      "name": "page hide sends nothing while either gate is closed",
+      "batch_size": 1,
+      "queue": [
+        "e1"
+      ],
+      "steps": [
+        {
+          "do": "flush",
+          "at": 0,
+          "responses": [
+            {
+              "status": 429,
+              "retry_after": "30"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 1,
+            "next_allowed_at": 30000
+          }
+        },
+        {
+          "do": "beacon",
+          "at": 1000,
+          "expect": {
+            "sent": [],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "attempt": 1,
+            "next_allowed_at": 30000
+          }
+        },
+        {
+          "do": "flush",
+          "at": 30000,
+          "responses": [
+            {
+              "status": 401
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "auth_blocked_until": 3630000
+          }
+        },
+        {
+          "do": "beacon",
+          "at": 31000,
+          "expect": {
+            "sent": [],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "queue": [],
+            "auth_blocked_until": 3630000
+          }
+        }
+      ]
+    }
+  ]
+}

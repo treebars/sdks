@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The timer's progress bar colour. App-wide: an app overrides it by declaring a
+  colour of the same name in its own `values/` (and `values-night/` for dark mode), which wins over a library's.
+-->
+<resources>
+    <color name="treebars_push_progress">#2563EB</color>
+</resources>

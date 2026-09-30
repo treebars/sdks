@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      The SDK requires network access and nothing else. No location, no device
+      identifiers, no permissions that would force the integrating app to justify a
+      new prompt to its users.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
+      A push the SDK draws (TreebarsPush): what its tap and its buttons open, and what its arrows, its coupon and
+      a swipe-away report. Neither is exported — only this app's own notifications can reach them. The app still
+      declares POST_NOTIFICATIONS itself: asking for it is a decision about the app, not about this SDK.
+    -->
+    <application>
+        <activity
+            android:name="com.treebars.sdk.TreebarsPushActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <receiver
+            android:name="com.treebars.sdk.TreebarsPushReceiver"
+            android:exported="false" />
+    </application>
+
+</manifest>

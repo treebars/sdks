@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The image banner: the image across the whole content area, the title and body over it when the
+  template asks for the words on the image, under it otherwise. Android 12 and later draw the header above it whatever
+  an app asks, so "the whole notification" is the whole of what the app is given, not the whole card.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/treebars_push_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!--
+          Two images, one shown: `setScaleType` takes an enum a RemoteViews cannot carry, so "crop" and "fit" are two
+          views and the template picks which is visible.
+        -->
+        <ImageView
+            android:id="@+id/treebars_push_image"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/treebars_push_banner_height"
+            android:scaleType="centerCrop" />
+
+        <ImageView
+            android:id="@+id/treebars_push_image_fit"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/treebars_push_banner_height"
+            android:scaleType="fitCenter"
+            android:visibility="gone" />
+
+        <!-- The words under the image, when they are not over it. -->
+        <LinearLayout
+            android:id="@+id/treebars_push_below"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingTop="6dp"
+            android:paddingStart="@dimen/treebars_push_padding"
+            android:paddingEnd="@dimen/treebars_push_padding">
+
+            <TextView
+                android:id="@+id/treebars_push_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textAppearance="@android:style/TextAppearance.Material.Notification.Title" />
+
+            <TextView
+                android:id="@+id/treebars_push_body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textAppearance="@android:style/TextAppearance.Material.Notification" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- The words over the image, bottom-aligned where a banner's copy usually sits. -->
+    <LinearLayout
+        android:id="@+id/treebars_push_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:padding="@dimen/treebars_push_padding"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/treebars_push_overlay_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:shadowColor="#99000000"
+            android:shadowRadius="4"
+            android:textAppearance="@android:style/TextAppearance.Material.Notification.Title" />
+
+        <TextView
+            android:id="@+id/treebars_push_overlay_body"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:shadowColor="#99000000"
+            android:shadowRadius="4"
+            android:textAppearance="@android:style/TextAppearance.Material.Notification" />
+    </LinearLayout>
+</FrameLayout>

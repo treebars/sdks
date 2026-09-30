@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  An image banner while collapsed, when it has an image of its own for that: one strip at the
+  height a collapsed custom notification is given. Without one, the collapsed view
+  is the words, drawn by `treebars_push_template.xml`.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/treebars_push_root"
+    android:layout_width="match_parent"
+    android:layout_height="@dimen/treebars_push_banner_collapsed_height">
+
+    <ImageView
+        android:id="@+id/treebars_push_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop" />
+
+    <ImageView
+        android:id="@+id/treebars_push_image_fit"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitCenter"
+        android:visibility="gone" />
+</FrameLayout>

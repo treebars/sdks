@@ -1,0 +1,78 @@
+/*
+ * The Android half of the Treebars React Native SDK.
+ *
+ * No `buildscript` block and no pinned plugin versions: an autolinked library is built as
+ * a subproject of the host app, so AGP, Kotlin and the React Native gradle plugin are
+ * already on the root classpath. Pinning our own, as the standalone Android SDK's build
+ * does, would put two versions of the same plugin in one build and fail it. Everything below defers to the app and only supplies a default
+ * for the case where an integrator's project does not set one.
+ */
+apply plugin: "com.android.library"
+apply plugin: "org.jetbrains.kotlin.android"
+// Reads `codegenConfig` from ../package.json and generates NativeTreebarsSpec.
+apply plugin: "com.facebook.react"
+
+def resolve(name, fallback) {
+  rootProject.ext.has(name) ? rootProject.ext.get(name) : fallback
+}
+
+android {
+  namespace "com.treebars.sdk.rn"
+  compileSdk resolve("compileSdkVersion", 35)
+
+  defaultConfig {
+    // Below 24 there is no `registerDefaultNetworkCallback`, which is how network_type
+    // stays current without polling.
+    minSdk resolve("minSdkVersion", 24)
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = "17"
+  }
+}
+
+repositories {
+  google()
+  mavenCentral()
+}
+
+dependencies {
+  // Unversioned on purpose: the version comes from the app's React Native, which is the
+  // only version that can be correct.
+  implementation "com.facebook.react:react-android"
+
+  /*
+   * The Android SDK this module bridges. Pinned to the exact version rather than a range, and
+   * to the same version this package's generated constants carry, so the bridge and the SDK
+   * cannot disagree about which SDK they are.
+   */
+  implementation "com.treebars:sdk-android:0.3.0"
+
+  /*
+   * Declared here as well as in the core, and it has to be: the core declares coroutines
+   * `implementation`, which keeps them off the compile classpath of anything that depends on
+   * it. Two of the members this bridge calls — `notifications()` and `pendingCount()` — are
+   * `suspend`, so without this line `TreebarsNativeModule` cannot name a scope to call them
+   * from, and the failure is an unresolved reference rather than anything about a version.
+   *
+   * The same version the core pins, deliberately. Two coroutine runtimes in one app is a
+   * resolution conflict Gradle settles silently by taking the newer, and the loser is whichever
+   * of the two was compiled against the other's internals.
+   */
+  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
+
+  /*
+   * Declared here as well as in the core, so the app carries it whatever else it depends on.
+   *
+   * The core calls `ProcessLifecycleOwner.get()` for `app_foreground`, `app_background` and
+   * the background flush, and wraps that registration in `runCatching` — so a missing library
+   * would cost those events while every screen went on working, and nothing would say why.
+   * React Native depends on it too, but that is its dependency, not a guarantee to this one.
+   */
+  implementation "androidx.lifecycle:lifecycle-process:2.8.4"
+}

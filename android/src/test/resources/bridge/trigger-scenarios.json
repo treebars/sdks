@@ -1,0 +1,1229 @@
+{
+  "//": "Cases every Treebars SDK runs against its own implementation, shared so that the SDKs cannot disagree. Generated; do not edit.",
+  "epoch_ms": 1789473600000,
+  "write_key": "pk_test_fixture",
+  "policy": {
+    "trigger_flush_debounce_ms": 1000,
+    "backoff_base_seconds": 2,
+    "auth_cooldown_seconds": 3600
+  },
+  "scenarios": [
+    {
+      "id": "TR-001",
+      "rule": "trigger flush",
+      "name": "a listed event is sent once the debounce has passed, and not a moment before",
+      "stored_triggers": {
+        "version": "v1",
+        "names": [
+          "purchase"
+        ]
+      },
+      "queue": [],
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            {
+              "id": "e1",
+              "name": "screen_view"
+            },
+            {
+              "id": "e2",
+              "name": "purchase"
+            }
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 999,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v1"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ],
+            "queue": [],
+            "pending": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "TR-002",
+      "rule": "interval",
+      "name": "an event that is not listed arms nothing, and waits for the periodic flush",
+      "stored_triggers": {
+        "version": "v1",
+        "names": [
+          "purchase"
+        ]
+      },
+      "queue": [],
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            {
+              "id": "e1",
+              "name": "screen_view"
+            }
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 29999,
+          "expect": {
+            "sent": [],
+            "queue": [
+              "e1"
+            ]
+          }
+        },
+        {
+          "do": "tick",
+          "at": 30000,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v1"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "TR-003",
+      "rule": "trigger flush",
+      "name": "triggers inside one debounce ride one flush armed by the first, and a trigger after it arms the next",
+      "stored_triggers": {
+        "version": "v1",
+        "names": [
+          "purchase",
+          "signup"
+        ]
+      },
+      "queue": [],
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            {
+              "id": "e1",
+              "name": "purchase"
+            }
+          ]
+        },
+        {
+          "do": "track",
+          "at": 600,
+          "events": [
+            {
+              "id": "e2",
+              "name": "signup"
+            }
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v1"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "track",
+          "at": 1500,
+          "events": [
+            {
+              "id": "e3",
+              "name": "purchase"
+            }
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 2499,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 2500,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v1"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e3"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "TR-004",
+      "rule": "backoff",
+      "name": "a trigger during a Retry-After wait sends nothing before the gate opens, and goes with the retry",
+      "stored_triggers": {
+        "version": "v1",
+        "names": [
+          "purchase"
+        ]
+      },
+      "queue": [
+        {
+          "id": "e1",
+          "name": "screen_view"
+        }
+      ],
+      "steps": [
+        {
+          "do": "tick",
+          "at": 0,
+          "responses": [
+            {
+              "status": 429,
+              "retry_after": "30"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "pending": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "next_allowed_at": 30000
+          }
+        },
+        {
+          "do": "track",
+          "at": 1000,
+          "events": [
+            {
+              "id": "e2",
+              "name": "purchase"
+            }
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 29999,
+          "expect": {
+            "sent": [],
+            "queue": [
+              "e2"
+            ],
+            "next_allowed_at": 30000
+          }
+        },
+        {
+          "do": "advance",
+          "at": 30000,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v1"
+            },
+            {
+              "status": 200,
+              "triggers_version": "v1"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              },
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e2"
+                ]
+              }
+            ],
+            "pending": [],
+            "queue": [],
+            "next_allowed_at": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "TR-005",
+      "rule": "auth cooldown",
+      "name": "a trigger during an auth cooldown waits the cooldown out",
+      "stored_triggers": {
+        "version": "v1",
+        "names": [
+          "purchase"
+        ]
+      },
+      "queue": [
+        {
+          "id": "e1",
+          "name": "screen_view"
+        }
+      ],
+      "steps": [
+        {
+          "do": "tick",
+          "at": 0,
+          "responses": [
+            {
+              "status": 401
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "auth_blocked_until": 3600000
+          }
+        },
+        {
+          "do": "track",
+          "at": 1000,
+          "events": [
+            {
+              "id": "e2",
+              "name": "purchase"
+            }
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 3599999,
+          "expect": {
+            "sent": [],
+            "queue": [
+              "e2"
+            ]
+          }
+        },
+        {
+          "do": "tick",
+          "at": 3600000,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v1"
+            },
+            {
+              "status": 200,
+              "triggers_version": "v1"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              },
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e2"
+                ]
+              }
+            ],
+            "auth_blocked_until": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "TR-006",
+      "rule": "backoff",
+      "name": "a trigger never delays a retry that falls due sooner, and rides it",
+      "stored_triggers": {
+        "version": "v1",
+        "names": [
+          "purchase"
+        ]
+      },
+      "queue": [
+        {
+          "id": "e1",
+          "name": "screen_view"
+        }
+      ],
+      "steps": [
+        {
+          "do": "tick",
+          "at": 0,
+          "responses": [
+            {
+              "network_error": true
+            }
+          ],
+          "random": [
+            0.25
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "next_allowed_at": 500
+          }
+        },
+        {
+          "do": "track",
+          "at": 100,
+          "events": [
+            {
+              "id": "e2",
+              "name": "purchase"
+            }
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 500,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v1"
+            },
+            {
+              "status": 200,
+              "triggers_version": "v1"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              },
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e2"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "advance",
+          "at": 1100,
+          "expect": {
+            "sent": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "TR-007",
+      "rule": "version refresh",
+      "name": "an upload answered with another version fetches the list, and the new list takes effect",
+      "stored_triggers": {
+        "version": "v1",
+        "names": [
+          "purchase"
+        ]
+      },
+      "queue": [],
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            {
+              "id": "e1",
+              "name": "signup"
+            }
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "tick",
+          "at": 30000,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v2"
+            }
+          ],
+          "syncs": [
+            {
+              "trigger_events": {
+                "version": "v2",
+                "names": [
+                  "purchase",
+                  "signup"
+                ]
+              }
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "synced": 1,
+            "triggers": {
+              "version": "v2",
+              "names": [
+                "purchase",
+                "signup"
+              ]
+            }
+          }
+        },
+        {
+          "do": "track",
+          "at": 31000,
+          "events": [
+            {
+              "id": "e2",
+              "name": "signup"
+            }
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 32000,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v2"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e2"
+                ]
+              }
+            ],
+            "synced": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "TR-008",
+      "rule": "version refresh",
+      "name": "the version the device already has, or no version at all, fetches nothing",
+      "stored_triggers": {
+        "version": "v1",
+        "names": [
+          "purchase"
+        ]
+      },
+      "queue": [
+        {
+          "id": "e1",
+          "name": "screen_view"
+        }
+      ],
+      "steps": [
+        {
+          "do": "tick",
+          "at": 0,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v1"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "synced": 0
+          }
+        },
+        {
+          "do": "track",
+          "at": 10,
+          "events": [
+            {
+              "id": "e2",
+              "name": "screen_view"
+            }
+          ]
+        },
+        {
+          "do": "tick",
+          "at": 30000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e2"
+                ]
+              }
+            ],
+            "synced": 0,
+            "triggers": {
+              "version": "v1",
+              "names": [
+                "purchase"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "TR-009",
+      "rule": "version refresh",
+      "name": "a flush whose every answer carries the new version fetches the list once, after the drain",
+      "stored_triggers": {
+        "version": "v1",
+        "names": [
+          "purchase"
+        ]
+      },
+      "batch_size": 1,
+      "queue": [
+        {
+          "id": "e1",
+          "name": "a"
+        },
+        {
+          "id": "e2",
+          "name": "b"
+        }
+      ],
+      "steps": [
+        {
+          "do": "tick",
+          "at": 0,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v2"
+            },
+            {
+              "status": 200,
+              "triggers_version": "v2"
+            }
+          ],
+          "syncs": [
+            {
+              "trigger_events": {
+                "version": "v2",
+                "names": [
+                  "b",
+                  "purchase"
+                ]
+              }
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              },
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e2"
+                ]
+              }
+            ],
+            "synced": 1,
+            "triggers": {
+              "version": "v2",
+              "names": [
+                "b",
+                "purchase"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "TR-010",
+      "rule": "version refresh",
+      "name": "a refresh that fails or brings no list keeps the old one, and the next new version tries again",
+      "stored_triggers": {
+        "version": "v1",
+        "names": [
+          "purchase"
+        ]
+      },
+      "queue": [
+        {
+          "id": "e1",
+          "name": "a"
+        }
+      ],
+      "steps": [
+        {
+          "do": "tick",
+          "at": 0,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v2"
+            }
+          ],
+          "syncs": [
+            {
+              "network_error": true
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "synced": 1,
+            "triggers": {
+              "version": "v1",
+              "names": [
+                "purchase"
+              ]
+            }
+          }
+        },
+        {
+          "do": "track",
+          "at": 10,
+          "events": [
+            {
+              "id": "e2",
+              "name": "b"
+            }
+          ]
+        },
+        {
+          "do": "tick",
+          "at": 30000,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v2"
+            }
+          ],
+          "syncs": [
+            {}
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e2"
+                ]
+              }
+            ],
+            "synced": 1,
+            "triggers": {
+              "version": "v1",
+              "names": [
+                "purchase"
+              ]
+            }
+          }
+        },
+        {
+          "do": "track",
+          "at": 30010,
+          "events": [
+            {
+              "id": "e3",
+              "name": "c"
+            }
+          ]
+        },
+        {
+          "do": "tick",
+          "at": 60000,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v2"
+            }
+          ],
+          "syncs": [
+            {
+              "trigger_events": {
+                "version": "v2",
+                "names": [
+                  "c",
+                  "purchase"
+                ]
+              }
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b3",
+                "events": [
+                  "e3"
+                ]
+              }
+            ],
+            "synced": 1,
+            "triggers": {
+              "version": "v2",
+              "names": [
+                "c",
+                "purchase"
+              ]
+            }
+          }
+        },
+        {
+          "do": "track",
+          "at": 60010,
+          "events": [
+            {
+              "id": "e4",
+              "name": "c"
+            }
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 61010,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v2"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b4",
+                "events": [
+                  "e4"
+                ]
+              }
+            ],
+            "synced": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "TR-011",
+      "rule": "session sync, persisted list, relaunch",
+      "name": "the session sync's list is kept across a relaunch and works before the next sync answers",
+      "stored_triggers": null,
+      "queue": [],
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            {
+              "id": "e1",
+              "name": "purchase"
+            }
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "expect": {
+            "sent": [],
+            "triggers": null
+          }
+        },
+        {
+          "do": "sync_start",
+          "at": 1500
+        },
+        {
+          "do": "sync_end",
+          "at": 1600,
+          "trigger_events": {
+            "version": "v1",
+            "names": [
+              "purchase"
+            ]
+          },
+          "expect": {
+            "triggers": {
+              "version": "v1",
+              "names": [
+                "purchase"
+              ]
+            }
+          }
+        },
+        {
+          "do": "relaunch",
+          "at": 2000,
+          "expect": {
+            "triggers": {
+              "version": "v1",
+              "names": [
+                "purchase"
+              ]
+            },
+            "queue": [
+              "e1"
+            ]
+          }
+        },
+        {
+          "do": "track",
+          "at": 2000,
+          "events": [
+            {
+              "id": "e2",
+              "name": "purchase"
+            }
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 2999,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 3000,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v1"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1",
+                  "e2"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "TR-012",
+      "rule": "session sync, version refresh",
+      "name": "an upload answered with a new version while the session sync is out does not fetch the list a second time",
+      "stored_triggers": null,
+      "queue": [
+        {
+          "id": "e1",
+          "name": "a"
+        }
+      ],
+      "steps": [
+        {
+          "do": "sync_start",
+          "at": 0
+        },
+        {
+          "do": "tick",
+          "at": 10,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v1"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ],
+            "synced": 0
+          }
+        },
+        {
+          "do": "sync_end",
+          "at": 20,
+          "trigger_events": {
+            "version": "v1",
+            "names": [
+              "a"
+            ]
+          },
+          "expect": {
+            "triggers": {
+              "version": "v1",
+              "names": [
+                "a"
+              ]
+            }
+          }
+        },
+        {
+          "do": "track",
+          "at": 30,
+          "events": [
+            {
+              "id": "e2",
+              "name": "a"
+            }
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1030,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v1"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b2",
+                "events": [
+                  "e2"
+                ]
+              }
+            ],
+            "synced": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "TR-013",
+      "rule": "session sync, persisted list",
+      "name": "a session sync answered without a list keeps the list the device has, and its triggers still flush",
+      "stored_triggers": {
+        "version": "v1",
+        "names": [
+          "purchase"
+        ]
+      },
+      "queue": [],
+      "steps": [
+        {
+          "do": "sync_start",
+          "at": 0
+        },
+        {
+          "do": "sync_end",
+          "at": 10,
+          "expect": {
+            "triggers": {
+              "version": "v1",
+              "names": [
+                "purchase"
+              ]
+            }
+          }
+        },
+        {
+          "do": "track",
+          "at": 20,
+          "events": [
+            {
+              "id": "e1",
+              "name": "purchase"
+            }
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1020,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v1"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "TR-014",
+      "rule": "relaunch",
+      "name": "a debounce armed before a relaunch dies with the process, and the queued trigger goes with the next flush",
+      "stored_triggers": {
+        "version": "v1",
+        "names": [
+          "purchase"
+        ]
+      },
+      "queue": [],
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            {
+              "id": "e1",
+              "name": "purchase"
+            }
+          ]
+        },
+        {
+          "do": "relaunch",
+          "at": 500,
+          "expect": {
+            "queue": [
+              "e1"
+            ]
+          }
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "tick",
+          "at": 30000,
+          "responses": [
+            {
+              "status": 200,
+              "triggers_version": "v1"
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "batch_id": "b1",
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

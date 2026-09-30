@@ -1,0 +1,410 @@
+{
+  "_about": "Cases every Treebars SDK runs against its own implementation, shared so that the SDKs cannot disagree. Generated; do not edit.",
+  "limits": {
+    "inline_file_max_bytes": 1048576,
+    "inline_total_max_bytes": 4194304,
+    "cache_max_bytes": 33554432,
+    "stylesheet_max_bytes": 65536
+  },
+  "plans": [
+    {
+      "name": "every small file is inlined, in manifest order",
+      "manifest": {
+        "files": [
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "type": "image/png",
+            "bytes": 10240
+          },
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.jpg",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "type": "image/jpeg",
+            "bytes": 20480
+          },
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.webp",
+            "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "type": "image/webp",
+            "bytes": 30720
+          }
+        ]
+      },
+      "inline": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      ],
+      "left": [],
+      "stylesheets": [],
+      "missing": []
+    },
+    {
+      "name": "a file past the file bound keeps its address, and a small one beside it is inlined",
+      "manifest": {
+        "files": [
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "type": "image/jpeg",
+            "bytes": 2097152
+          },
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.png",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "type": "image/png",
+            "bytes": 10240
+          }
+        ]
+      },
+      "inline": [
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      ],
+      "left": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "stylesheets": [],
+      "missing": []
+    },
+    {
+      "name": "exactly the file bound is inlined",
+      "manifest": {
+        "files": [
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "type": "image/jpeg",
+            "bytes": 1048576
+          }
+        ]
+      },
+      "inline": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "left": [],
+      "stylesheets": [],
+      "missing": []
+    },
+    {
+      "name": "the display bound leaves the file that would pass it, and a later smaller one still fits",
+      "manifest": {
+        "files": [
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "type": "image/jpeg",
+            "bytes": 921600
+          },
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.jpg",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "type": "image/jpeg",
+            "bytes": 921600
+          },
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.jpg",
+            "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "type": "image/jpeg",
+            "bytes": 921600
+          },
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd.jpg",
+            "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "type": "image/jpeg",
+            "bytes": 921600
+          },
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.jpg",
+            "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "type": "image/jpeg",
+            "bytes": 921600
+          },
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.png",
+            "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "type": "image/png",
+            "bytes": 102400
+          }
+        ]
+      },
+      "inline": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      ],
+      "left": [
+        "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      ],
+      "stylesheets": [],
+      "missing": []
+    },
+    {
+      "name": "stylesheets and missing files are carried as the manifest names them",
+      "manifest": {
+        "files": [
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2",
+            "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "type": "font/woff2",
+            "bytes": 40960
+          }
+        ],
+        "stylesheets": [
+          "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/font.css?family=Brand+Sans&face=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2:400:normal&face=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2:700:normal"
+        ],
+        "missing": [
+          "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd.png"
+        ],
+        "external": [
+          "https://cdn.example.com/x.png"
+        ]
+      },
+      "inline": [
+        "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      ],
+      "left": [],
+      "stylesheets": [
+        "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/font.css?family=Brand+Sans&face=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2:400:normal&face=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2:700:normal"
+      ],
+      "missing": [
+        "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd.png"
+      ]
+    },
+    {
+      "name": "no manifest is an empty plan",
+      "manifest": null,
+      "inline": [],
+      "left": [],
+      "stylesheets": [],
+      "missing": []
+    }
+  ],
+  "outcomes": [
+    {
+      "name": "everything it inlines is on the device: drawn",
+      "manifest": {
+        "files": [
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "type": "image/png",
+            "bytes": 10240
+          }
+        ],
+        "stylesheets": [
+          "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/font.css?family=Brand+Sans&face=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2:400:normal&face=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2:700:normal"
+        ]
+      },
+      "have": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "have_stylesheets": [
+        "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/font.css?family=Brand+Sans&face=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2:400:normal&face=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2:700:normal"
+      ],
+      "outcome": "ready"
+    },
+    {
+      "name": "a store file that is gone fails the display, whatever else is there",
+      "manifest": {
+        "files": [
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "type": "image/png",
+            "bytes": 10240
+          }
+        ],
+        "missing": [
+          "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd.png"
+        ]
+      },
+      "have": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "have_stylesheets": [],
+      "outcome": "asset_download"
+    },
+    {
+      "name": "a file it inlines is not on the device: not drawn with a hole",
+      "manifest": {
+        "files": [
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "type": "image/png",
+            "bytes": 10240
+          },
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.png",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "type": "image/png",
+            "bytes": 10240
+          }
+        ]
+      },
+      "have": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "have_stylesheets": [],
+      "outcome": "asset_download"
+    },
+    {
+      "name": "a stylesheet it inlines is not on the device",
+      "manifest": {
+        "files": [
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2",
+            "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "type": "font/woff2",
+            "bytes": 40960
+          }
+        ],
+        "stylesheets": [
+          "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/font.css?family=Brand+Sans&face=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2:400:normal&face=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2:700:normal"
+        ]
+      },
+      "have": [
+        "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      ],
+      "have_stylesheets": [],
+      "outcome": "asset_download"
+    },
+    {
+      "name": "a file past a bound is the WebView’s to load, and never a reason not to draw",
+      "manifest": {
+        "files": [
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "type": "image/jpeg",
+            "bytes": 2097152
+          },
+          {
+            "url": "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.png",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "type": "image/png",
+            "bytes": 10240
+          }
+        ]
+      },
+      "have": [
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      ],
+      "have_stylesheets": [],
+      "outcome": "ready"
+    },
+    {
+      "name": "nothing to load: drawn",
+      "manifest": null,
+      "have": [],
+      "have_stylesheets": [],
+      "outcome": "ready"
+    }
+  ],
+  "documents": [
+    {
+      "name": "an image in every place markup names one",
+      "html": "<img src=\"https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png\" alt=\"a\"><img src='https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.jpg'><img src=https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png><img srcset=\"https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png 1x, https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.jpg 2x\"><video poster=\"https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.jpg\"></video>",
+      "files": {
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "data:image/png;base64,cG5nLWE=",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "data:image/jpeg;base64,anBlZy1i"
+      },
+      "stylesheets": {},
+      "expected": "<img src=\"data:image/png;base64,cG5nLWE=\" alt=\"a\"><img src='data:image/jpeg;base64,anBlZy1i'><img src=data:image/png;base64,cG5nLWE=><img srcset=\"data:image/png;base64,cG5nLWE= 1x, data:image/jpeg;base64,anBlZy1i 2x\"><video poster=\"data:image/jpeg;base64,anBlZy1i\"></video>"
+    },
+    {
+      "name": "a CSS background, quoted and not, in a style block and a style attribute",
+      "html": "<style>.hero{background:url(https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png) center/cover}.card{background-image:url('https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.jpg')}</style><div style=\"background:url(&quot;https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png&quot;)\"></div>",
+      "files": {
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "data:image/png;base64,cG5nLWE=",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "data:image/jpeg;base64,anBlZy1i"
+      },
+      "stylesheets": {},
+      "expected": "<style>.hero{background:url(data:image/png;base64,cG5nLWE=) center/cover}.card{background-image:url('data:image/jpeg;base64,anBlZy1i')}</style><div style=\"background:url(&quot;data:image/png;base64,cG5nLWE=&quot;)\"></div>"
+    },
+    {
+      "name": "an address the display does not inline is left exactly as written",
+      "html": "<img src=\"https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.png\"><img src=\"https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png?v=2\"><img src=\"https://cdn.example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png\"><img src=\"https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png\">",
+      "files": {
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "data:image/png;base64,cG5nLWE="
+      },
+      "stylesheets": {},
+      "expected": "<img src=\"https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.png\"><img src=\"https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png?v=2\"><img src=\"https://cdn.example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png\"><img src=\"data:image/png;base64,cG5nLWE=\">"
+    },
+    {
+      "name": "an address is replaced wherever it appears, a link to it included",
+      "html": "<a href=\"https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png\">full size</a>",
+      "files": {
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "data:image/png;base64,cG5nLWE="
+      },
+      "stylesheets": {},
+      "expected": "<a href=\"data:image/png;base64,cG5nLWE=\">full size</a>"
+    },
+    {
+      "name": "a font stylesheet linked by the message is written in, its faces inlined whatever origin it names them on",
+      "html": "<!doctype html><html><head><link rel=\"stylesheet\" href=\"https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/font.css?family=Brand+Sans&amp;face=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2:400:normal&amp;face=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2:700:normal\"></head><body><p style=\"font-family:'Brand Sans'\">Hi</p></body></html>",
+      "files": {
+        "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee": "data:font/woff2;base64,d29mZjItZQ==",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff": "data:font/woff2;base64,d29mZjItZg=="
+      },
+      "stylesheets": {
+        "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/font.css?family=Brand+Sans&face=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2:400:normal&face=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2:700:normal": "@font-face{font-family:\"Brand Sans\";src:url(https://api.other.test/assets/11111111-1111-4111-8111-111111111111/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2) format(\"woff2\");font-weight:400;font-style:normal;font-display:swap}\n@font-face{font-family:\"Brand Sans\";src:url(\"https://api.other.test/assets/11111111-1111-4111-8111-111111111111/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2\") format(\"woff2\");font-weight:700;font-style:normal;font-display:swap}"
+      },
+      "expected": "<!doctype html><html><head><style>@font-face{font-family:\"Brand Sans\";src:url(data:font/woff2;base64,d29mZjItZQ==) format(\"woff2\");font-weight:400;font-style:normal;font-display:swap}\n@font-face{font-family:\"Brand Sans\";src:url(\"data:font/woff2;base64,d29mZjItZg==\") format(\"woff2\");font-weight:700;font-style:normal;font-display:swap}</style></head><body><p style=\"font-family:'Brand Sans'\">Hi</p></body></html>"
+    },
+    {
+      "name": "the same through @import, and a link that is not a stylesheet left alone",
+      "html": "<link rel=\"preload\" href=\"https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/font.css?family=Brand+Sans&amp;face=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2:400:normal&amp;face=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2:700:normal\" as=\"style\"><style>@import url(\"https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/font.css?family=Brand+Sans&face=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2:400:normal&face=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2:700:normal\");\n@import 'https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/font.css?family=Brand+Sans&face=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2:400:normal&face=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2:700:normal';\nh1{font-family:\"Brand Sans\"}</style>",
+      "files": {
+        "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee": "data:font/woff2;base64,d29mZjItZQ==",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff": "data:font/woff2;base64,d29mZjItZg=="
+      },
+      "stylesheets": {
+        "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/font.css?family=Brand+Sans&face=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2:400:normal&face=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2:700:normal": "@font-face{font-family:\"Brand Sans\";src:url(https://api.other.test/assets/11111111-1111-4111-8111-111111111111/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2) format(\"woff2\");font-weight:400;font-style:normal;font-display:swap}\n@font-face{font-family:\"Brand Sans\";src:url(\"https://api.other.test/assets/11111111-1111-4111-8111-111111111111/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2\") format(\"woff2\");font-weight:700;font-style:normal;font-display:swap}"
+      },
+      "expected": "<link rel=\"preload\" href=\"https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/font.css?family=Brand+Sans&amp;face=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2:400:normal&amp;face=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2:700:normal\" as=\"style\"><style>@font-face{font-family:\"Brand Sans\";src:url(data:font/woff2;base64,d29mZjItZQ==) format(\"woff2\");font-weight:400;font-style:normal;font-display:swap}\n@font-face{font-family:\"Brand Sans\";src:url(\"data:font/woff2;base64,d29mZjItZg==\") format(\"woff2\");font-weight:700;font-style:normal;font-display:swap}\n@font-face{font-family:\"Brand Sans\";src:url(data:font/woff2;base64,d29mZjItZQ==) format(\"woff2\");font-weight:400;font-style:normal;font-display:swap}\n@font-face{font-family:\"Brand Sans\";src:url(\"data:font/woff2;base64,d29mZjItZg==\") format(\"woff2\");font-weight:700;font-style:normal;font-display:swap}\nh1{font-family:\"Brand Sans\"}</style>"
+    },
+    {
+      "name": "any case, any quoting",
+      "html": "<LINK REL=STYLESHEET HREF='https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/font.css?family=Brand+Sans&amp;face=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2:400:normal&amp;face=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2:700:normal'><IMG SRC=\"https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png\">",
+      "files": {
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "data:image/png;base64,cG5nLWE=",
+        "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee": "data:font/woff2;base64,d29mZjItZQ==",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff": "data:font/woff2;base64,d29mZjItZg=="
+      },
+      "stylesheets": {
+        "https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/font.css?family=Brand+Sans&face=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2:400:normal&face=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2:700:normal": "@font-face{font-family:\"Brand Sans\";src:url(https://api.other.test/assets/11111111-1111-4111-8111-111111111111/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2) format(\"woff2\");font-weight:400;font-style:normal;font-display:swap}\n@font-face{font-family:\"Brand Sans\";src:url(\"https://api.other.test/assets/11111111-1111-4111-8111-111111111111/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2\") format(\"woff2\");font-weight:700;font-style:normal;font-display:swap}"
+      },
+      "expected": "<style>@font-face{font-family:\"Brand Sans\";src:url(data:font/woff2;base64,d29mZjItZQ==) format(\"woff2\");font-weight:400;font-style:normal;font-display:swap}\n@font-face{font-family:\"Brand Sans\";src:url(\"data:font/woff2;base64,d29mZjItZg==\") format(\"woff2\");font-weight:700;font-style:normal;font-display:swap}</style><IMG SRC=\"data:image/png;base64,cG5nLWE=\">"
+    },
+    {
+      "name": "a stylesheet the device does not hold keeps its link",
+      "html": "<link rel=\"stylesheet\" href=\"https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/font.css?family=Brand+Sans&amp;face=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2:400:normal&amp;face=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2:700:normal\"><img src=\"https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png\">",
+      "files": {
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "data:image/png;base64,cG5nLWE="
+      },
+      "stylesheets": {},
+      "expected": "<link rel=\"stylesheet\" href=\"https://api.treebars.test/assets/11111111-1111-4111-8111-111111111111/font.css?family=Brand+Sans&amp;face=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2:400:normal&amp;face=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2:700:normal\"><img src=\"data:image/png;base64,cG5nLWE=\">"
+    }
+  ],
+  "stylesheet_checks": [
+    {
+      "name": "the store’s own font.css",
+      "text": "@font-face{font-family:\"Brand Sans\";src:url(https://api.other.test/assets/11111111-1111-4111-8111-111111111111/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.woff2) format(\"woff2\");font-weight:400;font-style:normal;font-display:swap}\n@font-face{font-family:\"Brand Sans\";src:url(\"https://api.other.test/assets/11111111-1111-4111-8111-111111111111/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.woff2\") format(\"woff2\");font-weight:700;font-style:normal;font-display:swap}",
+      "ok": true
+    },
+    {
+      "name": "a text that could end its <style>",
+      "text": "@font-face{}</style><script>alert(1)</script>",
+      "ok": false
+    },
+    {
+      "name": "longer than any font stylesheet",
+      "text_length": 65537,
+      "ok": false
+    }
+  ]
+}

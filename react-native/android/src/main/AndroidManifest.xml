@@ -1,0 +1,20 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <!--
+    The only permission this SDK adds, and the only one it needs.
+
+    ACCESS_NETWORK_STATE is a normal permission: it is granted at install, never prompts
+    the user, and carries no Play Store data-safety disclosure. Without it Android cannot
+    answer what the device is connected to at all, so `network_type` — a field the
+    dashboard shows and audiences can target — would be permanently blank for every app
+    that had not thought to add it themselves.
+
+    Declaring the same permission as another library is not a conflict: the manifest
+    merger folds duplicate <uses-permission> entries into one.
+
+    An integrator who wants it gone can remove it from their own manifest with
+    tools:node="remove"; the SDK's network reads fail closed and simply omit the field.
+  -->
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+</manifest>
