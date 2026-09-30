@@ -1,0 +1,8 @@
+node_modules/
+dist/
+build/
+.gradle/
+.build/
+.swiftpm/
+local.properties
+*.xcuserstate
