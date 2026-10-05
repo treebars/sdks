@@ -112,8 +112,6 @@ const FIRST_SESSION_KEY = 'treebars.first_session.v1';
 const PREVIEW_POLL_MS = 2_000;
 /** How long `contextToken()` waits for the server: a checkout is waiting on the answer, and without one it goes ahead unlinked. */
 const CONTEXT_TOKEN_TIMEOUT_MS = 5_000;
-/** The SDK's own experience reports, which must never credit an experience's goal. */
-const EXPERIENCE_EVENTS = new Set(['experience_viewed', 'experience_clicked', 'experience_converted']);
 /**
  * Whether the tab is hidden. `visibilityState` and not `document.hidden`: the second is `true` under a DOM with no
  * rendering (jsdom), which would read every test page as one nobody can see.
@@ -162,26 +160,6 @@ export type {
 } from './notifications';
 import { WebPush } from './push';
 import { mountNotificationCenter, type NotificationCenterOptions } from './notification-center';
-import {
-  applyChanges,
-  clearExposures,
-  clickedChanges,
-  decideExperiences,
-  liveExposures,
-  readExposures,
-  recordSplitHop,
-  redirectTarget,
-  revealPage,
-  takeSplitHop,
-  writeExposures,
-  type Decision,
-  type WebChange,
-  type WebExperienceWire,
-} from './experiences';
-import { editorParams, startVisualEditor, type EditorParams } from './visual-editor';
-
-export { antiFlickerSnippet } from './experiences';
-export type { Decision as ExperienceDecision, WebChange } from './experiences';
 export type { NotificationCenterOptions } from './notification-center';
 export type { InAppCard } from './in-app';
 
@@ -391,28 +369,11 @@ class TreebarsWeb {
   private firstSeenAt: string | undefined;
   /** When the tab last changed visibility, so a transition can say how long it lasted. */
   private visibilityChangedAt = Date.now();
-  /** The environment's active experiences once fetched, what this page shows, and the click listener's stop. */
-  private experienceList: WebExperienceWire[] | null = null;
-  private experienceCountry: string | undefined;
-  private shownExperiences: Decision[] = [];
-  private stopExperienceChanges: (() => void) | null = null;
-  /** The page the experiences were last decided on, and what has been reported viewed there (`applyExperiences`). */
-  private experiencePage: string | null = null;
-  private experiencesSeenHere = new Set<string>();
-  /**
-   * What takes each variation's changes back off the page, keyed `experience:variation` (`changeOutcome`'s `undo`), for
-   * a single-page app's next page that the experience no longer matches.
-   */
-  private experienceUndo = new Map<string, (() => void)[]>();
-  /** Split-URL tests this document has arrived at and must not send on again (`takeSplitHop`). */
-  private heldRedirects = new Set<string>();
   private previewing = false;
   /** A draft from the editor's "Test on device" being shown, and the loop that redraws it. */
   private inAppPreview: { session: string; revision: string; timer: ReturnType<typeof setInterval> | null } | null = null;
   /** Takes the drawn preview down, so a saved draft replaces it rather than stacking on it. */
   private previewClose: (() => void) | null = null;
-  /** A trusted visual-editor session is open on this page (`startEditorIfTrusted`): nothing here is a visitor's. */
-  private editingExperience = false;
   /** The ingest endpoint's origin, trailing slash already removed. Set in `init`. */
   private backendUrl = DEFAULT_BACKEND_URL;
   /**
@@ -562,16 +523,6 @@ class TreebarsWeb {
        */
       // Not for a person who opted out: carrying an ad's click into the store link is measurement too.
       if (config.carryClickToStore !== false && !this.optedOut) this.installStoreLinkCarrier();
-      /*
-       * Web personalization, only on a site that turned it on (`experiences`). An editing session opened from the
-       * dashboard draws the visual editor and applies nothing else — once the server has confirmed the window that
-       * opened it is this deployment's dashboard (`startEditorIfTrusted`); otherwise the page is changed for this visitor.
-       */
-      if (config.experiences) {
-        const editing = typeof location !== 'undefined' ? editorParams(location.href) : null;
-        if (editing) void this.startEditorIfTrusted(editing);
-        else this.startExperiences();
-      }
     }
 
     // The generated default, which the iOS and Android SDKs share: a browser uploads on the same schedule as a phone.
@@ -642,10 +593,6 @@ class TreebarsWeb {
 
     // The one hook in-app needs, at the point every event already passes through.
     this.considerInApp(eventName, properties, dimensions, sessionId);
-
-    // A single-page app's new page gets its own experiences, and an experience's goal is credited to its variation.
-    if (eventName === 'page_view' && this.experienceList && properties.url !== undefined) this.applyExperiences();
-    if (!EXPERIENCE_EVENTS.has(eventName)) this.creditExperienceGoal(eventName);
 
     if (this.store.size >= (this.config?.batchSize ?? BATCH_SIZE)) {
       void this.flush();
@@ -812,8 +759,6 @@ class TreebarsWeb {
       });
 
     this.reportUserIdentified(userId, merged);
-    // The "signed in or not" rule has a new answer on this page, not only on the next one.
-    this.applyExperiences(true);
   }
 
   /**
@@ -847,8 +792,8 @@ class TreebarsWeb {
    * Signs the current user out of this browser, keeping the events already captured.
    *
    * Records `user_signed_out` and starts uploading it, then clears the signed-in id and its signature, starts a new
-   * session, and clears what belonged to that person here: queued in-app messages, the notification centre's history,
-   * and the experiences they were shown. The device id stays. Does nothing when nobody is signed in, so calling it
+   * session, and clears what belonged to that person here: queued in-app messages and the notification centre's
+   * history. The device id stays. Does nothing when nobody is signed in, so calling it
    * defensively on load is safe.
    *
    * Synchronous: the sign-out is queued under this user and session before either is cleared, and the upload is not
@@ -897,14 +842,12 @@ class TreebarsWeb {
     this.lastNotificationServerTime = null;
     // What this browser was shown was the previous person's to convert, and a goal the next person reaches must not
     // credit it.
-    if (this.persist) clearExposures();
     this.emitNotificationChange({
       notifications: [],
       unreadCount: 0,
       nextCursor: null,
       fromCache: true,
     });
-    this.applyExperiences(true);
   }
 
   /**
@@ -977,9 +920,6 @@ class TreebarsWeb {
     this.inApp?.reset();
     this.notificationStore?.reset();
     this.lastNotificationServerTime = null;
-    // What this browser was shown was the previous person's to convert, and a goal the next person reaches must not
-    // credit it.
-    if (this.persist) clearExposures();
     // After the stores above have written their empty selves, so nothing they wrote survives it.
     wipeStoredData();
     forgetSharedBrowserId();
@@ -2076,258 +2016,6 @@ class TreebarsWeb {
         console.warn('[treebars] onChange listener threw', error);
       }
     }
-  }
-
-  private startExperiences(): void {
-    void this.runExperiences();
-    document.addEventListener('click', (event) => this.experienceClick(event), true);
-  }
-
-  /**
-   * The visual editor, for the dashboard that asked for it and nobody else.
-   *
-   * `treebars_origin` is the one thing the editor trusts — it takes messages only from that origin and only from the
-   * window that opened it — and it arrives in the address, so the party that opens the tab names it. Any page on the
-   * web could open a customer's site naming ITSELF, pass both checks, and hand the editor changes to draw on the
-   * customer's own origin. So the claim is checked with the server, which knows this deployment's dashboard origin and
-   * whether the experience is one of this write key's. A refusal, or no answer, is a page load with no editor — the
-   * visitor's own experiences still run, so a crafted link cannot switch them off either.
-   *
-   * An allow-list rather than a signed token: the dashboard answers the editor only from the window it opened itself,
-   * so once the origin is the dashboard's, the opener is too.
-   */
-  private async startEditorIfTrusted(editing: EditorParams): Promise<void> {
-    let trusted = false;
-    try {
-      const params = new URLSearchParams({ origin: editing.origin, experience_id: editing.experienceId });
-      const response = await fetch(`${this.backendUrl}/v1/experiences/editor?${params.toString()}`, { headers: { [HEADERS.writeKey]: this.config!.writeKey } });
-      trusted = response.ok && ((await response.json()) as { allowed?: boolean }).allowed === true;
-    } catch (error) {
-      this.log(`editor check failed: ${String(error)}`);
-    }
-    if (!trusted) {
-      this.log(`visual editor refused: ${editing.origin} is not this deployment's dashboard, or the experience is not this key's`);
-      this.startExperiences();
-      return;
-    }
-    this.editingExperience = true;
-    revealPage();
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => startVisualEditor(editing));
-    else startVisualEditor(editing);
-  }
-
-  /**
-   * Fetches the environment's active experiences once per page load and applies this page's. Never throws; on any
-   * failure the page is simply shown as it is, and the anti-flicker style comes off either way.
-   */
-  private async runExperiences(): Promise<void> {
-    try {
-      const response = await fetch(`${this.backendUrl}/v1/experiences`, { headers: { [HEADERS.writeKey]: this.config!.writeKey } });
-      if (response.ok) {
-        const body = (await response.json()) as { experiences?: WebExperienceWire[]; geo?: { country?: string } };
-        this.experienceList = Array.isArray(body.experiences) ? body.experiences : [];
-        this.experienceCountry = body.geo?.country;
-        // Only after an answer: a failed fetch says nothing about which experiences stopped.
-        const exposures = readExposures(this.persist);
-        const live = liveExposures(exposures, this.experienceList);
-        if (Object.keys(live).length !== Object.keys(exposures).length) writeExposures(this.persist, live);
-        this.applyExperiences();
-      }
-    } catch (error) {
-      this.log(`experiences fetch failed: ${String(error)}`);
-    } finally {
-      revealPage();
-    }
-  }
-
-  /**
-   * This page's experiences for this visitor: a split-URL variation sends them on, the rest change the page, and each
-   * reports experience_viewed once per page, once the page shows it (see below). ?treebars_preview=<experience>:<variation> shows one variation to
-   * whoever opens the link, reports nothing, and ignores the targeting rules — it is how a team checks a variation.
-   *
-   * `redecide` is the same page asked again because who is reading it changed (`identify`, `reset`): an experience
-   * that now matches is applied and reported, one already reported on this page is not reported twice, and no split-URL
-   * test moves the visitor — a page that jumped away the moment somebody signed in would be worse than the wait. A
-   * change already on the page is not taken back by a re-decision, so an experience that stops matching stays until the
-   * next page. On a single-page app's next page it IS taken back, so a header changed on `/pricing` does not stay on
-   * `/about`, where the experience does not run and no view is recorded — see `experienceUndo`.
-   *
-   * A split-URL variation that matches only on a re-decision is therefore neither shown NOR counted: a visitor who signs
-   * in on `/pricing` and stays there is on the control page, and neither they nor a conversion they make there belongs
-   * to the variation. It is decided again on the next page load, where the redirect happens and the view is real. The
-   * control arm of the same test IS counted: the visitor is on the control page, which is what the control shows. The
-   * variation cannot change under a re-decision — it is hashed from the device id, which neither `identify` nor `reset`
-   * moves — so everything else a re-decision finds is either new to this page or already counted by
-   * `experiencesSeenHere`.
-   *
-   * **One redirect, and only it counted.** When several split-URL tests match one page, the highest priority's redirect
-   * is followed and every other redirect on the page is dropped: not shown, not counted, so no test is credited with a
-   * visitor, or later a conversion, for a page they never saw. And when the visitor is sent away, nothing else on this
-   * page is counted either — they leave before it paints.
-   */
-  private applyExperiences(redecide = false): void {
-    if (typeof location === 'undefined' || !this.experienceList) return;
-    if (redecide && this.experiencePage !== location.href) return;
-    const newPage = this.experiencePage !== location.href;
-    if (newPage) {
-      this.experiencePage = location.href;
-      this.experiencesSeenHere.clear();
-    }
-    this.stopExperienceChanges?.();
-    const preview = new URL(location.href).searchParams.get('treebars_preview')?.split(':');
-    const firstSession = this.persist ? safeGet(FIRST_SESSION_KEY) : null;
-    const facts = {
-      id: this.deviceId,
-      href: location.href,
-      isNewVisitor: firstSession !== null && firstSession === this.currentSessionId,
-      identified: Boolean(this.userId),
-      now: new Date(),
-      country: this.experienceCountry,
-      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
-      maxTouchPoints: typeof navigator !== 'undefined' ? navigator.maxTouchPoints : undefined,
-    };
-    const decided: Decision[] = preview
-      ? this.experienceList.flatMap((experience) => {
-          const variation = experience.id === preview[0] ? experience.variations.find((one) => one.id === preview[1]) : undefined;
-          return variation ? [{ experience_id: experience.id, variation_id: variation.id, control: variation.control === true, changes: variation.control ? [] : variation.changes, ...(variation.redirect_url ? { redirect_url: variation.redirect_url } : {}) }] : [];
-        })
-      : decideExperiences(this.experienceList, facts);
-
-    /*
-     * The redirect, if any. Decisions are lowest priority first, so the last one with an address is the one to follow.
-     * The visitor has ARRIVED — shown and counted, not sent — when its address is this page, when this document already
-     * declined to send them on, or when the tab was sent here for the same test a moment ago and the host served this
-     * address instead (`takeSplitHop`): following it again is the loop.
-     */
-    // Storage is left alone where the page forbids it; with no note there is no hop to follow either (`takeSplitHop`).
-    const hop = redecide || !this.persist ? null : takeSplitHop();
-    const candidate = redecide ? undefined : [...decided].reverse().find((decision) => decision.redirect_url);
-    let arrived: Decision | undefined;
-    if (candidate?.redirect_url) {
-      const target = redirectTarget(candidate.redirect_url, location.href);
-      if (target === location.href || hop === candidate.experience_id || this.heldRedirects.has(candidate.experience_id)) {
-        this.heldRedirects.add(candidate.experience_id);
-        arrived = candidate;
-      } else if (this.persist && recordSplitHop(candidate.experience_id)) {
-        this.previewing = Boolean(preview);
-        // The view is recorded before the page goes, which is the one thing a redirect would otherwise lose — and it is
-        // the only thing counted here, because the visitor leaves before anything else on this page is shown.
-        if (!preview) this.recordExperienceView(candidate);
-        void this.flush();
-        location.replace(target);
-        return;
-      }
-    }
-    const decisions = decided.filter((decision) => !decision.redirect_url || decision === arrived);
-    // A preview counts nothing, clicks included: the person looking was never assigned (`experienceClick`).
-    this.previewing = Boolean(preview);
-
-    // A new page takes back what an experience it no longer decides put on the one before.
-    if (newPage && !redecide) {
-      const wanted = new Set(decisions.map((decision) => `${decision.experience_id}:${decision.variation_id}`));
-      for (const [key, restores] of this.experienceUndo) {
-        if (wanted.has(key)) continue;
-        for (const restore of [...restores].reverse()) restore();
-        this.experienceUndo.delete(key);
-      }
-    }
-
-    // Still on the page: what an earlier decision put there, which a re-decision does not take off.
-    const kept = redecide ? this.shownExperiences.filter((shown) => !decisions.some((decision) => decision.experience_id === shown.experience_id)) : [];
-    this.shownExperiences = [...kept, ...decisions];
-
-    /*
-     * A variation is seen when the page shows it, not when it is decided. One whose changes were all skipped — every one
-     * inside a form, say — leaves the page exactly as the control does, and counting it viewed would credit the
-     * variation with a visitor, and later a conversion, that the control earned. So: counted now when it has nothing to change on the page (the control, an
-     * empty arm, a split-URL page arrived at, a variation that only counts clicks), and otherwise when its first change
-     * lands — now, or later as the page draws (`applyChanges`). Never when none does.
-     */
-    const page = location.href;
-    const recordView = (decision: Decision) => {
-      if (preview || location.href !== page) return;
-      this.recordExperienceView(decision);
-    };
-    for (const decision of decisions) {
-      if (decision.redirect_url || !decision.changes.some((change) => change.op !== 'track_click')) recordView(decision);
-    }
-
-    const changes: WebChange[] = decisions.flatMap((decision) => decision.changes);
-    const owners: Decision[] = decisions.flatMap((decision) => decision.changes.map(() => decision));
-    this.stopExperienceChanges = applyChanges(
-      changes,
-      undefined,
-      (index) => recordView(owners[index]!),
-      (index, restore) => {
-        const key = `${owners[index]!.experience_id}:${owners[index]!.variation_id}`;
-        this.experienceUndo.set(key, [...(this.experienceUndo.get(key) ?? []), restore]);
-      },
-    );
-  }
-
-  /**
-   * One view: experience_viewed, once per page, and the exposure its goal is credited to later. The exposure keeps
-   * `converted`, so a later view does not re-arm the goal and a reload does not send another conversion.
-   */
-  private recordExperienceView(decision: Decision): void {
-    const seen = `${decision.experience_id}:${decision.variation_id}`;
-    if (this.experiencesSeenHere.has(seen)) return;
-    this.experiencesSeenHere.add(seen);
-    const experience = this.experienceList?.find((one) => one.id === decision.experience_id);
-    const exposures = readExposures(this.persist);
-    const converted = exposures[decision.experience_id]?.converted === true;
-    exposures[decision.experience_id] = { variation_id: decision.variation_id, goal_event: experience?.goal_event ?? null, ...(converted ? { converted } : {}) };
-    writeExposures(this.persist, exposures);
-    this.track('experience_viewed', { experience_id: decision.experience_id, variation_id: decision.variation_id });
-  }
-
-
-  /**
-   * A click on an element an experience counts: experience_clicked, with the change's name.
-   *
-   * Once per experience per click (`clickedChanges`). Two experiences that both count one element each get the click —
-   * each is its own test, with its own report — but one experience whose counted selectors overlap (`a` and `a.cta`, or a
-   * button inside a counted card) reports the one click once. Nothing under a preview.
-   */
-  private experienceClick(event: MouseEvent): void {
-    if (this.previewing || !(event.target instanceof Element) || this.shownExperiences.length === 0) return;
-    // A click is only counted for a variation the visitor was counted as seeing (`applyExperiences`): one whose changes
-    // never landed has no view to be a click of, and would push its click rate past anything real.
-    const seen = this.shownExperiences.filter((shown) => this.experiencesSeenHere.has(`${shown.experience_id}:${shown.variation_id}`));
-    if (seen.length === 0) return;
-    const target = event.target;
-    const matches = (selector: string) => {
-      try {
-        return target.closest(selector) !== null;
-      } catch {
-        return false;
-      }
-    };
-    for (const click of clickedChanges(seen, matches)) {
-      this.track('experience_clicked', click);
-    }
-  }
-
-  /** The goal of an experience this visitor was shown: experience_converted for that variation, once per experience. */
-  private creditExperienceGoal(eventName: string): void {
-    /*
-     * Not from a preview or an editing session, as views and clicks are not. The exposures this browser holds may be from
-     * an earlier visit as an ordinary visitor, and a teammate opening a preview or the editor on a page whose goal is
-     * `page_view` must not credit one of them with a conversion.
-     */
-    if (!this.config?.experiences || this.previewing || this.editingExperience) return;
-    // The page's own address as well: the load's `page_view` is tracked before the experiences have been fetched and
-    // `previewing` set, and an editing session is only trusted a round trip after it starts.
-    if (typeof location !== 'undefined' && /[?&]treebars_(preview|editor)=/.test(location.search)) return;
-    const exposures = readExposures(this.persist);
-    let changed = false;
-    for (const [experienceId, exposure] of Object.entries(exposures)) {
-      if (exposure.goal_event !== eventName || exposure.converted) continue;
-      this.track('experience_converted', { experience_id: experienceId, variation_id: exposure.variation_id });
-      exposure.converted = true;
-      changed = true;
-    }
-    if (changed) writeExposures(this.persist, exposures);
   }
 
   /**

@@ -1155,6 +1155,72 @@
       "clicked": 2
     },
     {
+      "name": "a press the page closes on in the same tap is recorded before the dismissal, and still reaches the app",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [],
+          "traits": []
+        },
+        "stored": {}
+      },
+      "steps": [
+        {
+          "call": "trackClick",
+          "args": [
+            4
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "customAction",
+          "args": [
+            {
+              "screen": "Chat"
+            }
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "dismissMessage",
+          "args": [],
+          "answer": {
+            "ok": true
+          }
+        }
+      ],
+      "events": [
+        [
+          "in_app_clicked",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "element": "4",
+            "button_index": 4,
+            "action": "custom",
+            "values": {
+              "screen": "Chat"
+            }
+          }
+        ],
+        [
+          "in_app_dismissed",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1"
+          }
+        ]
+      ],
+      "clicked": 1,
+      "dismissed": 1,
+      "closes": 1
+    },
+    {
       "name": "a value kept for the person in the campaign, read back and forgotten",
       "message": {
         "delivery_id": "d-1",

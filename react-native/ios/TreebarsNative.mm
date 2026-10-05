@@ -1,7 +1,7 @@
 #import "TreebarsNative.h"
 
 /*
- * The Swift core's Objective-C face. `TreebarsSDK` is `TreebarsCore.podspec`'s `module_name`,
+ * The Swift core's Objective-C face. `TreebarsSDK` is the core pod's name and its Swift module,
  * which is why the pod on disk and the header named here are spelled differently — that
  * podspec's own comment explains the collision that split them.
  *
@@ -15,7 +15,7 @@
  * naming another library's codegen and nothing this package owns.
  *
  * A textual include has no such reach, and needs one thing to work: the header is generated
- * during the CORE's build, into a directory no consumer searches. `TreebarsSdk.podspec` adds
+ * during the CORE's build, into a directory no consumer searches. `TreebarsReactNative.podspec` adds
  * that directory, and without it this line fails as `file not found` after a `pod install`
  * that succeeded — which reads as a broken podspec rather than a missing search path.
  */

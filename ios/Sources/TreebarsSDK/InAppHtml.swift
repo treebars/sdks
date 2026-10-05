@@ -258,8 +258,16 @@ final class BridgeDisplay {
         return out
     }
 
-    /// A dismissal from anywhere — the page, the dim, the timer — recorded once per display.
+    /**
+     A dismissal from anywhere — the page, the dim, the timer — recorded once per display.
+
+     A press still waiting in its window is recorded, and handed to the app, first. A page that closes in the same tap
+     it acts on — `customAction(…)` then `dismissMessage()`, as the Fawazeer message's Chat and purchase buttons do —
+     used to lose the press here: the window's timer holds the display weakly, the display goes with the message, and
+     the click and the custom action the app was waiting for went with it (2026-09-30).
+     */
     func dismiss(element: String? = nil) {
+        flushClick()
         recordDismiss(element)
         sdk.dismissed()
     }

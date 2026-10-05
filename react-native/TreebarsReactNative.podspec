@@ -8,7 +8,7 @@ package = JSON.parse(File.read(File.join(__dir__, "package.json")))
 # The pod name is distinct from RNDeviceInfo and RNCNetInfo so an app that also installs
 # those libraries links three separate pods rather than hitting a name clash.
 Pod::Spec.new do |s|
-  s.name         = "TreebarsSdk"
+  s.name         = "TreebarsReactNative"
   s.version      = package["version"]
   s.summary      = "The iOS bridge for the Treebars React Native SDK"
   s.description  = "The TurboModule that carries every SDK call down to the Swift core."
@@ -28,15 +28,14 @@ Pod::Spec.new do |s|
 
   # The Swift core, pinned to the exact version rather than a range.
   #
-  # `TreebarsCore` rather than `TreebarsSDK`: the pod name and the Swift module name are
-  # different on purpose, because a pod called `TreebarsSDK` would be the same directory as
-  # this one on a case-insensitive volume; `TreebarsCore.podspec` in the iOS SDK has the
-  # reasoning. The `.mm` here reaches it through `TreebarsSDK-Swift.h`, which carries the module
-  # name; see the header search path below for why it is that rather than `@import TreebarsSDK`.
+  # `TreebarsSDK` is the core's pod and Swift module alike. This pod is `TreebarsReactNative` so
+  # the two never share a directory on a case-insensitive volume; the core's podspec has the
+  # reasoning. The `.mm` here reaches the core through `TreebarsSDK-Swift.h`; see the header search
+  # path below for why that rather than `@import TreebarsSDK`.
   #
   # Pinned exactly, as the Android half pins its core: a wrapper that floats against its core
   # is a version pair nobody can reproduce.
-  s.dependency "TreebarsCore", "0.3.0"
+  s.dependency "TreebarsSDK", "0.3.0"
 
   # Where Xcode writes the Swift core's Objective-C face, which is the only way a `.mm` can
   # see it.
@@ -56,7 +55,7 @@ Pod::Spec.new do |s|
   # replace everything that helper added instead.
   s.pod_target_xcconfig = {
     "HEADER_SEARCH_PATHS" =>
-      "\"${PODS_CONFIGURATION_BUILD_DIR}/TreebarsCore/Swift Compatibility Header\"",
+      "\"${PODS_CONFIGURATION_BUILD_DIR}/TreebarsSDK/Swift Compatibility Header\"",
   }
 
   # Wires up React-Core, the codegen'd spec and the New Architecture dependencies. Doing

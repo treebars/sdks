@@ -11,7 +11,7 @@
     "",
     "`main` and `types` are the TypeScript source: Metro transpiles it, and it typechecks cleanly under",
     "the strictest settings a consumer is likely to have. The native halves build against",
-    "`com.treebars:sdk-android` from Maven Central and the `TreebarsCore` pod, so this package is",
+    "`com.treebars:sdk-android` from Maven Central and the `TreebarsSDK` pod, so this package is",
     "published after both."
   ],
   "license": "MIT",
@@ -29,7 +29,7 @@
     "ios",
     "android/src",
     "android/build.gradle",
-    "TreebarsSdk.podspec"
+    "TreebarsReactNative.podspec"
   ],
   "main": "src/index.ts",
   "react-native": "src/index.ts",

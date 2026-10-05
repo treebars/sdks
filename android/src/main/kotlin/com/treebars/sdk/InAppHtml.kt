@@ -175,8 +175,15 @@ internal class BridgeDisplay(
         return out
     }
 
-    /** A dismissal from anywhere — the page, the back button, the timer — recorded once per display. */
+    /**
+     * A dismissal from anywhere — the page, the back button, the timer — recorded once per display.
+     *
+     * A press still waiting in its window is recorded, and handed to the app, first: a page that closes in the same tap
+     * it acts on (`customAction(…)` then `dismissMessage()`) gets its click before its dismissal, as on iOS and the web,
+     * rather than from a timer that outlived the message. On iOS that timer did not outlive it, and the press was lost.
+     */
     fun dismiss(element: String? = null) {
+        flushClick()
         recordDismiss(element)
         sdk.dismissed()
     }

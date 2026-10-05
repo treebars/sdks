@@ -6,20 +6,15 @@ require "json"
 # Manager integrator uses. This spec is its CocoaPods face, and the one the React Native
 # package depends on, since a pod cannot depend on a SwiftPM package.
 #
-# **The name is `TreebarsCore` and the module is `TreebarsSDK`, and that split is not
-# cosmetic.** CocoaPods derives `Pods/Headers/Public/<name>/`, `Pods/Target Support Files/<name>/`
-# and `lib<name>.a` from `s.name`, while the Swift module an importer names comes from
-# `s.module_name`. A pod actually called `TreebarsSDK` would collide with the existing
-# `TreebarsSdk` — the React Native package — on a default case-insensitive APFS volume: one
-# xcconfig file, one static library, one header directory, last write wins. The symptom is not
-# a clean `pod install` error; it is one pod's header search paths and linker flags silently
-# overwriting the other's.
+# **One name: the pod, the module and the Swift package's library are all `TreebarsSDK`.** The
+# React Native package's own pod is `TreebarsReactNative` for that reason: CocoaPods names
+# `Pods/Headers/Public/<name>/`, `Pods/Target Support Files/<name>/` and `lib<name>.a` after
+# `s.name`, and on a case-insensitive volume a bridge pod called `TreebarsSdk` would share every
+# one of them with this one, last write wins.
 #
-# So `import TreebarsSDK` keeps working, in this package's own tests and in a host app, and
-# nothing on disk collides.
+# 0.3.0 was first published as `TreebarsCore`, which is deprecated in favour of this name.
 Pod::Spec.new do |s|
-  s.name         = "TreebarsCore"
-  s.module_name  = "TreebarsSDK"
+  s.name         = "TreebarsSDK"
   # Pinned to the same value the generated constants carry, so a core and a wrapper cannot
   # disagree about which SDK they are. `sdks/android`'s Gradle coordinate uses the same one.
   s.version      = "0.3.0"
@@ -39,7 +34,7 @@ Pod::Spec.new do |s|
   # The privacy manifest, in a bundle of its own: a resource bundle is what a static framework can
   # carry into the app, and Xcode reads every bundle's `PrivacyInfo.xcprivacy` into the app's
   # privacy report. The same file SwiftPM ships (`Package.swift`), so the two faces cannot disagree.
-  s.resource_bundles = { "TreebarsCore_Privacy" => ["ios/Sources/TreebarsSDK/PrivacyInfo.xcprivacy"] }
+  s.resource_bundles = { "TreebarsSDK_Privacy" => ["ios/Sources/TreebarsSDK/PrivacyInfo.xcprivacy"] }
 
   # Every framework this target imports unconditionally. UIKit is behind `#if canImport`, and
   # is listed anyway because the iOS build always has it and a missing weak link is a launch

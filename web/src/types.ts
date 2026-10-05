@@ -76,15 +76,6 @@ export interface TreebarsWebConfig {
   carryClickToStore?: boolean;
   /** Log what the SDK does to the browser console, prefixed `[treebars]`. */
   debug?: boolean;
-  /**
-   * Web personalization: fetch the environment's active experiences and change this page for the visitor's
-   * variations. Off by default — it is a request on every page load, and a site that runs no experiences should not pay
-   * it. Put the anti-flicker snippet (`antiFlickerSnippet()`) in the head when it is on.
-   *
-   * It also gates the visual editor: "Edit on the site" in the dashboard opens nothing on a site with this off, and
-   * with it on the editor is drawn only once Treebars confirms the page was opened from your dashboard.
-   */
-  experiences?: boolean;
 }
 
 export interface EventProperties {

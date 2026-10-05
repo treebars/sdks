@@ -12,7 +12,7 @@ let package = Package(
     // than Linux is `import Security` and `import Compression`, not UIKit.
     // Both minimums are set high enough for Swift structured concurrency.
     //
-    // iOS 15.1 is the same minimum both podspecs declare (`TreebarsCore.podspec` and the React
+    // iOS 15.1 is the same minimum both podspecs declare (`TreebarsSDK.podspec` and the React
     // Native package's), so Swift Package Manager and CocoaPods integrators build against one
     // floor. The sources use iOS 15 APIs unguarded, such as `Handoff.swift`'s
     // `NotificationCenter.notifications(named:)`, the async sequence that waits for the app to

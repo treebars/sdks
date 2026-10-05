@@ -11,10 +11,9 @@ and add the `TreebarsSDK` library to your app target.
 **CocoaPods**
 
 ```ruby
-pod 'TreebarsCore'
+pod 'TreebarsSDK'
 ```
 
-The pod is named `TreebarsCore`; the module you import is `TreebarsSDK` either way.
 
 ## Use
 

@@ -106,8 +106,7 @@ export function wipeStoredData(): void {
  *
  * Almost everything this SDK keeps belongs to ONE project: the queue and the uploader's sealed batches, the session a
  * `session_end` will be sent for, the in-app queue and its ledger, the notification feed, the trigger list, the
- * exposures an experience goal is credited to, the carried ad click, the context this device last reported. So the
- * key is stamped beside the data, and a different key at `init` — a new project, a key moved to another environment —
+ * carried ad click, the context this device last reported. So the key is stamped beside the data, and a different key at `init` — a new project, a key moved to another environment —
  * drops the data before any store reads it. Events are never sent to a project they were not recorded for, and
  * in-app messages fetched for one project are never drawn or reported under another.
  *

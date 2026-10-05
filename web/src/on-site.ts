@@ -105,7 +105,7 @@ export type InAppFailureReason =
  * What an `equals`, `not_equals`, `starts_with` or `ends_with` rule compares with: the page's address without its query
  * and fragment, unless the rule's own value names one. So "equals https://shop.example/pricing" still matches when a
  * campaign link adds `?utm_source=mail`, and "ends with /pricing" matches `/pricing#faq` — which is exactly the traffic
- * an experience or a message is for. A value with a `?` or a `#` in it is asking about them, and gets the whole address.
+ * a message is for. A value with a `?` or a `#` in it is asking about them, and gets the whole address.
  *
  * `contains` and `not_contains` keep the whole address on purpose: "contains utm_campaign=spring" is how a rule asks
  * about one query value (`has_query` only asks whether a key is there), and stripping the query would quietly make it

@@ -169,6 +169,10 @@ export class BridgeDisplay {
    * one.
    */
   dismiss(reason?: 'auto', element?: string): void {
+    // A press still waiting for this turn to end is recorded, and handed to the app, first: a page that closes in the
+    // same tap it acts on (`customAction(…)` then `dismissMessage()`) gets its click before its dismissal, as on the
+    // phones. On iOS the press used to be lost with the display (2026-09-30).
+    this.flushClick();
     this.recordDismiss(element);
     this.sdk.dismissed(reason);
   }

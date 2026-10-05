@@ -46,6 +46,25 @@ final class InAppHtmlBridgeTests: XCTestCase {
         for spec in cases { try run(spec) }
     }
 
+    /*
+     The shared case keeps the display alive to the end; the app does not. The host lets go of it as the message closes,
+     and the press window's timer holds it weakly, so a press the page closed on in the same tap used to vanish with it
+     — the click and the custom action the app was waiting for (the Fawazeer message's Chat button, 2026-09-30).
+     */
+    func testAPressThePageClosesOnOutlivesTheDisplay() throws {
+        let sdk = FakeSdk()
+        var waiting: [() -> Void] = []
+        var display: BridgeDisplay? = BridgeDisplay(message: try message(["delivery_id": "d", "campaign_id": "c"]), sdk: sdk) { _, run in
+            waiting.append(run)
+        }
+        display?.call("customAction", [["screen": "Chat"]], close: {}) { _ in }
+        display?.call("dismissMessage", [], close: {}) { _ in }
+        display = nil
+        waiting.forEach { $0() }
+        XCTAssertEqual(sdk.clickedCount, 1, "the app is handed the custom action")
+        XCTAssertEqual(sdk.events.map(\.0), ["in_app_clicked", "in_app_dismissed"])
+    }
+
     func testANumberAndAFlagAreNotTheSame() throws {
         let sdk = FakeSdk()
         let display = BridgeDisplay(message: try message(["delivery_id": "d", "campaign_id": "c", "declared": ["events": [], "traits": ["streak"]]]), sdk: sdk) { _, _ in }
