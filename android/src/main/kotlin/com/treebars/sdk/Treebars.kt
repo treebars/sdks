@@ -137,6 +137,10 @@ data class Adoption(
     }
 }
 
+/**
+ * A label for `Treebars.initialize`'s `env`, which the SDK accepts and does not read: the write key is
+ * what names the environment.
+ */
 enum class TreebarsEnv(val value: String) {
     PRODUCTION("production"),
     STAGE("stage"),
@@ -322,6 +326,9 @@ object Treebars {
      *   https; plain http is accepted only for a local development server. An address that is
      *   refused leaves the SDK off, with a warning in logcat, rather than throwing —
      *   [acceptsBackendUrl] answers the same question in advance.
+     * @param env accepted and not read: no event or request carries it, and passing a different value
+     *   changes nothing this SDK does. The write key is what names the environment — each environment
+     *   of a project has its own, so the key an app is built with is the whole of that choice.
      * @param flushIntervalMs how often queued events are uploaded while the app is open.
      * @param debug log what the SDK does to logcat, under the tag `Treebars`. Warnings about a
      *   skipped setup step are logged either way.
@@ -2678,6 +2685,11 @@ object Treebars {
      * without one keeps the signature already held, so an app that re-identifies to update
      * attributes does not quietly lose its sign-in.
      *
+     * Identifying a different person while somebody is signed in clears what this device held for
+     * the last one — queued in-app messages, the nudges on screen and the notification centre's
+     * history — before anything is drawn for the new one. [reset] is still the call for a sign-out:
+     * it also records it and starts a new session.
+     *
      * Ignored while opted out.
      */
     @JvmStatic
@@ -2691,15 +2703,25 @@ object Treebars {
         if (optedOut) return
         userSignature = signature ?: userSignature.takeIf { userId == this.userId }
         /*
-         * Somebody else, with no sign-out between: a read in flight was asked for the last person. Not the same one
-         * identified again, which every launch does, and not a first sign-in from anonymous, whose queue is the same
-         * person's — either would drop a sync that was right.
+         * Somebody else, with no sign-out between. What this device holds is the last person's — the queued messages,
+         * one waiting out its delay, a trigger held for a renderer, the nudges on screen, the notification history —
+         * and so is a read in flight: all of it goes here, before this sign-in's own events can draw any of it. Not
+         * the same one identified again, which every launch does, and not a first sign-in from anonymous, whose queue
+         * is the same person's — either would drop what was right.
          */
+        var replaced = false
         if (this.userId != null && userId != this.userId) {
             inAppStore?.supersede()
             notificationStore?.supersede()
+            delayedDelivery = null
+            synchronized(undrawnTriggers) { undrawnTriggers.clear() }
+            lastNotificationServerTime = null
+            closeNudges()
+            replaced = true
         }
         this.userId = userId
+        // Told once the new person is the one signed in, so a list that fetches again on a change asks as them.
+        if (replaced) emitNotificationChange(NotificationPage(emptyList(), 0, null, true))
         // So the next cold start knows who this is, and can prove it. `apply()` rather than
         // `commit()`: it is a cache of the two fields set above.
         val editor = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

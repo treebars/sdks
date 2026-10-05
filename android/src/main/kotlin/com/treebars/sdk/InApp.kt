@@ -505,10 +505,14 @@ class InAppStore(private val context: Context, private val prefsName: String) {
         nudgeMinGapSeconds = if (it.isNull("nudge_min_gap_seconds") || it.optInt("nudge_min_gap_seconds") <= 0) null else it.optInt("nudge_min_gap_seconds"),
     )
 
-    /** Somebody else is signed in now, without a sign-out between: a sync in flight was asked for the last one. */
+    /**
+     * Somebody else is signed in now, without a sign-out between. The queue is the last person's, and so are the ledger
+     * of what they were shown and a sync in flight for them: all of it goes here, as at a sign-out, so nothing of
+     * theirs is left to be drawn for the person signing in.
+     */
     @Synchronized
     fun supersede() {
-        generation += 1
+        reset()
     }
 
     fun list(): List<InAppMessage> = messages
@@ -560,7 +564,8 @@ class InAppStore(private val context: Context, private val prefsName: String) {
         }
         val count = (shown[message.deliveryId] ?: 0) + 1
         shown[message.deliveryId] = count
-        lastShownAt = System.currentTimeMillis()
+        // [now], as every ledger in this call is stamped: the gap is measured against the clock that counted the day.
+        lastShownAt = now
         sinceSync += 1
         val max = message.content?.maxDisplays
         if (max != null && max > 0 && count >= max) done.add(message.deliveryId)
@@ -604,7 +609,8 @@ class InAppStore(private val context: Context, private val prefsName: String) {
     @Synchronized
     fun blockedBy(message: InAppMessage, currentSession: String? = null, now: Long = System.currentTimeMillis(), nudgesInFlight: Int = 0): String? {
         if (done.contains(message.deliveryId)) return "done"
-        message.expiresAt?.let { if (it <= System.currentTimeMillis()) return "expired" }
+        // One clock per call: expiry is read against [now], as the caps below are.
+        message.expiresAt?.let { if (it <= now) return "expired" }
 
         val current = policy ?: return null
         // A test send is drawn past every cap below.

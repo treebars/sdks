@@ -7,10 +7,11 @@ export interface TreebarsWebConfig {
   /** Public write key (`pk_live_...`). Safe to ship in page source. */
   writeKey: string;
   /**
-   * Which environment these events belong to. Defaults to `production`.
+   * A label for the environment these events come from. Defaults to `production`.
    *
-   * Stamped on every event, as the other Treebars SDKs do, so staging, development and test
-   * traffic can be kept apart from production.
+   * This SDK stamps it on every event it queues, and reads it nowhere else. The write key is what
+   * names the environment — each environment of a project has its own, so the key a page is built
+   * with is the whole of that choice.
    */
   env?: 'production' | 'staging' | 'development' | 'test';
   /**

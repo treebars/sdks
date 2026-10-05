@@ -467,6 +467,25 @@ final class InAppTests: XCTestCase {
         XCTAssertTrue(store.list().isEmpty)
     }
 
+    /// The queue already held is the last person's as much as a sync in flight is: somebody else signing in leaves
+    /// none of it to draw, nor the ledger of what the last person saw — here, and for a store built on the next launch.
+    func testSomebodyElseSigningInEmptiesTheQueueAndTheLedger() {
+        let store = InAppStore()
+        store.accept(response([message("previous"), message("previous_inbox", surface: "inbox")]))
+        store.markDone("previous")
+
+        store.supersede()
+
+        XCTAssertTrue(store.list().isEmpty)
+        XCTAssertTrue(store.inbox().isEmpty)
+        XCTAssertFalse(store.isDone("previous"))
+        XCTAssertTrue(InAppStore().list().isEmpty)
+
+        // The next sync is the new person's, and lands.
+        XCTAssertTrue(store.accept(response([message("next")]), askedAt: store.generation))
+        XCTAssertEqual(store.list().map(\.delivery_id), ["next"])
+    }
+
     // MARK: - One overlay at a time, however many threads ask
 
     /// Two events of one burst are considered on two threads. The claim must be one step, or both

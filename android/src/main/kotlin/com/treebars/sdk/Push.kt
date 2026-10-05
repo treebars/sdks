@@ -631,7 +631,9 @@ internal object PendingPushReceipts {
             val entry = list.optJSONObject(index) ?: return@mapNotNull null
             val event = entry.optString("event").takeIf { it.isNotEmpty() } ?: return@mapNotNull null
             val properties = entry.optJSONObject("properties") ?: JSONObject()
-            event to properties.keys().asSequence().associateWith { properties.optString(it) as Any }
+            // Each value as the type it was kept as: a number or a boolean read back as text would be a different
+            // property on the event than the one the same receipt carries when it is sent at once.
+            event to properties.keys().asSequence().associateWith { properties.get(it) }
         }
     }
 }

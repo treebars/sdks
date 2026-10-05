@@ -206,6 +206,12 @@ export class TreebarsSDK {
        */
       if (this.eventListeners.size > 0) await native.setEventsSubscribed(json([...this.eventListeners.keys()]));
       if (this.deepLinkListener) await native.setDeferredDeepLinkSubscribed(true);
+      /*
+       * And the notification centre's watchers: a bell mounted in a child subscribes before this
+       * runs, and the native side refuses the subscription until it has started. Sent here, the
+       * bell is told of every change from the first one.
+       */
+      if (this.notificationWatchers.size > 0) await native.setNotificationsSubscribed(true);
     })();
 
     return this.ready;
@@ -395,7 +401,8 @@ export class TreebarsSDK {
 
       /**
        * Calls `callback` with the current page whenever the centre changes. Returns the
-       * unsubscribe.
+       * unsubscribe. Safe before `init()`, which sends the subscription once the native side
+       * is up.
        *
        * Watchers are kept on this side and only the first subscribe and the last unsubscribe
        * cross the bridge, so an app with no bell pays nothing.
@@ -564,8 +571,11 @@ export class TreebarsSDK {
    * on Android 13 and later the runtime prompt, on the screen in front. Call it after explaining
    * why, not at launch.
    *
-   * Resolves whether pushes may be shown when it answers. On Android that is before the person
-   * has responded to the prompt; their answer is recorded by the SDK as an event.
+   * Resolves whether pushes may be shown at the moment it answers, and the two platforms answer
+   * at different moments. iOS answers once the person has, so the value is their answer. Android
+   * answers at once, before the person has responded to the prompt: `true` there means pushes
+   * were already allowed and nothing was asked, and `false` says only that they are not allowed
+   * yet, never that the person refused. On both, the SDK records the person's answer as an event.
    */
   async requestPushPermission(options: { provisional?: boolean } = {}): Promise<boolean> {
     await this.ready;

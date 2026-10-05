@@ -87,7 +87,8 @@ export interface Spec extends TurboModule {
   trackNotificationOpened(payloadJson: string): Promise<void>;
   /**
    * Asks for push permission: the native SDK's own prompt, `provisional` being Apple's quiet trial. Resolves whether
-   * pushes may be shown at the moment it answers; the person's answer is recorded by the native SDK as an event.
+   * pushes may be shown at the moment it answers — on iOS once the person has answered the prompt, on Android before
+   * they have; the person's answer is recorded by the native SDK as an event.
    */
   requestPushPermission(provisional: boolean): Promise<boolean>;
   /** A push swiped away, for an app whose notification library sees it: `push_dismissed`. */

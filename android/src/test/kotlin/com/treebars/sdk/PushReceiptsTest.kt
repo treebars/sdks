@@ -41,6 +41,24 @@ class PushReceiptsTest {
         assertTrue(PendingPushReceipts.drain(context).isEmpty())
     }
 
+    /* A kept receipt is the same event as one sent at once, so a number or a boolean must not come back as text. */
+    @Test
+    fun `a kept receipt's properties come back as the types they went in as`() {
+        PendingPushReceipts.add(
+            context,
+            "notification_opened",
+            mapOf(TreebarsConstants.DELIVERY_ID_KEY to "d1", "position" to 3, "silent" to true, "ratio" to 0.5, "code" to "42"),
+        )
+
+        val properties = PendingPushReceipts.drain(context).single().second
+        assertEquals("d1", properties[TreebarsConstants.DELIVERY_ID_KEY])
+        assertEquals(3, (properties["position"] as Number).toInt())
+        assertEquals(true, properties["silent"])
+        assertEquals(0.5, (properties["ratio"] as Number).toDouble(), 0.0)
+        // And text that reads as a number stays text.
+        assertEquals("42", properties["code"])
+    }
+
     @Test
     fun `receipts from a device whose app never starts stay bounded, newest kept`() {
         for (i in 1..30) PendingPushReceipts.add(context, "push_dismissed", mapOf(TreebarsConstants.DELIVERY_ID_KEY to "d$i"))

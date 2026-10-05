@@ -85,7 +85,7 @@ internal object TreebarsConstants {
     /** Our click id's parameter, read out of the URL that opened the app. */
     const val ACQUISITION_CLICK_ID_PARAM = "tbrs_click_id"
 
-    const val SDK_VERSION = "0.3.0"
+    const val SDK_VERSION = "0.4.0"
     const val SDK_NAME = "treebars-android"
     const val DEVICE_ID_PREFIX = "dev_"
 

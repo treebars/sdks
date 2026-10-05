@@ -421,14 +421,10 @@ class TreebarsNativeModule(reactContext: ReactApplicationContext) :
   override fun selfHandledClicked(deliveryId: String, buttonJson: String, promise: Promise) {
     if (!ready(promise)) return
     val message = selfHandled(deliveryId, promise) ?: return
-    val button = buttonJson.takeIf { it.isNotEmpty() }?.let { runCatching { JSONObject(it) }.getOrNull() }?.let { json ->
-      InAppButton(
-        label = json.optString("label"),
-        action = json.optString("action", "click"),
-        value = json.optString("value").takeIf { it.isNotEmpty() },
-        index = if (json.has("index")) json.optInt("index").takeIf { it > 0 } else null,
-      )
-    }
+    // The whole button, as a renderer's press carries it. A button naming no action is a press recorded and nothing
+    // more (`click`), which leaves the message where it is.
+    val button = buttonJson.takeIf { it.isNotEmpty() }?.let { runCatching { JSONObject(it) }.getOrNull() }
+      ?.let { json -> buttonFrom(json, actionWhenAbsent = "click") }
     Treebars.selfHandledClicked(reactApplicationContext, message, button)
     promise.resolve(null)
   }
@@ -453,8 +449,14 @@ class TreebarsNativeModule(reactContext: ReactApplicationContext) :
     promise.resolve(null)
   }
 
-  // The core asks on the screen in front. Android has no provisional grant, so the flag is iOS's alone. Resolves
-  // whether pushes are allowed now; the answer to the prompt arrives later and the core reports it as an event.
+  /*
+   * The core asks on the screen in front. Android has no provisional grant, so the flag is iOS's alone.
+   *
+   * Resolves whether pushes are allowed now, which is before the person has answered: Android hands the answer to the
+   * Activity that asked, and that is the app's, so there is nothing here to wait on. The core reads the answer when
+   * that screen resumes and reports it as an event. Asking through React Native's own permission listener instead
+   * would go around the core, which keeps the record of having asked that tells "never asked" from "refused for good".
+   */
   override fun requestPushPermission(provisional: Boolean, promise: Promise) {
     if (!ready(promise)) return
     reactApplicationContext.currentActivity?.let { TreebarsPush.requestPermission(it) }
@@ -570,18 +572,7 @@ class TreebarsNativeModule(reactContext: ReactApplicationContext) :
      * losing both `in_app_dismissed` and `markDone`, and the message would be redrawn on the
      * next matching event. Repeated clicks are therefore expected and safe.
      */
-    live.onClick(
-      InAppButton(
-        label = button.stringOrNull("label").orEmpty(),
-        action = button.stringOrNull("action") ?: "dismiss",
-        value = button.stringOrNull("value"),
-        eventName = button.stringOrNull("event_name"),
-        key = button.stringOrNull("key"),
-        data = button.optJSONObject("data")?.let { data -> data.keys().asSequence().associateWith { name -> data.optString(name) } },
-        // Which element was pressed: the host's `treebars://click/<n>`, or a typed button's place.
-        index = if (button.has("index")) button.optInt("index").takeIf { it > 0 } else null,
-      ),
-    )
+    live.onClick(buttonFrom(button, actionWhenAbsent = "dismiss"))
     promise.resolve(null)
   }
 
@@ -896,6 +887,25 @@ class TreebarsNativeModule(reactContext: ReactApplicationContext) :
       sdkName = json.stringOrNull("sdkName"),
     )
   }
+
+  /**
+   * A button as JavaScript sends it, every field of it.
+   *
+   * One reading for a renderer's press and a self-handled one, so the two cannot come to disagree about what a button
+   * carries: what the core reports — the label, the index, where a link goes — and what says what a press does — a
+   * `track_event`'s event, a `set_attribute`'s trait, a `custom` button's keys. [actionWhenAbsent] is the one thing the
+   * callers differ on: what a button naming no action means to each.
+   */
+  private fun buttonFrom(json: JSONObject, actionWhenAbsent: String): InAppButton = InAppButton(
+    label = json.stringOrNull("label").orEmpty(),
+    action = json.stringOrNull("action") ?: actionWhenAbsent,
+    value = json.stringOrNull("value"),
+    eventName = json.stringOrNull("event_name"),
+    key = json.stringOrNull("key"),
+    data = json.optJSONObject("data")?.let { data -> data.keys().asSequence().associateWith { name -> data.optString(name) } },
+    // Which element was pressed: the host's `treebars://click/<n>`, or a typed button's place.
+    index = if (json.has("index")) json.optInt("index").takeIf { it > 0 } else null,
+  )
 
   private fun pageJson(page: NotificationPage): JSONObject = JSONObject()
     .put("notifications", JSONArray().apply { page.notifications.forEach { put(it.raw) } })

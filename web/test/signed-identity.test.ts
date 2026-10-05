@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { HEADERS, STORAGE_KEYS } from '../src/generated/constants';
 import { TreebarsWeb } from '../src/index';
+import type { NotificationPage } from '../src/notifications';
 
 /**
  * The browser's half of signed identity: the signature the customer's backend made rides on every
@@ -261,5 +262,60 @@ describe('a signed identity in the browser', () => {
       .flatMap((each) => (each.body.events as Array<{ event_name: string }> | undefined) ?? [])
       .map((each) => each.event_name);
     expect(reported).not.toContain('notification_read');
+  });
+
+  /*
+   * The notification history is the person's too. `list()` answers from the cached first page when the server cannot,
+   * and that page is handed over without asking whose it is — so it is gone the moment somebody else is signed in or
+   * the person signs out, and stays gone on the next load.
+   */
+  describe('the cached notifications', () => {
+    const row = (groupId: string) => ({
+      group_id: groupId,
+      campaign_id: null,
+      channel_type: 'push',
+      device_count: 1,
+      content: { title: groupId },
+      created_at: '2026-09-24T11:00:00.000Z',
+      read_at: null,
+      opened_at: null,
+      expires_at: null,
+    });
+    const held = async (instance: TreebarsWeb) => (await instance.notifications.list()).notifications.map((each) => each.group_id);
+
+    beforeEach(async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      sdk.identify('user_42');
+      answer = () => Response.json({ messages: [], notifications: [row('for-42')], unread_count: 1, server_time: 'now' });
+      expect(await held(sdk)).toEqual(['for-42']);
+      // From here the server cannot answer, so every list is what this browser kept.
+      answer = () => new Response('', { status: 503 });
+    });
+
+    it('stay for the same person identified again', async () => {
+      sdk.identify('user_42', { plan: 'pro' });
+      expect(await held(sdk)).toEqual(['for-42']);
+    });
+
+    it('are gone when somebody else signs in with no sign-out between, here and on the next load', async () => {
+      const told: NotificationPage[] = [];
+      sdk.notifications.onChange((page) => told.push(page));
+      sdk.identify('user_43');
+      expect(told[told.length - 1]).toEqual({ notifications: [], unreadCount: 0, nextCursor: null, fromCache: true });
+      expect(await held(sdk)).toEqual([]);
+
+      sdk.shutdown();
+      sdk = start();
+      expect(await held(sdk)).toEqual([]);
+    });
+
+    it('are gone after reset(), here and on the next load', async () => {
+      sdk.reset();
+      expect(await held(sdk)).toEqual([]);
+
+      sdk.shutdown();
+      sdk = start();
+      expect(await held(sdk)).toEqual([]);
+    });
   });
 });

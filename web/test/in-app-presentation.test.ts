@@ -191,4 +191,39 @@ describe('an in-app message on screen', () => {
     expect(displayed()).toEqual(['a', 'b']);
     expect(tracked.filter((event) => event.name === 'user_signed_out')).toEqual([]);
   });
+
+  it('keeps the queue through a first sign-in and a repeat of it, and clears it when somebody else signs in', () => {
+    // The queue synced for the anonymous visitor is the same person's once they sign in, and still theirs when the
+    // page identifies them again.
+    sdk.identify('user_1');
+    sdk.identify('user_1', { plan: 'pro' });
+    sdk.track('product_view');
+    expect(displayed()).toEqual(['a']);
+    views[0]!.onDismiss();
+
+    // Somebody else, with no reset() between: `b` and `c` were user_1's, so neither is drawn for user_2.
+    sdk.identify('user_2');
+    expect((sdk as unknown as { inApp: { list: () => InAppMessage[] } }).inApp.list()).toEqual([]);
+    sdk.track('product_view');
+    expect(displayed()).toEqual(['a']);
+  });
+
+  it('does not draw a message that was waiting for its moment once somebody else has signed in', () => {
+    const later: InAppMessage = {
+      ...message('later'),
+      content: {
+        title: 'later',
+        in_app: { surface: 'overlay', layout: 'modal', trigger: { kind: 'event', event_name: 'product_view' }, display: { on: 'delay', delay_seconds: 5 } } as never,
+      },
+    };
+    (sdk as unknown as { inApp: { accept: (body: unknown) => void } }).inApp.accept({ messages: [later], policy: null });
+    sdk.identify('user_1');
+    sdk.track('product_view');
+    expect((sdk as unknown as { pendingDisplay: unknown }).pendingDisplay).not.toBeNull();
+
+    // The delay it was waiting out ends after user_2 signed in: it was user_1's, and is not drawn.
+    sdk.identify('user_2');
+    vi.advanceTimersByTime(6_000);
+    expect(displayed()).toEqual([]);
+  });
 });

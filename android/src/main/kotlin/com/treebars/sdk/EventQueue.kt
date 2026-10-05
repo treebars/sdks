@@ -18,7 +18,12 @@ import java.io.File
  * A [Mutex] rather than `synchronized` because every caller is a coroutine; blocking
  * a dispatcher thread here would stall unrelated work.
  */
-internal class EventQueue(directory: File, filename: String = FILE_NAME) {
+internal class EventQueue(
+    directory: File,
+    filename: String = FILE_NAME,
+    /** `File.renameTo`, which answers false rather than throwing. A parameter so a test can make it refuse. */
+    private val rename: (File, File) -> Boolean = File::renameTo,
+) {
 
     private val file = File(directory, filename)
     private val mutex = Mutex()
@@ -52,9 +57,16 @@ internal class EventQueue(directory: File, filename: String = FILE_NAME) {
     private fun persist() {
         runCatching {
             val temp = File(file.parentFile, "${file.name}.tmp")
-            temp.writeText(JSONArray(events).toString())
-            // Write-then-rename so a kill mid-write cannot corrupt the live file.
-            temp.renameTo(file)
+            val text = JSONArray(events).toString()
+            temp.writeText(text)
+            // Write-then-rename so a kill mid-write cannot corrupt the live file. A rename that is refused
+            // says so by returning false, and the save is then written in place: a file left behind the
+            // queue in memory would drop every event since at the next process death, where a write in
+            // place risks only the moment of the write, which [load] already reads as an empty queue.
+            if (!rename(temp, file)) {
+                file.writeText(text)
+                temp.delete()
+            }
         }
     }
 

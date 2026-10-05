@@ -1,5 +1,5 @@
 import type { InAppContent, InAppTokens } from './in-app';
-import { safeGet, safeSet } from './storage';
+import { safeGet, safeRemove, safeSet } from './storage';
 
 /*
  * The notification centre, in a browser.
@@ -219,7 +219,10 @@ export class NotificationStore {
 
   private write(): void {
     if (!this.persist) return;
+    // An emptied feed is removed, not left: the stored copy is what the next page load reads back, and `cached()`
+    // hands that over without asking whose it is.
     if (this.feed) safeSet(FEED_KEY, JSON.stringify(this.feed));
+    else safeRemove(FEED_KEY);
     safeSet(LEDGER_KEY, JSON.stringify(this.ledger));
   }
 }

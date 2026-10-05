@@ -72,6 +72,8 @@ public struct Adoption: Sendable {
     }
 }
 
+/// A label for `Treebars.initialize`'s `env`, which the SDK accepts and does not read: the write key is
+/// what names the environment.
 public enum TreebarsEnv: String {
     case production, stage, test
 }
@@ -137,6 +139,7 @@ public final class Treebars {
     private static let optedOutKey = "treebars.opted_out"
 
     private var writeKey: String?
+    /// `initialize`'s `env`, kept as passed. Nothing reads it.
     private var env: TreebarsEnv = .production
     /*
      * `userId`, `optedOut` and `userSignature` are internal rather than private for one reader,
@@ -278,6 +281,9 @@ public final class Treebars {
        - backendURL: The ingest endpoint — `https://ingest.treebars.com`, or a proxy of your own. It must
          be https: plain http is accepted only for a local development server (loopback, a `.local` name
          or a private address), and any other URL leaves the SDK off, with a warning in the console.
+       - env: Accepted and not read: no event or request carries it, and passing a different value
+         changes nothing this SDK does. The write key is what names the environment — each environment
+         of a project has its own, so the key an app is built with is the whole of that choice.
        - flushInterval: Seconds between automatic uploads.
        - debug: Logs what the SDK does to the console.
        - autoTrackLifecycle: Records `app_open`, `app_foreground` and `app_background`. Turning it off
@@ -778,21 +784,41 @@ public final class Treebars {
      Calling again for the same person without one keeps the signature already held, so an app that
      re-identifies to update attributes does not lose its sign-in.
 
+     Identifying a different person while somebody is signed in clears what this device held for the
+     last one — queued in-app messages, the nudges on screen and the notification centre's history —
+     before anything is drawn for the new one. `reset()` is still the call for a sign-out: it also
+     records it and starts a new session.
+
      Does nothing while opted out.
      */
     public static func identify(_ userId: String, attributes: [String: Any] = [:], signature: String? = nil) {
         guard !shared.optedOut else { return }
         shared.userSignature = signature ?? (userId == shared.userId ? shared.userSignature : nil)
         /*
-         * Somebody else, with no sign-out between: a read in flight was asked for the last person. Not the same one
-         * identified again, which every launch does, and not a first sign-in from anonymous, whose queue is the same
-         * person's — either would drop a sync that was right.
+         * Somebody else, with no sign-out between. What this device holds is the last person's — the queued messages,
+         * one waiting out its delay, the nudges on screen, the notification history — and so is a read in flight: all
+         * of it goes here, before this sign-in's own events can draw any of it. Not the same one identified again,
+         * which every launch does, and not a first sign-in from anonymous, whose queue is the same person's — either
+         * would drop what was right.
          */
+        var replaced = false
         if let previous = shared.userId, previous != userId {
             shared.inApp.supersede()
             shared.notificationStore.supersede()
+            shared.delayedDelivery = nil
+            shared.lastNotificationServerTime = nil
+            #if canImport(UIKit)
+            Task { @MainActor in shared.closeNudges() }
+            #endif
+            replaced = true
         }
         shared.userId = userId
+        // Told once the new person is the one signed in, so a list that fetches again on a change asks as them.
+        if replaced {
+            shared.emitNotificationChange(
+                NotificationPage(notifications: [], unreadCount: 0, nextCursor: nil, fromCache: true)
+            )
+        }
         // So the next cold start knows who this is, and can prove it.
         UserDefaults.standard.set(userId, forKey: TreebarsConstants.keySignedInUser)
         // Also what this call signs with, whatever a later identify does to the field meanwhile.
@@ -2191,8 +2217,8 @@ public final class Treebars {
      again each time (`delayedInAppStep`): shown once the other message is answered or its hold lapses,
      or reported as not shown (`in_app_failed`) when a cap closes on it meanwhile — the minimum gap,
      typically, since the other message was just drawn. `delayedDelivery` stays set while it waits, so
-     the trigger firing again is still not a second message; `reset()` clears it, and a waiting message
-     whose person signed out goes with it.
+     the trigger firing again is still not a second message; `reset()` clears it, as `identify` does for
+     somebody else, and a waiting message whose person left goes with it.
      */
     private func presentDelayed(_ message: InAppMessage, content: InAppContent) async {
         // What the last look saw, for the present that follows it.
@@ -3378,7 +3404,8 @@ public final class Treebars {
                 }
                 await self.uploader?.flush()
                 if taskId != .invalid {
-                    UIApplication.shared.endBackgroundTask(taskId)
+                    // On the main actor, which `UIApplication.shared` is isolated to.
+                    await UIApplication.shared.endBackgroundTask(taskId)
                 }
             }
         }

@@ -206,6 +206,17 @@ class NotificationStoreTest {
     }
 
     @Test
+    fun `is emptied when somebody else signs in, as at a sign-out`() {
+        store.accept("user_a", page(listOf(notification())))
+        val asked = store.generation
+        store.supersede()
+        assertNull(store.cached())
+        // And a page asked for the last person does not land under the next one.
+        assertEquals(false, store.accept("user_b", page(listOf(notification())), asked))
+        assertNull(store.cached())
+    }
+
+    @Test
     fun `drops a first page asked for before a sign-out, which would be cached under the next owner`() {
         // The owner is read when the answer lands, so without this a page fetched for user_a would be filed as the device's.
         val asked = store.generation

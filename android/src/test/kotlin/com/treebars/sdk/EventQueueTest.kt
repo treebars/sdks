@@ -173,6 +173,30 @@ class EventQueueTest {
     }
 
     /*
+     * `File.renameTo` reports a refusal by returning false, not by throwing, so a save whose rename is
+     * refused has to be noticed and written in place. Otherwise the file stays at whatever the last good
+     * rename left, and the next launch reads a queue missing every event since and still holding the
+     * ones already uploaded. No filesystem a test runs on refuses a rename that its own write then
+     * manages, so the rename is handed in.
+     */
+    @Test
+    fun `a save whose rename is refused is written in place`() {
+        val directory = temp.newFolder()
+        val queue = EventQueue(directory, rename = { _, _ -> false })
+
+        runBlocking {
+            queue.append(event("first"))
+            queue.append(event("second"))
+            assertEquals(listOf("first", "second"), onDisk(directory))
+
+            // A removal is a save too: the uploaded event must leave the file with it.
+            assertEquals(1, queue.removeIds(setOf("first")))
+            assertEquals(listOf("second"), onDisk(directory))
+        }
+        assertFalse("the temp file is not left beside it", File(directory, "treebars-queue.json.tmp").exists())
+    }
+
+    /*
      * The cap is the reason a handset that spends a fortnight offline does not fill its own
      * storage, and the direction it drops in
      * is a product decision: recent behaviour is worth more than stale behaviour.

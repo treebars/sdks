@@ -13,21 +13,27 @@ import { TreebarsSDK } from '../src/Treebars';
 function fakeNative() {
   const calls: string[] = [];
   const emitter = () => () => undefined;
+  let emitPage: (payload: string) => void = () => undefined;
   const native = new Proxy(
     {
       initialize: vi.fn(async () => undefined),
       setInAppRendererEnabled: vi.fn(async () => undefined),
       setEventsSubscribed: vi.fn(async (names: string) => void calls.push(`events:${names}`)),
       setDeferredDeepLinkSubscribed: vi.fn(async (on: boolean) => void calls.push(`deepLink:${on}`)),
+      setNotificationsSubscribed: vi.fn(async (on: boolean) => void calls.push(`notifications:${on}`)),
       onInAppPresent: emitter,
-      onNotificationsChange: emitter,
+      // Kept, so a test can emit a page as the native side would.
+      onNotificationsChange: (handler: (payload: string) => void) => {
+        emitPage = handler;
+        return () => undefined;
+      },
       onUploadLog: emitter,
       onDeferredDeepLink: emitter,
       onTreebarsEvent: emitter,
     } as Record<string, unknown>,
     { get: (target, key: string) => target[key] ?? vi.fn(async () => undefined) },
   );
-  return { native, calls };
+  return { native, calls, emitPage: (payload: string) => emitPage(payload) };
 }
 
 describe('a subscription made before init()', () => {
@@ -42,6 +48,33 @@ describe('a subscription made before init()', () => {
 
     await sdk.init({ write_key: 'pk_test_subscriptions' } as never);
     expect(calls).toEqual(['events:["pushClicked"]', 'deepLink:true']);
+  });
+
+  it('subscribes the notification centre for a bell that mounted first, and the bell hears the next page', async () => {
+    const sdk = new TreebarsSDK();
+    const { native, calls, emitPage } = fakeNative();
+    (sdk as unknown as { native: unknown }).native = native;
+
+    const pages: unknown[] = [];
+    sdk.notifications.onChange((page) => pages.push(page));
+    expect(calls).toEqual([]);
+
+    await sdk.init({ write_key: 'pk_test_bell' } as never);
+    expect(calls).toEqual(['notifications:true']);
+
+    const page = { notifications: [], unreadCount: 2, nextCursor: null, fromCache: false };
+    emitPage(JSON.stringify(page));
+    expect(pages).toEqual([page]);
+  });
+
+  it('sends no notification subscription for a bell that unmounted before init()', async () => {
+    const sdk = new TreebarsSDK();
+    const { native, calls } = fakeNative();
+    (sdk as unknown as { native: unknown }).native = native;
+
+    sdk.notifications.onChange(() => undefined)();
+    await sdk.init({ write_key: 'pk_test_no_bell' } as never);
+    expect(calls).toEqual([]);
   });
 });
 

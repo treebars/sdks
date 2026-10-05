@@ -1,6 +1,6 @@
 {
   "name": "@treebars/react-native-sdk",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "React Native SDK for Treebars analytics and engagement",
   "//publish": [
     "`files` keeps the tarball to what a consumer needs: the TypeScript, both native halves and the",

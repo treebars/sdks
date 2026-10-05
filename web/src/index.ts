@@ -715,6 +715,10 @@ class TreebarsWeb {
    * the console when that happens. Calling again for the same person without one keeps the signature already held, so a
    * page that re-identifies to update attributes does not lose its sign-in.
    *
+   * Identifying a different person while somebody is signed in clears what this browser held for the last one — queued
+   * in-app messages, the nudges on screen and the notification centre's history — before anything is drawn for the new
+   * one. `reset()` is still the call for a sign-out: it also records it and starts a new session.
+   *
    * Does nothing before `init` or after `optOut()`.
    */
   identify(userId: string, attributes: EventProperties = {}, signature?: string): void {
@@ -724,10 +728,16 @@ class TreebarsWeb {
      * Only a different person, with no sign-out between. Not the same one identified again on every page load, and
      * not a first sign-in from anonymous, whose queue is the same person's — either would drop a read that was right.
      */
+    const epoch = this.identityEpoch;
     if (this.userId !== undefined && userId !== this.userId) this.identityEpoch += 1;
     this.userId = userId;
     // So the next page load knows who this is, and can prove it.
     writeSignedInUser(userId, this.persist, this.userSignature);
+    /*
+     * What this browser holds was the last person's, as a read in flight is: gone before this sign-in's own events are
+     * tracked. After the id above is set, so a list that fetches again when told of the change asks as the new person.
+     */
+    if (epoch !== this.identityEpoch) this.forgetLastPerson();
 
     /*
      * What the SDK knows, underneath what the page said.
@@ -759,6 +769,22 @@ class TreebarsWeb {
       });
 
     this.reportUserIdentified(userId, merged);
+  }
+
+  /**
+   * Somebody else signed in with no sign-out between. What this browser holds was the last person's: the queued
+   * messages and the ledger of what they were shown, a message waiting for its moment, the nudges on screen, the
+   * notification history. All of it goes at once, as it does at a sign-out, so none of it is drawn for the person
+   * signing in. Their session is not ended here: that, and recording the sign-out, is `reset()`.
+   */
+  private forgetLastPerson(): void {
+    this.inApp?.reset();
+    this.pendingDisplay?.cancel();
+    this.pendingDisplay = null;
+    this.closeNudges();
+    this.notificationStore?.reset();
+    this.lastNotificationServerTime = null;
+    this.emitNotificationChange({ notifications: [], unreadCount: 0, nextCursor: null, fromCache: true });
   }
 
   /**

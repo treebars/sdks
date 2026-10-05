@@ -1,6 +1,4 @@
 import Foundation
-// SecRandomCopyBytes, for the in-app sync secret.
-import Security
 #if canImport(UIKit)
 import UIKit
 #endif

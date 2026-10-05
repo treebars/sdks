@@ -195,10 +195,13 @@ class NotificationStore(private val context: Context, private val prefsName: Str
         save()
     }
 
-    /** Somebody else is signed in now, without a sign-out between: a fetch in flight was asked for the last one. */
+    /**
+     * Somebody else is signed in now, without a sign-out between. The cached page and the marks are the last person's,
+     * as a fetch in flight is: all of it goes, so [cached] has nothing of theirs to answer the next person with.
+     */
     @Synchronized
     fun supersede() {
-        generation += 1
+        reset()
     }
 
     /** Drops everything. Called from `reset()`; the device secret deliberately survives. */

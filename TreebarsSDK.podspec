@@ -17,7 +17,7 @@ Pod::Spec.new do |s|
   s.name         = "TreebarsSDK"
   # Pinned to the same value the generated constants carry, so a core and a wrapper cannot
   # disagree about which SDK they are. `sdks/android`'s Gradle coordinate uses the same one.
-  s.version      = "0.3.0"
+  s.version      = "0.4.0"
   s.summary      = "The Treebars iOS SDK core"
   s.description  = "Events, sessions, the queue, in-app messages and the notification centre."
   s.homepage     = "https://treebars.com"

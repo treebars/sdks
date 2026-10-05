@@ -1067,10 +1067,13 @@ final class InAppStore {
         return true
     }
 
-    /// Somebody else is signed in now, without a sign-out between: a sync in flight was asked for the last one.
+    /**
+     Somebody else is signed in now, without a sign-out between. The queue is the last person's, and so are the ledger
+     of what they were shown and a sync in flight for them: all of it goes here, as at a sign-out, so nothing of theirs
+     is left to be drawn for the person signing in.
+     */
     func supersede() {
-        lock.lock(); defer { lock.unlock() }
-        generation += 1
+        reset()
     }
 
     func list() -> [InAppMessage] {

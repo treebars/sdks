@@ -213,6 +213,24 @@ final class NotificationStoreTests: XCTestCase {
         XCTAssertNil(store.cached())
     }
 
+    /// `cached()` hands its page over without asking whose it is, so somebody else signing in with no sign-out between
+    /// has to empty it then — not at the next fetch, which may never land — along with the last person's marks and a
+    /// page still in flight for them.
+    func testIsEmptiedWhenSomebodyElseSignsInBecauseTheCacheAnswersWithoutAskingWhose() {
+        store.accept(owner: "user_a", page: page([notification(groupID: "a_only")]))
+        store.noteDismissed("b_only")
+        let asked = store.generation
+
+        store.supersede()
+
+        XCTAssertNil(store.cached())
+        XCTAssertNil(NotificationStore().cached())
+        XCTAssertFalse(store.accept(owner: "user_a", page: page([notification(groupID: "a_only")]), askedAt: asked))
+        XCTAssertNil(store.cached())
+        // A mark the last person made hides nothing of the next person's.
+        XCTAssertEqual(store.overlay([notification(groupID: "b_only")]).count, 1)
+    }
+
     /// The owner is read when the answer lands, so a page asked for before a sign-out must not be filed as the device's.
     func testDropsAFirstPageAskedForBeforeASignOut() {
         let asked = store.generation

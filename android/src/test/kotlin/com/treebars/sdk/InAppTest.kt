@@ -9,6 +9,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -197,6 +198,35 @@ class InAppTest {
         assertFalse(store.allows(store.message("del_1")))
     }
 
+    /*
+     * One clock per call. A caller that passes `now` is answered against it for every rule, so a moment can be asked
+     * about exactly — the instant before an expiry, the second a gap ends — whatever the device's own clock reads.
+     * Both expiries below sit far from any date this runs on, one each side of it.
+     */
+    @Test
+    fun `expiry is read against the clock the caller passes`() {
+        val store = store()
+        val longAgo = 1_000_000_000_000L
+        val farAhead = 4_000_000_000_000L
+        store.accept(responseJson(listOf(messageJson("old", expiresAt = Iso8601.at(longAgo)), messageJson("new", expiresAt = Iso8601.at(farAhead)))))
+
+        assertNull(store.blockedBy(store.message("old"), now = longAgo - 1))
+        assertEquals("expired", store.blockedBy(store.message("old"), now = longAgo))
+        assertNull(store.blockedBy(store.message("new"), now = farAhead - 1))
+        assertEquals("expired", store.blockedBy(store.message("new"), now = farAhead))
+    }
+
+    @Test
+    fun `the gap after a display is measured from the clock the display was recorded with`() {
+        val store = store()
+        store.accept(responseJson(messages = listOf(messageJson("a"), messageJson("b")), minGapSeconds = 600))
+        val shownAt = 1_000_000_000_000L
+        store.recordDisplay(store.message("a"), "s1", shownAt)
+
+        assertEquals("min_gap", store.blockedBy(store.message("b"), "s1", shownAt + 599_999L))
+        assertNull(store.blockedBy(store.message("b"), "s1", shownAt + 600_000L))
+    }
+
     @Test
     fun `displays stop at max_displays for this device`() {
         val store = store()
@@ -321,6 +351,18 @@ class InAppTest {
         store.supersede()
         assertFalse(store.accept(responseJson(listOf(messageJson("previous"))), asked))
         assertEquals(emptyList<InAppMessage>(), store.list())
+    }
+
+    @Test
+    fun `holds nothing of the last person once somebody else signed in`() {
+        val store = store()
+        assertTrue(store.accept(responseJson(listOf(messageJson("theirs"))), store.generation))
+        assertEquals(listOf("theirs"), store.list().map { it.deliveryId })
+
+        store.supersede()
+
+        assertEquals(emptyList<InAppMessage>(), store.list())
+        assertEquals(emptyList<String>(), store.inbox().map { it.deliveryId })
     }
 
     // --- the self-trigger guard ---------------------------------------------------------
