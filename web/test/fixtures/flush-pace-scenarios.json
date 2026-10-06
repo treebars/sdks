@@ -1,0 +1,1426 @@
+{
+  "//": "Cases every Treebars SDK runs against its own implementation, shared so that the SDKs cannot disagree. Generated; do not edit.",
+  "epoch_ms": 1700000000000,
+  "policy": {
+    "debounce_ms": 1000,
+    "spacing_ms": 5000,
+    "spacing_metered_ms": 15000,
+    "spacing_test_ms": 1000,
+    "spacing_constrained_ms": 30000,
+    "spacing_min_ms": 1000,
+    "spacing_max_ms": 60000,
+    "batch_size": 50
+  },
+  "scenarios": [
+    {
+      "id": "FP-001",
+      "rule": "debounce",
+      "name": "an event on a quiet device is sent a second after it happens, and not a moment before",
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 999,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-002",
+      "rule": "debounce",
+      "name": "a burst is one upload: the wait is armed by the first event and not moved by later ones",
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "track",
+          "at": 300,
+          "events": [
+            "e2"
+          ]
+        },
+        {
+          "do": "track",
+          "at": 900,
+          "events": [
+            "e3"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 999,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1",
+                  "e2",
+                  "e3"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-003",
+      "rule": "spacing",
+      "name": "a busy device waits for the spacing: the next upload is five seconds after the last one began",
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "track",
+          "at": 1500,
+          "events": [
+            "e2"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 2500,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 5999,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 6000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e2"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-004",
+      "rule": "spacing",
+      "name": "once the spacing has passed, the next event is a second away again",
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "track",
+          "at": 7000,
+          "events": [
+            "e2"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 7999,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 8000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e2"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-005",
+      "rule": "test key",
+      "name": "under a test key the spacing is a second, so only the debounce is felt",
+      "key": "test",
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "track",
+          "at": 1500,
+          "events": [
+            "e2"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 2499,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 2500,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e2"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-006",
+      "rule": "metered",
+      "name": "on a metered network the first event still leaves in a second, and a busy device then keeps fifteen",
+      "network": "metered",
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "track",
+          "at": 1500,
+          "events": [
+            "e2"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 15999,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 16000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e2"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-007",
+      "rule": "constrained",
+      "name": "a device saving power or data keeps thirty seconds between uploads",
+      "network": "constrained",
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "track",
+          "at": 2000,
+          "events": [
+            "e2"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 30999,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 31000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e2"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-008",
+      "rule": "server's word",
+      "name": "the spacing an accepted upload names is the one kept from then on",
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200,
+              "flush_ms": 2000
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "track",
+          "at": 1500,
+          "events": [
+            "e2"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 2999,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 3000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e2"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-009",
+      "rule": "server's word",
+      "name": "a spacing below the least a device accepts is taken as the least",
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200,
+              "flush_ms": 100
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "track",
+          "at": 1500,
+          "events": [
+            "e2"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 2499,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 2500,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e2"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-010",
+      "rule": "server's word",
+      "name": "a spacing above the most a device accepts is taken as the most",
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200,
+              "flush_ms": 999999
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "track",
+          "at": 1500,
+          "events": [
+            "e2"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 60999,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 61000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e2"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-011",
+      "rule": "metered",
+      "name": "the metered floor outlasts a faster word from the server",
+      "network": "metered",
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200,
+              "flush_ms": 2000
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "track",
+          "at": 1500,
+          "events": [
+            "e2"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 15999,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 16000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e2"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-012",
+      "rule": "test key",
+      "name": "a test key on a metered network is still a second: somebody is watching",
+      "key": "test",
+      "network": "metered",
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "track",
+          "at": 1500,
+          "events": [
+            "e2"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 2499,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 2500,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e2"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-013",
+      "rule": "constrained",
+      "name": "saving power or data outlasts a test key and the server's word alike",
+      "key": "test",
+      "network": "constrained",
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200,
+              "flush_ms": 1000
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "track",
+          "at": 2000,
+          "events": [
+            "e2"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 30999,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 31000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e2"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-014",
+      "rule": "trigger",
+      "name": "an event a campaign is waiting on does not wait for the spacing",
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "track",
+          "at": 1500,
+          "events": [
+            "t1"
+          ],
+          "trigger": true
+        },
+        {
+          "do": "advance",
+          "at": 2499,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 2500,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "t1"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-015",
+      "rule": "trigger",
+      "name": "a trigger pulls in the upload an ordinary event had armed for later, and carries it",
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "track",
+          "at": 1500,
+          "events": [
+            "e2"
+          ]
+        },
+        {
+          "do": "track",
+          "at": 2000,
+          "events": [
+            "t1"
+          ],
+          "trigger": true
+        },
+        {
+          "do": "advance",
+          "at": 2999,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 3000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e2",
+                  "t1"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "advance",
+          "at": 6000,
+          "expect": {
+            "sent": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-016",
+      "rule": "caller's interval",
+      "name": "an interval the app chose is the spacing, whatever the server says",
+      "flush_interval_ms": 60000,
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200,
+              "flush_ms": 2000
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "track",
+          "at": 1500,
+          "events": [
+            "e2"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 60999,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 61000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e2"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-017",
+      "rule": "caller's interval",
+      "name": "an interval the app chose is never tighter than the debounce",
+      "flush_interval_ms": 10,
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 999,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "track",
+          "at": 1100,
+          "events": [
+            "e2"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 2099,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 2100,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e2"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-018",
+      "rule": "full batch",
+      "name": "a full batch goes at once, spacing or not",
+      "batch_size": 2,
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "track",
+          "at": 1200,
+          "events": [
+            "e2"
+          ]
+        },
+        {
+          "do": "track",
+          "at": 1300,
+          "events": [
+            "e3"
+          ],
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e2",
+                  "e3"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "advance",
+          "at": 6000,
+          "expect": {
+            "sent": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-019",
+      "rule": "spacing",
+      "name": "the spacing is counted from when the last upload began, whether or not it was accepted",
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 400
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "track",
+          "at": 1500,
+          "events": [
+            "e2"
+          ]
+        },
+        {
+          "do": "advance",
+          "at": 5999,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 6000,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e2"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-020",
+      "rule": "backlog",
+      "name": "a backlog larger than one upload's drain keeps going, a spacing at a time, with no new event to ask for it",
+      "batch_size": 2,
+      "queue": [
+        "q1",
+        "q2",
+        "q3",
+        "q4",
+        "q5",
+        "q6",
+        "q7",
+        "q8",
+        "q9",
+        "q10",
+        "q11",
+        "q12",
+        "q13",
+        "q14",
+        "q15",
+        "q16",
+        "q17",
+        "q18",
+        "q19",
+        "q20",
+        "q21",
+        "q22"
+      ],
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ],
+          "responses": [
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "q1",
+                  "q2"
+                ]
+              },
+              {
+                "events": [
+                  "q3",
+                  "q4"
+                ]
+              },
+              {
+                "events": [
+                  "q5",
+                  "q6"
+                ]
+              },
+              {
+                "events": [
+                  "q7",
+                  "q8"
+                ]
+              },
+              {
+                "events": [
+                  "q9",
+                  "q10"
+                ]
+              },
+              {
+                "events": [
+                  "q11",
+                  "q12"
+                ]
+              },
+              {
+                "events": [
+                  "q13",
+                  "q14"
+                ]
+              },
+              {
+                "events": [
+                  "q15",
+                  "q16"
+                ]
+              },
+              {
+                "events": [
+                  "q17",
+                  "q18"
+                ]
+              },
+              {
+                "events": [
+                  "q19",
+                  "q20"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "advance",
+          "at": 4999,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 5000,
+          "responses": [
+            {
+              "status": 200
+            },
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "q21",
+                  "q22"
+                ]
+              },
+              {
+                "events": [
+                  "e1"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "do": "advance",
+          "at": 20000,
+          "expect": {
+            "sent": []
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -51,7 +51,7 @@ dependencies {
    * to the same version this package's generated constants carry, so the bridge and the SDK
    * cannot disagree about which SDK they are.
    */
-  implementation "com.treebars:sdk-android:0.4.0"
+  implementation "com.treebars:sdk-android:0.5.0"
 
   /*
    * Declared here as well as in the core, and it has to be: the core declares coroutines

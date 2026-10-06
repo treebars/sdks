@@ -123,7 +123,7 @@ describe('the browser transport under the upload policy', () => {
     const first = sent[0]!.body;
     expect(pendingState().next_allowed_at).toBe(Date.now() + 5000);
 
-    // Without the wake this would wait for the hour-long timer configured above.
+    // Without the wake nothing would send it: the spacing configured above is an hour, and no event is logged.
     answers.push(async () => new Response('{}', { status: 200 }));
     await vi.advanceTimersByTimeAsync(4999);
     expect(sent).toHaveLength(1);

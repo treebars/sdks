@@ -91,6 +91,7 @@ export type InAppFailureReason =
   | 'page_rule'
   | 'expired'
   | 'render_error'
+  /** The page had nothing set to draw it: `setInAppRenderer(null)`, or a nudge on a page that draws its own messages. */
   | 'no_renderer'
   /** An HTML body whose frame the site's Content-Security-Policy refused, both the Treebars frame and the page's own. */
   | 'csp_blocked'
@@ -239,8 +240,9 @@ export function byPriority(messages: InAppMessage[]): InAppMessage[] {
 }
 
 /*
- * The built-in renderer. Plain DOM with inline styles in a shadow root, so nothing of the page leaks in and nothing of
- * ours leaks out; `setInAppRenderer('builtin')` turns it on. A page with its own design system keeps writing its own.
+ * The built-in renderer, which is what draws a message unless the page sets its own. Plain DOM with inline styles in
+ * a shadow root, so nothing of the page leaks in and nothing of ours leaks out. A page with its own design system
+ * hands `setInAppRenderer` a function instead, and `null` to have nothing drawn.
  */
 
 export interface BuiltInView {

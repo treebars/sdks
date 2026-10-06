@@ -65,7 +65,9 @@ private const val AUTH_GATE_CEILING_MS = TreebarsConstants.AUTH_COOLDOWN_SECONDS
  * the scenarios run it without waiting; [scope] is where the one wake it schedules is launched.
  *
  * It also decides when a listed event goes out — the shared `trigger-scenarios.json` is that half
- * of the policy, and [TriggerEvents] is the list it asks.
+ * of the policy, and [TriggerEvents] is the list it asks. When every other event goes out is not
+ * decided here: that is [FlushPace], beside this class, which is told as each request leaves and
+ * when a drain ends with events still waiting, and reads the spacing an accepted upload named.
  */
 internal class EventUploader(
     private val queue: EventQueue,
@@ -89,11 +91,24 @@ internal class EventUploader(
     private val triggers: TriggerEvents? = null,
     /**
      * True while the person has opted out (`Treebars.optOut`). Nothing is sent then, whoever asks — the
-     * timer, the lifecycle, a wake, a trigger, the flush on the way up, or the public `flush()`. Asked
+     * pace, the lifecycle, a wake, a trigger, the flush on the way up, or the public `flush()`. Asked
      * before every batch, so a drain already running stops at the next one. It drops nothing itself;
      * that is the opt-out's discard.
      */
     private val paused: () -> Boolean = { false },
+    /**
+     * Told as each request leaves, whoever asked for the drain it belongs to. The pace counts its
+     * spacing from here, and one place that every send passes through is the only way a retry's
+     * wake or a listed event's is counted with the rest.
+     */
+    private val uploadBegan: () -> Unit = {},
+    /**
+     * Told when a drain that sent something ends with events still waiting and neither gate closed:
+     * a drain carries a bounded number of batches, and a dropped batch ends its drain. The pace arms
+     * the next upload from it, so a long queue keeps going without a new event to ask. A closed gate
+     * is not this — a retry's wake comes back by itself, and a refused key waits out its cooldown.
+     */
+    private val backlogLeft: () -> Unit = {},
 ) {
 
     /**
@@ -136,6 +151,9 @@ internal class EventUploader(
     /** Whether the queue has been checked against the stored batches yet. Flush-lock only. */
     private var reconciled = false
 
+    /** How many requests have left, compared across a drain to learn whether it sent anything. Flush-lock only. */
+    private var requests = 0L
+
     @Volatile
     private var wake: Job? = null
 
@@ -144,6 +162,13 @@ internal class EventUploader(
 
     /** Events sealed into batches and not yet acknowledged. */
     fun pendingEvents(): Int = state.pending.sumOf { it.events.size }
+
+    /**
+     * How far apart the last accepted upload asked a busy device to keep its uploads, in
+     * milliseconds, or null before one has named a spacing — an earlier launch's included, since it
+     * is kept with the rest of the state.
+     */
+    val spacingMs: Long? get() = state.spacingMs
 
     /**
      * Drops every sealed batch, with the gates they had closed — for an opt-out or a wipe, where the
@@ -173,6 +198,17 @@ internal class EventUploader(
     }
 
     /**
+     * A flush that waits its turn where [flush] would collapse into a drain already running: for
+     * the pace's wake, which exists to carry the events that armed it. The drain it would collapse
+     * into may have sealed its last batch before those events reached the queue, and nothing else
+     * is due to come back for them.
+     */
+    suspend fun flushInTurn() {
+        val seen = drain(waitForLock = true)
+        triggers?.observe(seen)
+    }
+
+    /**
      * A logged event, told to the uploader once it is on the queue. A listed one asks for a flush
      * `TRIGGER_FLUSH_DEBOUNCE_MS` from now.
      *
@@ -191,41 +227,65 @@ internal class EventUploader(
      * @param waitForLock false for every ordinary trigger, which collapses into a flush already
      *   running. True for a wake, which is launched from inside the flush that failed and can fire
      *   before that flush has let go — collapsing into it would lose the retry it exists for until
-     *   the next timer tick. A listed event's wake waits too: the drain it would collapse into may
-     *   have sealed its last batch before the event reached the queue.
+     *   something else asked for a flush. A listed event's wake waits too, and the pace's: the drain
+     *   either would collapse into may have sealed its last batch before the event reached the queue.
      * @return the newest trigger version any answer in this drain carried.
      */
     private suspend fun drain(waitForLock: Boolean): String? {
         if (waitForLock) flushLock.lock() else if (!flushLock.tryLock()) return null
 
-        var seen: String? = null
         try {
-            reconcile()
-            var sends = 0
-            while (sends < TreebarsConstants.DRAIN_MAX_BATCHES) {
-                if (paused() || gated(clock())) return seen
-                val batch = state.pending.firstOrNull() ?: seal() ?: return seen
-
-                val names = namesOf(batch.events)
-                report("sending", "Sending ${batch.events.size} event(s)", batch.events.size, names)
-
-                val response = try {
-                    withContext(ioContext) { transport.postEvents(batch.toJson()) }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    // No answer at all. The batch is on disk, so this is recoverable.
-                    TreebarsLogger.log("Upload failed: ${error.message}")
-                    null
-                }
-                if (response?.triggersVersion != null) seen = response.triggersVersion
-                sends += 1
-                if (!settle(batch, response)) return seen
-            }
+            val before = requests
+            val seen = sendPending()
+            // Still under the lock, so what is counted as waiting is what this drain left and no other has touched.
+            if (requests != before && owed()) backlogLeft()
             return seen
         } finally {
             flushLock.unlock()
         }
+    }
+
+    /** One drain's sends, under the flush lock. Returns the newest trigger version any answer carried. */
+    private suspend fun sendPending(): String? {
+        var seen: String? = null
+        reconcile()
+        var sends = 0
+        while (sends < TreebarsConstants.DRAIN_MAX_BATCHES) {
+            if (paused() || gated(clock())) return seen
+            val batch = state.pending.firstOrNull() ?: seal() ?: return seen
+
+            val names = namesOf(batch.events)
+            report("sending", "Sending ${batch.events.size} event(s)", batch.events.size, names)
+
+            requests += 1
+            uploadBegan()
+            val response = try {
+                withContext(ioContext) { transport.postEvents(batch.toJson()) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                // No answer at all. The batch is on disk, so this is recoverable.
+                TreebarsLogger.log("Upload failed: ${error.message}")
+                null
+            }
+            if (response?.triggersVersion != null) seen = response.triggersVersion
+            sends += 1
+            if (!settle(batch, response)) return seen
+        }
+        return seen
+    }
+
+    /**
+     * Whether events are still waiting with nothing here holding them back: what the drain that
+     * just ended could have gone on to send. It reads the gates and changes neither — [gated] is
+     * what re-bases one and arms its wake.
+     */
+    private suspend fun owed(): Boolean {
+        if (paused()) return false
+        val now = clock()
+        if (state.nextAllowedAt > now) return false
+        if (state.authBlockedUntil > now && state.authKey == writeKey) return false
+        return state.pending.isNotEmpty() || queue.size() > 0
     }
 
     /**
@@ -297,6 +357,8 @@ internal class EventUploader(
                     nextAllowedAt = 0,
                     authBlockedUntil = 0,
                     authKey = null,
+                    // An answer that names none is no news, as with the trigger version: the last word stands.
+                    spacingMs = namedSpacingMs(response.flushSpacing) ?: before.spacingMs,
                 ),
             )
             // Normally a no-op: see [seal] for the one case where the queue still holds them.
@@ -378,8 +440,8 @@ internal class EventUploader(
      * One wake, at the earliest moment anything has asked for: a retry falling due, or a listed
      * event's debounce running out.
      *
-     * Without it a two-second backoff would wait for the thirty-second timer, and the jitter would
-     * be decoration — and so would a trigger. A closed gate reports itself on every flush attempt —
+     * Without it a two-second backoff would wait for whatever next asked for a flush, and the jitter
+     * would be decoration — and so would a trigger. A closed gate reports itself on every flush attempt —
      * each event past the batch size is one — so a wake still sleeping towards this time or an
      * earlier one is left alone: it will find the gate and ask again. A wake whose time has come is
      * not treated as pending, because the flush that schedules the next retry is usually that wake's
@@ -408,7 +470,7 @@ internal class EventUploader(
      * A fired wake is spent before it drains, told rather than inferred from the clock: `delay` runs
      * on a monotonic clock and [clock] is the wall clock, so a wake can finish a moment before
      * [clock] reaches the time it was armed for — and one that still looked asleep would refuse to
-     * arm the next, leaving a retry to the thirty-second tick.
+     * arm the next, leaving a retry with nothing to wake it.
      */
     @Synchronized
     private fun woke(at: Long) {
@@ -423,6 +485,22 @@ internal fun jitterMs(attempt: Int, random: Double): Long {
         TreebarsConstants.BACKOFF_BASE_SECONDS * 2.0.pow(minOf(attempt, 30)),
     ) * 1000.0
     return floor(random * ceilingMs).toLong()
+}
+
+/**
+ * The spacing a response named, in milliseconds, held to the bounds a device accepts — or null when
+ * it named none this core can read.
+ *
+ * Whole milliseconds as digits and nothing looser, as `Retry-After` is read: a value one SDK takes
+ * and another refuses would be three paces rather than one. Out of bounds is clamped rather than
+ * refused, because the server meant something by it — as fast as this device will go, or as slow.
+ */
+internal fun namedSpacingMs(header: String?): Long? {
+    val value = header?.trim() ?: return null
+    if (!DELTA_SECONDS.matches(value)) return null
+    // Through a Double, so a run of digits too long for a Long is the most a device accepts rather than a throw.
+    return minOf(value.toDouble(), TreebarsConstants.FLUSH_SPACING_MAX_MS.toDouble()).toLong()
+        .coerceIn(TreebarsConstants.FLUSH_SPACING_MIN_MS, TreebarsConstants.FLUSH_SPACING_MAX_MS)
 }
 
 private val DELTA_SECONDS = Regex("""^[0-9]+$""")

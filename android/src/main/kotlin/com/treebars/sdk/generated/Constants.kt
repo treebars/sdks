@@ -18,6 +18,7 @@ internal object TreebarsConstants {
     const val WRITE_KEY_HEADER = "X-Treebars-Key"
     const val DEVICE_AUTH_HEADER = "X-Treebars-Device-Auth"
     const val TRIGGERS_VERSION_HEADER = "X-Treebars-Triggers-Version"
+    const val FLUSH_SPACING_HEADER = "X-Treebars-Flush-Ms"
     const val LINK_RESOLVE_HEADER = "X-Treebars-Resolve"
     const val USER_SIGNATURE_HEADER = "X-Treebars-User-Signature"
     const val USER_ID_HEADER = "X-Treebars-User-Id"
@@ -36,9 +37,20 @@ internal object TreebarsConstants {
     const val QUEUE_CAP = 1000
     const val SESSION_TIMEOUT_MS = 1800000L
     const val CONTEXT_REPORT_TTL_MS = 7L * 24 * 60 * 60 * 1000
+    /** How long a device's description has stood before it is reported again: what the app sets beside its start is in it by then. */
+    const val CONTEXT_SETTLE_MS = 2000L
     const val DEFAULT_FLUSH_INTERVAL_MS = 30000L
     /** How soon after a listed event its flush goes out. Armed by the first, not moved by later ones. */
     const val TRIGGER_FLUSH_DEBOUNCE_MS = 1000L
+    /** How soon after any event its flush goes out, when nothing was uploaded within the spacing. */
+    const val FLUSH_DEBOUNCE_MS = 1000L
+    /** The least time between two uploads while busy: the default, on a metered network, and under a test key. */
+    const val FLUSH_SPACING_MS = 5000L
+    const val FLUSH_SPACING_METERED_MS = 15000L
+    const val FLUSH_SPACING_TEST_MS = 1000L
+    /** The bounds on the spacing a response may name. */
+    const val FLUSH_SPACING_MIN_MS = 1000L
+    const val FLUSH_SPACING_MAX_MS = 60000L
     const val DEFAULT_IN_APP_POLL_INTERVAL_MS = 900000L
     const val IN_APP_PRESENTATION_HOLD_MS = 30000L
     /** A reward claim refused with a 429 or 503, or unanswered, is asked again this many times, all within the budget. */
@@ -85,7 +97,7 @@ internal object TreebarsConstants {
     /** Our click id's parameter, read out of the URL that opened the app. */
     const val ACQUISITION_CLICK_ID_PARAM = "tbrs_click_id"
 
-    const val SDK_VERSION = "0.4.0"
+    const val SDK_VERSION = "0.5.0"
     const val SDK_NAME = "treebars-android"
     const val DEVICE_ID_PREFIX = "dev_"
 

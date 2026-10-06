@@ -165,7 +165,8 @@ export class WebPush {
     } catch {
       registered = null;
     }
-    if (!registered?.endpoint || Notification.permission !== 'granted') return;
+    // A record with a path and no endpoint is one `deviceChanged` left: subscribed, and owed a registration.
+    if (!(registered?.endpoint || registered?.path) || Notification.permission !== 'granted') return;
     try {
       const registration = await navigator.serviceWorker.getRegistration(registered.path ?? '/treebars-sw.js');
       const subscription = await registration?.pushManager.getSubscription();
@@ -174,6 +175,22 @@ export class WebPush {
       await this.host.flush();
     } catch {
       // A browser that will not say is left as it was; the next load asks again.
+    }
+  }
+
+  /**
+   * This browser reports as another device from here on (`shareAcrossSubdomains`). Its push subscription was
+   * registered for the previous one, so the record of that is kept without its endpoint — which no subscription
+   * matches — and the next `refresh` registers the subscription again, for this device. A browser the site never
+   * subscribed has no record, and nothing changes for it.
+   */
+  deviceChanged(): void {
+    try {
+      const registered = JSON.parse(safeGet(REGISTERED_KEY) ?? 'null') as { endpoint?: string; path?: string } | null;
+      if (!registered?.endpoint) return;
+      safeSet(REGISTERED_KEY, JSON.stringify({ path: registered.path ?? '/treebars-sw.js' }));
+    } catch {
+      // A record that cannot be read is no record.
     }
   }
 

@@ -1,6 +1,6 @@
 {
   "name": "@treebars/web-sdk",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Browser SDK for Treebars analytics and engagement",
   "license": "MIT",
   "homepage": "https://treebars.com/docs",

@@ -133,17 +133,18 @@ class TreebarsNativeModule(reactContext: ReactApplicationContext) :
      * `PackageManager` itself, and its answer is the build that is actually running rather than
      * a literal somebody last updated by hand.
      *
-     * Both intervals — the flush below and the poll above — fall back to the core's public
-     * defaults rather than to numbers written here. `optLong` has to be handed a value for an
-     * absent key, and a number written here would be a second copy of the core's policy, left
-     * behind the day the core changed it.
+     * Neither interval is a number written here. `optLong` has to be handed a value for an absent
+     * key, and a number of this file's own would be a second copy of the core's policy, left behind
+     * the day the core changed it. So an absent poll interval is the core's public default, and an
+     * absent flush interval is the core's own name for "the app chose none": JavaScript sends the
+     * key only when the app set it, and without it the core keeps its own pace.
      */
     Treebars.initialize(
       context = reactApplicationContext,
       writeKey = writeKey,
       backendUrl = backendUrl,
       env = env,
-      flushIntervalMs = config.optLong("flush_interval_ms", Treebars.DEFAULT_FLUSH_INTERVAL_MS),
+      flushIntervalMs = config.optLong("flush_interval_ms", Treebars.SDK_PACE),
       debug = config.optBoolean("debug", false),
       autoTrackLifecycle = config.optBoolean("auto_track_lifecycle", true),
       autoTrackSessions = config.optBoolean("auto_track_sessions", true),
@@ -478,8 +479,8 @@ class TreebarsNativeModule(reactContext: ReactApplicationContext) :
    *
    * `-1` is the wire's spelling of "nothing is scheduled", which is a different sentence from
    * "a flush is due right now" — a screen showing `0` for both would be lying about one of
-   * them. It is also what a caller gets before `initialize`, which is true rather than an
-   * error: no loop is running, so nothing is due.
+   * them. It is what a caller gets while no event is waiting for an upload, and before
+   * `initialize`, which is true rather than an error: nothing is armed, so nothing is due.
    */
   override fun msUntilNextFlush(): Double =
     runCatching { Treebars.msUntilNextFlush()?.toDouble() ?: -1.0 }

@@ -154,6 +154,7 @@ export class TreebarsSDK {
           backend_url: backendUrl,
           env: config.env,
           debug: config.debug,
+          // Unset stays unset: a key that is `undefined` is left out of the JSON, and the native SDK then keeps its own pace.
           flush_interval_ms: config.flush_interval_ms,
           in_app_enabled: config.in_app_enabled,
           in_app_poll_interval_ms: config.in_app_poll_interval_ms,
@@ -695,8 +696,9 @@ export class TreebarsSDK {
   }
 
   /**
-   * Milliseconds until the next automatic flush, or null when none is scheduled (and before
-   * `init()`). Zero means a flush is due now, which is not the same as none scheduled.
+   * Milliseconds until the next automatic flush, or null when none is scheduled: an event
+   * schedules one, so it is null while nothing has been recorded since the last upload, and
+   * before `init()`. Zero means a flush is due now, which is not the same as none scheduled.
    *
    * Synchronous, so a debug screen can read it once a second to draw a countdown without a
    * round trip per tick. The bridge carries "nothing scheduled" as `-1`, since codegen has no

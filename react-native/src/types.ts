@@ -25,8 +25,15 @@ export interface TreebarsConfig {
   /** Logs what the native SDK is doing to the platform log. Default false. */
   debug?: boolean;
   /**
-   * How often queued events are uploaded, in ms. Default 30000 (thirty seconds), the same on
-   * every Treebars SDK.
+   * The least time between uploads while the app is busy, in ms. Leave it unset for the SDK's own
+   * pace, which is the same on every Treebars SDK: an event is uploaded a second after it is
+   * recorded when nothing was uploaded lately, and otherwise about five seconds after the last
+   * upload — a second under a test write key, longer on a metered network, and as far apart as the
+   * server asks.
+   *
+   * A value here replaces that pace with the spacing you chose, never less than a second. Either
+   * way a device saving power or data keeps thirty seconds between uploads, a full batch is
+   * uploaded at once, and so is an event a live campaign or journey is waiting on.
    */
   flush_interval_ms?: number;
   /**

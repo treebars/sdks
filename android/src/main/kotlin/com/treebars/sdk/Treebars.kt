@@ -10,6 +10,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -138,6 +139,16 @@ data class Adoption(
 }
 
 /**
+ * A lifecycle event's properties: [appName] as `name` when there is one, then the event's own,
+ * which win — `name` is added to these events and never replaces what one of them already says.
+ */
+internal fun lifecycleEventProperties(appName: String?, vararg own: Pair<String, Any?>): Map<String, Any?> =
+    buildMap {
+        appName?.let { put("name", it) }
+        putAll(own)
+    }
+
+/**
  * A label for `Treebars.initialize`'s `env`, which the SDK accepts and does not read: the write key is
  * what names the environment.
  */
@@ -157,9 +168,9 @@ enum class PushProvider(val value: String) {
  *
  * Call [initialize] once, from `Application.onCreate`, then [track] what people do, [identify]
  * them when they sign in and [reset] when they sign out. Events wait in a queue on disk that
- * survives process death, and are uploaded in batches — on a timer, when the app leaves the
- * foreground, and whenever [flush] is called — with exponential backoff when an upload fails. The
- * iOS SDK behaves the same way.
+ * survives process death, and are uploaded in batches — a second after a quiet app records one,
+ * a few seconds apart while it is busy, when the app leaves the foreground, and whenever [flush]
+ * is called — with exponential backoff when an upload fails. The iOS SDK behaves the same way.
  */
 object Treebars {
 
@@ -172,10 +183,25 @@ object Treebars {
     const val CAMPAIGN_ID_KEY = TreebarsConstants.CAMPAIGN_ID_KEY
 
     /**
-     * The defaults [initialize] applies, public so a wrapper SDK can pass them on by name rather
-     * than restating the numbers.
+     * The spacing a device saving power or data keeps between its uploads, in milliseconds: with
+     * Battery Saver or Data Saver on, a busy app uploads this far apart whatever else is set.
+     *
+     * It is not what [initialize] applies when the app chooses no interval — that is [SDK_PACE].
+     * Passing it as `flushIntervalMs` chooses exactly this spacing, on every device.
      */
     const val DEFAULT_FLUSH_INTERVAL_MS = TreebarsConstants.DEFAULT_FLUSH_INTERVAL_MS
+
+    /**
+     * [initialize]'s `flushIntervalMs` when the app chooses none, and its default: the SDK keeps
+     * its own pace, which the app's write key, the network and the server's answers decide. Public
+     * so a wrapper SDK can say "none chosen" by name. Zero or anything below it means the same.
+     */
+    const val SDK_PACE = 0L
+
+    /**
+     * The in-app poll interval [initialize] applies, public so a wrapper SDK can pass it on by name
+     * rather than restating the number.
+     */
     const val DEFAULT_IN_APP_POLL_INTERVAL_MS = TreebarsConstants.DEFAULT_IN_APP_POLL_INTERVAL_MS
 
     /**
@@ -234,6 +260,14 @@ object Treebars {
     private lateinit var queue: EventQueue
     private lateinit var uploader: EventUploader
     private lateinit var triggers: TriggerEvents
+
+    /** When the next upload is due ([FlushPace]). Null before [initialize]. */
+    @Volatile
+    private var pace: FlushPace? = null
+
+    /** Flushes when the device gets its network back, while the app is in front. Null before [initialize]. */
+    @Volatile
+    private var networkWatch: NetworkWatch? = null
 
     private var writeKey: String? = null
     private var env: TreebarsEnv = TreebarsEnv.PRODUCTION
@@ -316,7 +350,7 @@ object Treebars {
      * consent answer ([optOut], [optIn], [setAcquisitionConsent]) may be given first. Once it has
      * started, later calls are ignored.
      *
-     * On the way up it records `app_open` (with `is_first_launch`), reports the device's context
+     * On the way up it records `app_open` (with `is_first_launch` and the app's `name`), reports the device's context
      * when it has changed, uploads whatever an earlier launch left queued and fetches this device's
      * in-app messages — in the background, not on the calling thread.
      *
@@ -329,7 +363,14 @@ object Treebars {
      * @param env accepted and not read: no event or request carries it, and passing a different value
      *   changes nothing this SDK does. The write key is what names the environment — each environment
      *   of a project has its own, so the key an app is built with is the whole of that choice.
-     * @param flushIntervalMs how often queued events are uploaded while the app is open.
+     * @param flushIntervalMs the least time between uploads while the app is busy, in milliseconds.
+     *   Leave it at [SDK_PACE] for the SDK's own pace: an event is uploaded a second after it is
+     *   recorded when nothing was uploaded lately, and otherwise a few seconds after the last
+     *   upload — a second under a test write key, longer on a metered network, and as far apart as
+     *   the server asks. A value here replaces all of that with the spacing the app chose, never
+     *   less than a second. Either way a device saving power or data keeps
+     *   [DEFAULT_FLUSH_INTERVAL_MS], a full batch is uploaded at once, and so is an event a live
+     *   campaign or journey is waiting on.
      * @param debug log what the SDK does to logcat, under the tag `Treebars`. Warnings about a
      *   skipped setup step are logged either way.
      */
@@ -340,7 +381,7 @@ object Treebars {
         writeKey: String,
         backendUrl: String,
         env: TreebarsEnv = TreebarsEnv.PRODUCTION,
-        flushIntervalMs: Long = DEFAULT_FLUSH_INTERVAL_MS,
+        flushIntervalMs: Long = SDK_PACE,
         debug: Boolean = false,
         /**
          * Emit `app_open`, `app_foreground` and `app_background` automatically.
@@ -528,9 +569,26 @@ object Treebars {
             },
         )
         client = BackendClient(backendUrl, writeKey, deviceSecret = { fetchSecret() })
+        /*
+         * The pace and the uploader, each handed the other: the pace asks the uploader to send and
+         * reads the spacing its answers named, and the uploader tells the pace as each request
+         * leaves and when an upload ends with events still waiting. The pace and the network watch
+         * hold THIS queue and uploader rather than reading them off the object when they fire, so
+         * nothing armed here can act on another's.
+         */
+        val queued = queue
+        lateinit var core: EventUploader
+        val paced = FlushPace(
+            scope = scope,
+            chosenMs = flushIntervalMs,
+            testKey = isTestWriteKey(writeKey),
+            conditions = { DeviceConditions.read(appContext) },
+            named = { core.spacingMs },
+            upload = { core.flushInTurn() },
+        )
         // The same directory as the queue, so clearing app data takes a pending batch with the
         // events it came from rather than leaving one to be sent by an install that forgot them.
-        uploader = EventUploader(
+        core = EventUploader(
             queue = queue,
             transport = client!!,
             store = UploaderStore(appContext.filesDir),
@@ -538,7 +596,15 @@ object Treebars {
             scope = scope,
             triggers = triggers,
             paused = { optedOut },
+            uploadBegan = paced::uploadBegan,
+            backlogLeft = paced::backlogLeft,
         )
+        uploader = core
+        pace = paced
+        networkWatch = NetworkWatch(appContext) {
+            // Only when something is waiting. The uploader's own gates still decide whether it goes.
+            scope.launch { if (queued.size() + core.pendingEvents() > 0) core.flush() }
+        }
 
         inAppStore = InAppStore(appContext, PREFS_NAME)
         notificationStore = NotificationStore(appContext, PREFS_NAME)
@@ -550,15 +616,15 @@ object Treebars {
             notificationStore?.reset()
         }
 
-        startAutoFlush(flushIntervalMs)
-        if (autoTrackLifecycle) observeLifecycle()
+        // Always, and not only when lifecycle events are on: the network is watched while the app is in front.
+        observeLifecycle()
         if (inAppPollIntervalMs > 0) startInAppPoll(inAppPollIntervalMs)
 
         // Anything left over from the previous process goes out immediately.
         scope.launch {
             if (autoTrackLifecycle) {
                 foregroundedAt = System.currentTimeMillis()
-                val opened = mapOf("is_first_launch" to firstLaunch)
+                val opened = lifecycleProperties("is_first_launch" to firstLaunch)
                 val snapshot = deviceSnapshot()
                 record(EVENT_APP_OPEN, opened, snapshot = snapshot)
                 /*
@@ -780,8 +846,9 @@ object Treebars {
     }
 
     /**
-     * A notification permission that moved since this device last said, reported now — and the device re-stated with it,
-     * so its recorded push permission moves too. From `TreebarsPush.activityTracker` on every resume.
+     * A notification permission that moved since this device last said, reported now — and the device re-stated just
+     * after it ([settleContext]), so its recorded push permission moves too. From `TreebarsPush.activityTracker` on
+     * every resume.
      */
     internal fun notePermissionChange() {
         if (writeKey == null || !::appContext.isInitialized) return
@@ -791,14 +858,79 @@ object Treebars {
     }
 
     /**
+     * What `device_context` carries: what the device says of itself, and what the app has said of its in-app
+     * messages (`in_app_display`, [DeviceInfo.inAppDisplay]). One place, so the hash is always of the whole of it
+     * and every report — the gated one, a forced one, the one a sign-in re-states — says the same thing.
+     */
+    private fun deviceContext(): Map<String, Any> =
+        DeviceInfo.context(appContext) + ("in_app_display" to inAppDisplay())
+
+    /** How this app's in-app messages are drawn, read now from the two values that decide a draw. */
+    private fun inAppDisplay(): String = DeviceInfo.inAppDisplay(inAppEnabled, inAppRenderer != null)
+
+    /** The wait before this device's description is put to the gate, or null when none is running. See [settleContext]. */
+    private var contextSettle: Job? = null
+    private val contextSettleLock = Any()
+
+    /** A description that settled with no screen in front, owed to the next one. See [settleContext]. */
+    @Volatile
+    private var contextOwed = false
+
+    /** How long a description stands before it is reported. Replaceable for a test, which cannot wait out the real one. */
+    @Volatile
+    internal var contextSettleMs = TreebarsConstants.CONTEXT_SETTLE_MS
+
+    /**
+     * Puts this device's description to the gate once it has stood for [contextSettleMs], counted from the last call:
+     * a launch, a return to the foreground, or a change to how in-app messages are drawn.
+     *
+     * The wait is what makes one launch one answer. An app says how its messages are drawn a moment after it starts
+     * this SDK — [disableInApps] on the line below [initialize], a renderer registered when the first screen is
+     * built, a wrapper attaching its renderer in its next call — and a description hashed before then would say
+     * `sdk`, be corrected when the app's own answer arrived, and say `sdk` again on the next launch: two reports from
+     * every launch, for an app that never changed. Asked only at the end of the wait, the gate sees what the app
+     * settled on, and a renderer detached and attached again inside it — a screen rebuilt, a host remounting — is no
+     * change at all.
+     *
+     * **And only with a screen in front.** A host that registers its renderer with its screen takes it away as the
+     * screen goes, so the same app would be described as `sdk` each time it was left and `app` each time it came
+     * back. What draws a message is a question about an app somebody is looking at: a wait that ends with no
+     * Activity resumed reports nothing, and is started again by the next one that resumes ([noteSurfaceResumed]).
+     */
+    private fun settleContext() {
+        if (writeKey == null) return
+        synchronized(contextSettleLock) {
+            contextSettle?.cancel()
+            contextSettle = scope.launch {
+                delay(contextSettleMs)
+                reportDeviceContext(settled = true)
+            }
+        }
+    }
+
+    /** Stops the wait, and forgets a description owed: for a device being forgotten ([wipeLocalData]). */
+    private fun stopSettlingContext() {
+        synchronized(contextSettleLock) {
+            contextSettle?.cancel()
+            contextSettle = null
+        }
+        contextOwed = false
+    }
+
+    /**
      * Emits `device_context` when this device's context differs from the last reported one.
      *
      * A reserved event rather than a bespoke endpoint, so it inherits the batching, retry
      * and on-disk queue every other event gets, and costs no cold-start round trip. The
      * hash check is what keeps this rare: after the first launch a device normally reports
      * nothing until the app or OS is upgraded.
+     *
+     * **When.** A device nobody has heard from reports at once: that report registers its secret, and nothing it
+     * may fetch is answered until it has landed. A [force]d report is at once too. Every other one waits for the
+     * launch to settle ([settleContext]) and comes back here as [settled], since it is a correction and can afford
+     * to be right about what the app has said by then.
      */
-    private fun reportDeviceContext(force: Boolean = false) {
+    private fun reportDeviceContext(force: Boolean = false, settled: Boolean = false) {
         runCatching {
             /*
              * Before the hash gate, not after it, because the two answer different
@@ -816,7 +948,15 @@ object Treebars {
             // keep the device from describing itself for a week after [optIn].
             if (optedOut) return
 
-            val context = DeviceInfo.context(appContext)
+            if (!force) {
+                if (!settled && DeviceInfo.hasReportedContext(appContext)) return settleContext()
+                if (settled && !TreebarsPush.hasResumedActivity()) {
+                    contextOwed = true
+                    return
+                }
+            }
+
+            val context = deviceContext()
             val hash = DeviceInfo.hashContext(context)
             // `force` skips the hash gate. Its callers are answering a server that asked this
             // device to report itself (`claim_required`), and waiting out the seven-day TTL would
@@ -889,10 +1029,11 @@ object Treebars {
      * its files inlined, and what a standard body's picture is read from when it is here.
      */
     private var assetCache: InAppAssetCache? = null
-    private var inAppRenderer: InAppRenderer? = null
+    // Both volatile: written from whichever thread the app calls on, and read where a report is built.
+    @Volatile private var inAppRenderer: InAppRenderer? = null
     /** The last renderer attached, kept across a detach so re-attaching the same one can be told from a new host. */
     private var lastInAppRenderer: java.lang.ref.WeakReference<InAppRenderer>? = null
-    private var inAppEnabled = true
+    @Volatile private var inAppEnabled = true
 
     /** The app's in-app contexts and listeners, and a message waiting out its delay. */
     @Volatile private var appContexts: Set<String> = emptySet()
@@ -919,10 +1060,17 @@ object Treebars {
     /**
      * Registers the app's own renderer for standard in-app messages, or null to have this SDK draw them. See
      * [InAppRenderer]. Attaching one also answers a trigger that fired before anything could draw it.
+     *
+     * Which of the two draws is part of this device's `device_context` (`in_app_display`: `app` or `sdk`), so a
+     * change is reported — once it has stood for a moment with a screen in front, and only when it is a change:
+     * another renderer in place of one, or the same one detached and attached again, reports nothing.
      */
     @JvmStatic
     fun setInAppRenderer(renderer: InAppRenderer?) {
+        val display = inAppDisplay()
         inAppRenderer = renderer
+        // Only when the answer moved, so a host that registers on every rebuild does not keep pushing the wait back.
+        if (inAppDisplay() != display) settleContext()
         TreebarsLogger.log(
             if (renderer == null) "in-app: renderer detached"
             else "in-app: renderer attached (${if (renderer === lastInAppRenderer?.get()) "the same one again" else "a new one"})",
@@ -978,7 +1126,13 @@ object Treebars {
      * renderer is asked whether it can draw.
      */
     internal fun noteSurfaceResumed() {
-        if (writeKey == null || synchronized(undrawnTriggers) { undrawnTriggers.isEmpty() }) return
+        if (writeKey == null) return
+        // A description that settled while no screen was in front waits again, now that one is ([settleContext]).
+        if (contextOwed) {
+            contextOwed = false
+            settleContext()
+        }
+        if (synchronized(undrawnTriggers) { undrawnTriggers.isEmpty() }) return
         mainHandler.post { replayUndrawnTriggers() }
     }
 
@@ -2411,10 +2565,15 @@ object Treebars {
      * No in-app message is synced or shown on this device for the rest of the process: the one on screen is taken down.
      * The same as the iOS SDK's `disableInApps`. The React Native bridge calls it for `in_app_enabled: false`, because
      * this SDK draws messages itself and a missing renderer does not mean nothing is drawn.
+     *
+     * The device says so: its `device_context` reports `in_app_display: off` from here on, which is how a project
+     * can tell an app that shows no messages from one that was sent none.
      */
     @JvmStatic
     fun disableInApps() {
+        val display = inAppDisplay()
         inAppEnabled = false
+        if (inAppDisplay() != display) settleContext()
         mainHandler.post {
             closeNative(nativeHost)
             htmlHost?.destroy()
@@ -2651,6 +2810,8 @@ object Treebars {
          */
         for (name in step.boundaries) uploader.eventLogged(name)
         eventName?.let { uploader.eventLogged(it) }
+        // And every one of them, listed or not, arms the pace's upload — a token queued nothing, and arms nothing.
+        if (eventName != null || step.boundaries.isNotEmpty()) pace?.eventQueued()
 
         /*
          * Show the in-app layer the session it would not otherwise see.
@@ -2758,7 +2919,7 @@ object Treebars {
             // without. Forced rather than left to shouldReportContext, whose hash covers
             // the device's own attributes and is unchanged by a login.
             runCatching {
-                val context = DeviceInfo.context(appContext)
+                val context = deviceContext()
                 track(
                     "device_context",
                     context + mapOf(
@@ -3013,15 +3174,19 @@ object Treebars {
         if (writeKey == null) 0 else queue.size() + uploader.pendingEvents()
 
     /**
-     * Milliseconds until the auto-flush next runs, or null when nothing is scheduled.
+     * Milliseconds until the next automatic upload, or null when none is scheduled.
      *
-     * Null rather than zero when the loop is not running, which is the distinction a caller
-     * needs: "no flush is scheduled" and "a flush is due right now" are different sentences
-     * and a screen that showed 0 for both would be lying about one of them. Clamped at zero
-     * on the low side, because a negative countdown reads as a bug.
+     * An upload is scheduled by an event: it is due a second after the first event recorded since
+     * the last one, or once the spacing since the last upload has passed, whichever is later. So
+     * this is null while nothing has been recorded since the last upload, and before [initialize].
+     *
+     * Null rather than zero then, which is the distinction a caller needs: "no flush is scheduled"
+     * and "a flush is due right now" are different sentences and a screen that showed 0 for both
+     * would be lying about one of them. Clamped at zero on the low side, because a negative
+     * countdown reads as a bug.
      */
     @JvmStatic
-    fun msUntilNextFlush(): Long? = nextFlushAt?.let { maxOf(0L, it - System.currentTimeMillis()) }
+    fun msUntilNextFlush(): Long? = pace?.msUntilDue()
 
     /**
      * Uploads what is queued now, including every event tracked before this call. Returns at once;
@@ -3173,6 +3338,8 @@ object Treebars {
     @JvmStatic
     fun wipeLocalData() {
         if (writeKey == null) return
+        // A description waiting to be reported was the forgotten device's.
+        stopSettlingContext()
         scope.launch {
             discardUnsent()
             recordMutex.withLock {
@@ -3300,24 +3467,12 @@ object Treebars {
     private fun sdkName() = sdkNameOverride ?: TreebarsConstants.SDK_NAME
 
     /**
-     * When the auto-flush loop is next due, as epoch millis. Null when it is not running.
-     *
-     * Recorded rather than derived, because a bare `while { delay; flush }` keeps no state a
-     * caller of [msUntilNextFlush] could read. Written before each sleep, so a caller reading it
-     * mid-upload gets the next fire rather than one in the past.
+     * What `app_open`, `app_foreground` and `app_background` carry: their own properties, and the
+     * app's display name as `name` when it can be read. Every app sends these three, so the name is
+     * what tells one row of them from another in a list — "app_open · Acme Shop".
      */
-    @Volatile
-    private var nextFlushAt: Long? = null
-
-    private fun startAutoFlush(intervalMs: Long) {
-        scope.launch {
-            while (isActive) {
-                nextFlushAt = System.currentTimeMillis() + intervalMs
-                delay(intervalMs)
-                uploader.flush()
-            }
-        }
-    }
+    private fun lifecycleProperties(vararg own: Pair<String, Any?>): Map<String, Any?> =
+        lifecycleEventProperties(DeviceInfo.appName(appContext), *own)
 
     /**
      * Watches the app move between foreground and background.
@@ -3328,6 +3483,9 @@ object Treebars {
      *
      * The background transition carries the flush, and that is the more important half:
      * it is the last reliable moment to upload before Android may kill the process.
+     *
+     * Observed whether or not `autoTrackLifecycle` is on, because the network is watched only
+     * while the app is in front; the events and the background flush are what that option turns off.
      */
     private fun observeLifecycle() {
         /*
@@ -3354,10 +3512,12 @@ object Treebars {
         runCatching {
             ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
                 override fun onStart(owner: LifecycleOwner) {
+                    networkWatch?.start()
+                    if (!autoTrackLifecycle) return
                     val now = System.currentTimeMillis()
                     // Skipped for the launch itself, which `app_open` already reported.
                     if (backgroundedAt > 0) {
-                        track(EVENT_APP_FOREGROUND, mapOf("background_ms" to now - backgroundedAt))
+                        track(EVENT_APP_FOREGROUND, lifecycleProperties("background_ms" to now - backgroundedAt))
 
                         /*
                          * And re-state the context, because coming back is the one moment
@@ -3368,7 +3528,8 @@ object Treebars {
                          *
                          * Nearly free: `reportDeviceContext` short-circuits on the stored
                          * hash, so a foreground where nothing moved costs a preferences
-                         * read and no network.
+                         * read and no network. Asked a moment after the return rather than
+                         * in it ([settleContext]), once a screen is in front again.
                          */
                         reportDeviceContext()
                     }
@@ -3376,6 +3537,8 @@ object Treebars {
                 }
 
                 override fun onStop(owner: LifecycleOwner) {
+                    networkWatch?.stop()
+                    if (!autoTrackLifecycle) return
                     val now = System.currentTimeMillis()
                     val foregroundMs = now - foregroundedAt
                     backgroundedAt = now
@@ -3385,7 +3548,7 @@ object Treebars {
                     // batch that did not yet contain the event.
                     scope.launch {
                         if (foregroundedAt > 0) {
-                            record(EVENT_APP_BACKGROUND, mapOf("foreground_ms" to foregroundMs))
+                            record(EVENT_APP_BACKGROUND, lifecycleProperties("foreground_ms" to foregroundMs))
                         }
                         uploader.flush()
                     }
@@ -3399,7 +3562,7 @@ object Treebars {
              */
             TreebarsLogger.log(
                 "Lifecycle observation unavailable (${it::class.java.simpleName}: ${it.message}); " +
-                    "relying on the periodic flush",
+                    "nothing is flushed on the way to the background, and the network is not watched",
             )
         }
     }

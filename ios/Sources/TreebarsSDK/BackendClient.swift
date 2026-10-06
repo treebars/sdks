@@ -1,6 +1,6 @@
 import Foundation
 
-/// What an upload got back: the status, and the two headers the upload policy reads.
+/// What an upload got back: the status, and the headers the upload policy and the pace read.
 ///
 /// A thrown error is the other outcome — no answer at all — and the uploader treats the two
 /// differently, so a status is never invented to stand for "the network failed".
@@ -9,6 +9,9 @@ struct UploadResponse {
     let retryAfter: String?
     /// `X-Treebars-Triggers-Version`, which the server sets on an accepted upload and nothing else.
     var triggersVersion: String? = nil
+    /// The spacing the server asks this device to keep between uploads, in milliseconds, as an
+    /// accepted upload's answer carries it. Unparsed: `FlushPace.spacing(fromHeader:)` reads it.
+    var flushSpacing: String? = nil
 }
 
 /// What `/v1/context-token` answered, as far as anything acts on it.
@@ -103,7 +106,8 @@ final class BackendClient: EventTransport {
         return UploadResponse(
             status: http?.statusCode ?? 0,
             retryAfter: http?.value(forHTTPHeaderField: "Retry-After"),
-            triggersVersion: http?.value(forHTTPHeaderField: TreebarsConstants.triggersVersionHeader)
+            triggersVersion: http?.value(forHTTPHeaderField: TreebarsConstants.triggersVersionHeader),
+            flushSpacing: http?.value(forHTTPHeaderField: TreebarsConstants.flushSpacingHeader)
         )
     }
 

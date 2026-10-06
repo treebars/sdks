@@ -23,6 +23,7 @@ export const HEADERS = {
   deviceAuth: 'X-Treebars-Device-Auth',
   preview: 'X-Treebars-Preview',
   triggersVersion: 'X-Treebars-Triggers-Version',
+  flushSpacing: 'X-Treebars-Flush-Ms',
   linkResolve: 'X-Treebars-Resolve',
   userSignature: 'X-Treebars-User-Signature',
   userId: 'X-Treebars-User-Id',
@@ -42,9 +43,20 @@ export const AUTH_COOLDOWN_SECONDS = 3600;
 export const QUEUE_CAP = 1000;
 export const SESSION_TIMEOUT_MS = 1800000;
 export const CONTEXT_REPORT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** How long a device's description has stood before it is reported again: what the app sets beside its start is in it by then. */
+export const CONTEXT_SETTLE_MS = 2000;
 export const DEFAULT_FLUSH_INTERVAL_MS = 30000;
 /** How soon after a listed event its flush goes out. Armed by the first, not moved by later ones. */
 export const TRIGGER_FLUSH_DEBOUNCE_MS = 1000;
+/** How soon after any event its flush goes out, when nothing was uploaded within the spacing. */
+export const FLUSH_DEBOUNCE_MS = 1000;
+/** The least time between two uploads while busy: the default, on a metered network, and under a test key. */
+export const FLUSH_SPACING_MS = 5000;
+export const FLUSH_SPACING_METERED_MS = 15000;
+export const FLUSH_SPACING_TEST_MS = 1000;
+/** The bounds on the spacing a response may name. */
+export const FLUSH_SPACING_MIN_MS = 1000;
+export const FLUSH_SPACING_MAX_MS = 60000;
 export const DEFAULT_IN_APP_POLL_INTERVAL_MS = 900000;
 export const IN_APP_PRESENTATION_HOLD_MS = 30000;
 /** A reward claim refused with a 429 or 503, or unanswered, is asked again this many times, all within the budget. */
@@ -93,7 +105,7 @@ export const ACQUISITION = {
 /** Play's cap on the referrer it hands back, so a page cannot build one the store will truncate. */
 export const MAX_REFERRER_LENGTH = 1000;
 
-export const SDK_VERSION = '0.4.0';
+export const SDK_VERSION = '0.5.0';
 export const SDK_NAME = 'treebars-react-native';
 export const DEVICE_ID_PREFIX = 'dev_';
 

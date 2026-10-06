@@ -67,14 +67,112 @@ export function writeOptedOut(optedOut: boolean, persist: boolean): void {
   else safeRemove(OPT_OUT_KEY);
 }
 
+/*
+ * The `app_background` a hidden page has not recorded yet.
+ *
+ * A page that is hidden waits before it calls the hide a background, so that a page hidden and shown again a moment
+ * later records nothing. But a hidden page can be frozen or discarded before that wait ends, and nothing tells it
+ * so. What the event would say is therefore kept here from the moment the page is hidden, and taken back out by
+ * whichever gets to it first: the page itself — when the hide has lasted, when it turned out to be nothing, or as
+ * the page is left — or the next page load on this origin, which records what it finds with the time it carries.
+ *
+ * One key for every tab of the origin, holding an entry per hidden page under an id only that page knows. Storage
+ * is the one thing two tabs share, so taking an entry out is what decides who records it: a page whose entry is no
+ * longer there has had it recorded by another page load, and does not record it again.
+ *
+ * It is the project's and the device's, like the session it names. So a different write key drops it — it is not
+ * among `BROWSER_KEYS` — and so does adopting another device (`PREVIOUS_DEVICE_KEYS`).
+ */
+const PENDING_BACKGROUND_KEY = 'treebars.pending_background.v1';
+
+/** What a hidden page's `app_background` will say, if the hide turns out to be one. */
+export interface PendingBackground {
+  /** When the page was hidden, in epoch milliseconds: the time the event carries, whenever it is recorded. */
+  at: number;
+  /** How long the page had been in the foreground by then, in milliseconds. */
+  foregroundMs: number;
+  /** The session the page held as it was hidden, or null when it held none. */
+  session: string | null;
+}
+
+type KeptBackground = PendingBackground & { id: string };
+
+/** Every entry that reads as one. Checked rather than trusted: any script on the origin can write this key. */
+function readPendingBackgrounds(): KeptBackground[] {
+  const raw = safeGet(PENDING_BACKGROUND_KEY);
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const kept: KeptBackground[] = [];
+    for (const each of parsed as Array<Partial<KeptBackground> | null>) {
+      if (!each || typeof each.id !== 'string') continue;
+      // Within what a date can hold, so the timestamp made from it can always be written.
+      if (typeof each.at !== 'number' || !(each.at >= 0 && each.at <= 8.64e15)) continue;
+      if (typeof each.foregroundMs !== 'number' || !(each.foregroundMs >= 0 && each.foregroundMs <= 8.64e15)) continue;
+      if (each.session !== null && typeof each.session !== 'string') continue;
+      kept.push({ id: each.id, at: each.at, foregroundMs: each.foregroundMs, session: each.session });
+    }
+    return kept;
+  } catch {
+    return [];
+  }
+}
+
 /**
- * What an earlier visit left unsent — the queue and the uploader's sealed batches — for a page that
- * starts opted out. That page keeps its own stores in memory and never reads these, so without this a
- * later `optIn()` would send, on the next visit, events recorded before the "no".
+ * Keeps `pending` for the page that was just hidden. Returns the id it is kept under, or null when nothing was kept —
+ * storage is off, or would not take it — and the page holds it in memory alone.
+ *
+ * Read back after the write, because the answer decides who records the event: a write that reported success and
+ * kept nothing would read, later, as an entry somebody else had already taken.
+ */
+export function keepPendingBackground(pending: PendingBackground, persist: boolean): string | null {
+  if (!persist) return null;
+  const id = randomHex(8);
+  const written = JSON.stringify([...readPendingBackgrounds(), { id, ...pending }]);
+  return safeSet(PENDING_BACKGROUND_KEY, written) && safeGet(PENDING_BACKGROUND_KEY) === written ? id : null;
+}
+
+/**
+ * Takes the entry kept under `id` back out, and returns whether it was still there. False means another page load on
+ * this origin took it first and has recorded it — or that it was dropped with everything else, by an opt-out or a
+ * wipe — and either way this page has nothing left to record.
+ */
+export function takePendingBackground(id: string): boolean {
+  const all = readPendingBackgrounds();
+  const rest = all.filter((each) => each.id !== id);
+  if (rest.length === all.length) return false;
+  if (rest.length === 0) safeRemove(PENDING_BACKGROUND_KEY);
+  else safeSet(PENDING_BACKGROUND_KEY, JSON.stringify(rest));
+  return true;
+}
+
+/**
+ * Every entry an earlier page load left, oldest first, taken out as it is read — so each is handed over once, to
+ * the first page load that asks. A page still open in another tab finds its own entry gone and leaves it at that.
+ */
+export function takeLeftBackgrounds(persist: boolean): PendingBackground[] {
+  if (!persist) return [];
+  const left = readPendingBackgrounds();
+  // Whatever the key held, read as entries or not: it has been read, and is not read again.
+  safeRemove(PENDING_BACKGROUND_KEY);
+  return left.sort((a, b) => a.at - b.at).map(({ at, foregroundMs, session }) => ({ at, foregroundMs, session }));
+}
+
+/** Drops every entry, recorded by nobody: what an opt-out does to anything waiting to be recorded or sent. */
+export function dropPendingBackgrounds(): void {
+  safeRemove(PENDING_BACKGROUND_KEY);
+}
+
+/**
+ * What an earlier visit left unsent — the queue, the uploader's sealed batches and any `app_background` still
+ * waiting to be recorded — for a page that starts opted out. That page keeps its own stores in memory and never
+ * reads these, so without this a later `optIn()` would send, on the next visit, events recorded before the "no".
  */
 export function dropStoredQueue(): void {
   safeRemove(QUEUE_KEY);
   safeRemove(STORAGE_KEYS.uploader);
+  safeRemove(PENDING_BACKGROUND_KEY);
 }
 
 /**
@@ -300,6 +398,81 @@ export function getDeviceId(persist: boolean): string {
 }
 
 /**
+ * The shapes minted above, for a device id and secret read back from somewhere other scripts can write. Kept beside
+ * the minting so the two cannot drift: a shape that stopped matching what is minted would refuse every device.
+ */
+export const DEVICE_ID_SHAPE = /^dev_[0-9a-f]{32}$/;
+export const FETCH_SECRET_SHAPE = /^[0-9a-f]{64}$/;
+
+/** A device id and the secret it proves itself with. The two are kept, replaced and forgotten together. */
+export interface StoredDevice {
+  id: string;
+  secret: string;
+}
+
+/** The device this origin holds, as stored. Either half is null when it was never kept or storage will not answer. */
+export function readStoredDevice(): { id: string | null; secret: string | null } {
+  return { id: safeGet(DEVICE_KEY), secret: safeGet(FETCH_SECRET_KEY) };
+}
+
+/*
+ * What this origin kept for the device it reported as before, when it adopts another (`shareAcrossSubdomains`).
+ *
+ * A drop-list, each entry because it is the previous device's and would be wrong under the next one:
+ *
+ * - The device-context marker. It says this browser's context, and with it the device's secret, has been reported —
+ *   for the previous device. The next one has not been reported from this origin, so it is reported again.
+ * - The in-app queue and its ledger. The messages were fetched for the previous device and are reported by delivery,
+ *   and the ledger counts what that device was shown. The next sync fetches this device's own queue.
+ * - The notification feed and its ledger. With nobody signed in the cached history is the previous device's, and a
+ *   cached feed is handed to the page before anything asks whose it is; the marks are for rows of that history.
+ * - The session, in sessionStorage. A session is one device's run of activity: continued, its `session_end` would
+ *   count the previous device's events under this one. A new session opens with the next event.
+ * - Any `app_background` still waiting to be recorded. It is an event of the previous device, in that device's
+ *   session, and recorded now it would be filed under this one.
+ *
+ * The push subscription was registered for the previous device as well. It is made again rather than forgotten, so it
+ * is not on this list: see `WebPush.deviceChanged`.
+ *
+ * Everything else stays. Events already queued or sealed for upload each carry the device id they were recorded
+ * under, so they are still true and are sent as they are. The trigger list is the environment's. Who is signed in and
+ * who had been are the person's, and `init` signs them in again on the adopted device. When this browser was first
+ * seen here, whether it has ever started a session, the carried click, the arrivals already reported, the opt-out and
+ * the push prompt's history are facts about this browser on this origin, whichever device it reports as.
+ */
+const PREVIOUS_DEVICE_KEYS = [
+  CONTEXT_HASH_KEY,
+  STORAGE_KEYS.inApp,
+  STORAGE_KEYS.inAppLedger,
+  STORAGE_KEYS.notifications,
+  STORAGE_KEYS.notificationLedger,
+  PENDING_BACKGROUND_KEY,
+] as const;
+
+/**
+ * Makes `device` the one this origin reports as. When that is a different device from the one held, what the
+ * previous one left here is dropped first (`PREVIOUS_DEVICE_KEYS`); a pair that only repairs a lost secret under the
+ * same id drops nothing, and the pair already held is a no-op.
+ *
+ * Call before any store is constructed: they read what they hold once, when they are built.
+ */
+export function adoptStoredDevice(device: StoredDevice): void {
+  const held = readStoredDevice();
+  // The pair as one value: both halves are this browser's own, read from its own storage a moment apart.
+  if (`${held.id}.${held.secret}` === `${device.id}.${device.secret}`) return;
+  if (held.id !== device.id) {
+    for (const key of PREVIOUS_DEVICE_KEYS) safeRemove(key);
+    try {
+      globalThis.sessionStorage?.removeItem(STORAGE_KEYS.session);
+    } catch {
+      // A storage that will not answer holds no session to drop.
+    }
+  }
+  safeSet(DEVICE_KEY, device.id);
+  safeSet(FETCH_SECRET_KEY, device.secret);
+}
+
+/**
  * How long a report is trusted before the browser says it all again.
  *
  * The hash alone would be a one-way promise: this browser remembers having reported, but
@@ -329,6 +502,16 @@ export function shouldReportContext(hash: string, persist: boolean): boolean {
 
   safeSet(CONTEXT_HASH_KEY, `${hash}:${Date.now()}`);
   return true;
+}
+
+/**
+ * Whether this browser has reported its context before, whatever it said then.
+ *
+ * A browser that has not is one nobody has heard from: its first report is what registers it, so that one is made
+ * at once rather than after the wait every later report gets. False where nothing may be kept, as the gate above is.
+ */
+export function hasReportedContext(persist: boolean): boolean {
+  return persist && safeGet(CONTEXT_HASH_KEY) !== null;
 }
 
 function isStale(stored: string, hash: string): boolean {

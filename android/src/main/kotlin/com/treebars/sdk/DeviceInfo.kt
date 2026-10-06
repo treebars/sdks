@@ -68,6 +68,17 @@ internal object DeviceInfo {
     }
 
     /**
+     * The app's name as the launcher shows it, or null when it cannot be read or is blank — the
+     * `name` the three lifecycle events carry, so a list of them says which app each row is.
+     *
+     * Not cached with the rest: a label follows the device's language, which can change while the
+     * process runs, and the events that carry it are a handful per visit.
+     */
+    fun appName(context: Context): String? = runCatching {
+        context.applicationInfo.loadLabel(context.packageManager).toString().trim().takeIf { it.isNotEmpty() }
+    }.getOrNull()
+
+    /**
      * Not cached with the rest: this is the one dimension that changes while the process
      * runs. Requires ACCESS_NETWORK_STATE, which the SDK's manifest declares; if it is
      * somehow absent the read fails closed and the dimension is simply omitted.
@@ -178,6 +189,21 @@ internal object DeviceInfo {
     }
 
     /**
+     * What `device_context` says of this app's in-app messages, as `in_app_display`: `off` when nothing will be
+     * drawn — in-app is switched off ([Treebars.disableInApps]) — `app` when the app registered its own renderer
+     * ([Treebars.setInAppRenderer]), and `sdk` when this SDK draws them, which is the default.
+     *
+     * The same three words in every Treebars SDK. Not part of [context]: that is what the device says of itself,
+     * and this is what the app's code has said, so it is read from the two values a draw is decided by at the moment
+     * a report is built, and kept nowhere.
+     */
+    fun inAppDisplay(enabled: Boolean, ownRenderer: Boolean): String = when {
+        !enabled -> "off"
+        ownRenderer -> "app"
+        else -> "sdk"
+    }
+
+    /**
      * Whether these build facts describe an emulator — read from `Build`, so no permission and
      * no native call.
      *
@@ -258,6 +284,15 @@ internal object DeviceInfo {
         val stored = prefs.getString("device_context_hash", null)
         return stored == null || isStale(stored, hash)
     }
+
+    /**
+     * Whether this device has reported its context before, whatever it said then.
+     *
+     * A device that has not is one nobody has heard from: its first report is what registers it, so that one is made
+     * at once, where every later one waits until the launch has settled.
+     */
+    fun hasReportedContext(context: Context): Boolean =
+        context.getSharedPreferences(Treebars.PREFS_NAME, Context.MODE_PRIVATE).contains("device_context_hash")
 
     /**
      * Records that the report was made — separately, and after it was.

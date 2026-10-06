@@ -8,9 +8,9 @@ import kotlinx.coroutines.Job
  *
  * `track` and `flush` are two independent launches on a multi-threaded dispatcher, and nothing else orders them:
  * without this, a flush called on the very next line could drain before the event reached the queue, and the event
- * would then wait for the thirty-second tick. The lifecycle's own background flush avoids the race by recording and
- * flushing in one coroutine (`onStop`); an app's `track(); flush()` cannot be one coroutine, so the flush waits for
- * the jobs instead.
+ * would then go with the pace's next upload instead of this one. The lifecycle's own background flush avoids the
+ * race by recording and flushing in one coroutine (`onStop`); an app's `track(); flush()` cannot be one coroutine,
+ * so the flush waits for the jobs instead.
  *
  * The snapshot is taken synchronously in `flush()`, after `track()` has returned and so after its job is in here —
  * that ordering is the happens-before, and it holds across threads because the set is concurrent.

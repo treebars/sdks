@@ -62,6 +62,9 @@ describe('the address a page view carries', () => {
   }
 
   async function pageView(instance: TreebarsWeb): Promise<Record<string, unknown>> {
+    // What `init` sends on its own leaves first, a turn after it: in one batch with the page view the body would be
+    // long enough to be compressed, and the record here reads plain bodies only.
+    await vi.advanceTimersByTimeAsync(0);
     instance.page();
     await vi.advanceTimersByTimeAsync(0);
     await instance.flush();

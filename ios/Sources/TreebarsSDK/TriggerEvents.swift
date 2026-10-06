@@ -70,9 +70,9 @@ final class TriggerStore: @unchecked Sendable {
 
 /**
  The environment's trigger list: the events this device sends within a second of logging them,
- rather than at the thirty-second tick. One of three implementations — `TriggerEvents.kt` and
- `sdks/web/src/triggers.ts` are the others — and all three are held to the same shared set of
- scenarios.
+ however lately it uploaded, rather than at the pace every other event keeps (`FlushPace`). One of
+ three implementations — `TriggerEvents.kt` and `sdks/web/src/triggers.ts` are the others — and all
+ three are held to the same shared set of scenarios.
 
  The server decides what is on it — the events that start or advance a live campaign or journey —
  and hands it over in the in-app sync. Every accepted upload carries the list's version, so the

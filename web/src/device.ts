@@ -18,11 +18,15 @@
  * nothing a server did not have. Origin only — the path and query are a customer's data,
  * not a fact about the visitor.
  *
+ * `in_app_display` is not about the client either: it is how the page has its in-app messages
+ * set up, the same word for every visitor to that page.
+ *
  * `navigator.userAgentData` is preferred where it exists because the browser hands over
  * exactly these low-entropy fields by design; the userAgent parse is a fallback for
  * Safari and Firefox, and it reads only the two tokens it needs.
  */
 
+import type { FlushConditions } from './flush-pace';
 import { FNV_OFFSET_BASIS, FNV_PRIME } from './generated/constants';
 
 export interface WebDeviceDimensions {
@@ -53,7 +57,21 @@ export interface WebDeviceContext extends WebDeviceDimensions {
    * data and are not a fact about the client.
    */
   app_id?: string;
+  /**
+   * What draws this page's in-app messages: this SDK (`sdk`), the page's own renderer (`app`), or nothing (`off`).
+   *
+   * A fact about the page rather than the browser, so `getWebDeviceContext` does not read it: the SDK adds it from
+   * the two things that decide a draw, as they stand when the context is reported. It is in the hash like every
+   * other key, so a page that changes how its messages are drawn reports itself again.
+   */
+  in_app_display?: InAppDisplay;
 }
+
+/**
+ * The three answers `in_app_display` has, the same three in every Treebars SDK. `off` is nothing will be drawn:
+ * in-app messages are switched off, or the page set drawing to nothing.
+ */
+export type InAppDisplay = 'sdk' | 'app' | 'off';
 
 interface UserAgentData {
   brands?: { brand: string; version: string }[];
@@ -133,6 +151,24 @@ function deviceType(): string | undefined {
 function networkType(): string | undefined {
   const connection = (navigator as Navigator & { connection?: { effectiveType?: string } }).connection;
   return connection?.effectiveType;
+}
+
+/**
+ * What this browser says should slow its uploads down, read each time an upload is armed.
+ *
+ * Read to decide when to upload, and never sent: it is not a dimension, and it is on no event.
+ *
+ * Saving data is the one thing a browser can say: `navigator.connection.saveData` is true where the
+ * person turned a data saver on. A browser without the Network Information API says nothing, and is
+ * taken as not saving. Whether a network is paid for by use is not something a page can know, so
+ * this never says it is.
+ */
+export function getFlushConditions(): FlushConditions {
+  const connection =
+    typeof navigator === 'undefined'
+      ? undefined
+      : (navigator as Navigator & { connection?: { saveData?: boolean } | null }).connection;
+  return { constrained: connection?.saveData === true, metered: false };
 }
 
 /**

@@ -199,18 +199,14 @@ public final class TreebarsBridge: NSObject {
         }
 
         /*
-         * Milliseconds on the wire and seconds on this core, and a non-positive interval is
-         * not passed through: it would arm a timer that fires continuously.
+         * Milliseconds on the wire and seconds on this core.
          *
-         * An absent key takes the generated default. The call below has to name a value either
-         * way — Swift cannot leave an argument out conditionally, and the wrapper sends the key
-         * as `undefined` when the integrator omitted it — and naming `TreebarsConstants` rather
-         * than a literal keeps one copy of the default, which moves when the core's does.
+         * An absent key is an app that chose no interval, and it reaches the core as exactly that:
+         * nil, which is the core's own pace. Nothing is substituted here — a default named on this
+         * side would be an interval the app never chose, and the core would keep it as though it
+         * had. A value that is present is passed as it is; the core holds it to its own floor.
          */
-        let configuredFlush = (config["flush_interval_ms"] as? NSNumber)
-            .map { $0.doubleValue / 1000 } ?? TreebarsConstants.defaultFlushInterval
-        let flushInterval =
-            configuredFlush > 0 ? configuredFlush : TreebarsConstants.defaultFlushInterval
+        let flushInterval = (config["flush_interval_ms"] as? NSNumber).map { $0.doubleValue / 1000 }
 
         /*
          * `in_app_enabled: false` has no parameter of its own on this core, so it is expressed

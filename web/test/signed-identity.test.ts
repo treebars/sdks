@@ -149,6 +149,8 @@ describe('a signed identity in the browser', () => {
    * secret is held in memory and is still the same for every request.
    */
   it.each([true, false])('proves the device on the sign-in and on uploads, with one secret (storage %s)', async (persist) => {
+    // The first instance's own upload leaves a turn after its `init`: before the record is cleared, not into it.
+    await vi.advanceTimersByTimeAsync(0);
     sdk.shutdown();
     localStorage.clear();
     seen = [];
@@ -162,6 +164,8 @@ describe('a signed identity in the browser', () => {
       flushIntervalMs: 60 * 60 * 1000,
       disableStorage: !persist,
     });
+    // And this one's, so the description that claims the secret is a batch of its own, read here as plain JSON.
+    await vi.advanceTimersByTimeAsync(0);
     sdk.identify('user_42', {}, SIGNATURE);
     await vi.advanceTimersByTimeAsync(0);
     await sdk.flush();

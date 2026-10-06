@@ -41,13 +41,15 @@ private let authGateCeilingMs = Int64(TreebarsConstants.authCooldown * 1000)
  Jitter rather than a fixed ladder, so devices recovering from the same outage do not all retry at
  the same instants. A 413 splits the batch into halves with derived ids; any other 4xx drops it.
 
- An `actor` so that a timer-driven flush, a size-triggered flush and a background-transition
+ An `actor` so that a paced flush, a size-triggered flush and a background-transition
  flush cannot run concurrently and send the same batch twice. Nothing in it sleeps except the one
  wake it schedules; the clock, the jitter, the ids and where a wake sleeps are handed in, which is
  what lets the scenarios run it without waiting.
 
  It also decides when a listed event goes out — the trigger scenarios (`TriggerScenariosTests`) are
- that half of the policy, and `TriggerEvents` is the list it asks.
+ that half of the policy, and `TriggerEvents` is the list it asks. When any other event goes out is
+ decided beside it (`FlushPace`), which it tells three things: that an upload has begun, the spacing
+ an accepted one named, and that one ended with events still waiting and nothing holding them back.
  */
 actor EventUploader {
     private let queue: EventQueue
@@ -63,9 +65,11 @@ actor EventUploader {
     private let wakes: (any UploadWakes)?
     /// The trigger list. Nil means no event flushes early and no version is acted on.
     private let triggers: TriggerEvents?
+    /// Whoever paces the uploads. Nil in the upload and trigger scenarios, which pace nothing.
+    private let pace: (any UploadPacing)?
     /**
      True while the person has opted out (`Treebars.optOut()`). Nothing is sent then, whoever asks — the
-     timer, the lifecycle, a wake, a trigger, the flush on the way up — not only the public `flush()`.
+     pace, the lifecycle, a wake, a trigger, the flush on the way up — not only the public `flush()`.
      Asked before every batch, so a drain already running stops at the next one. It drops nothing
      itself; that is the opt-out's discard.
      */
@@ -75,6 +79,9 @@ actor EventUploader {
     private var state: UploaderState
     private var reconciled = false
     private var isFlushing = false
+    /// Whether the flush now running has put a batch on the wire. An upload is the whole drain, so
+    /// it begins once, however many batches it carries.
+    private var uploading = false
     private var wake: (any UploadWake)?
     private var wakeAt: Int64 = 0
     /// The newest trigger version the current flush's answers carried.
@@ -117,6 +124,7 @@ actor EventUploader {
         newBatchId: @escaping @Sendable () -> String = { UUID().uuidString },
         wakes: (any UploadWakes)? = TaskWakes(),
         triggers: TriggerEvents? = nil,
+        pace: (any UploadPacing)? = nil,
         paused: @escaping @Sendable () -> Bool = { false }
     ) {
         self.queue = queue
@@ -129,8 +137,12 @@ actor EventUploader {
         self.newBatchId = newBatchId
         self.wakes = wakes
         self.triggers = triggers
+        self.pace = pace
         self.paused = paused
-        self.state = store.load()
+        let stored = store.load()
+        self.state = stored
+        // The spacing the last launch was told, so this one starts with it rather than the default.
+        if let named = stored.flushSpacingMs { pace?.spacingNamed(named) }
     }
 
     /**
@@ -143,9 +155,30 @@ actor EventUploader {
         guard !isFlushing else { return }
         isFlushing = true
         seenTriggersVersion = nil
+        uploading = false
         await drain()
+        if uploading { await reportBacklog() }
         isFlushing = false
         await triggers?.observe(seenTriggersVersion)
+    }
+
+    /**
+     An upload that ended with events still waiting, and nothing holding them back, says so to the
+     pace — which arms the next one without waiting for an event to ask for it.
+
+     A drain is bounded, and it ends early on a batch the server will never take, so an upload can
+     finish with the queue not empty; left to the next logged event, a device that logs nothing more
+     would keep those events until it was next opened. A closed gate is not this case and arms
+     nothing here: a retry has this uploader's own wake, and a refused write key waits out its
+     cooldown. Asked only after a flush that sent something, so one that found a gate closed does
+     not ask again every time it is turned away.
+     */
+    private func reportBacklog() async {
+        guard let pace else { return }
+        let queued = await queue.count
+        guard queued > 0 || !state.pending.isEmpty else { return }
+        if paused() || gated(at: now()) { return }
+        pace.uploadLeftBacklog()
     }
 
     /**
@@ -181,6 +214,10 @@ actor EventUploader {
             report("sending", "Sending \(batch.events.count) event(s)", count: batch.events.count, names: names)
 
             let started = generation
+            if !uploading {
+                uploading = true
+                pace?.uploadBegan(at: now())
+            }
             var response: UploadResponse?
             do {
                 response = try await transport.postEvents(batch: batch.json)
@@ -293,7 +330,14 @@ actor EventUploader {
             next.nextAllowedAt = 0
             next.authBlockedUntil = 0
             next.authKey = nil
+            /*
+             * The spacing this answer named, written with the acknowledgement — one write, and what
+             * the next launch starts from. An answer that names none leaves the last one standing.
+             */
+            let named = FlushPace.spacing(fromHeader: response?.flushSpacing)
+            if let named { next.flushSpacingMs = named }
             commit(next)
+            if let named { pace?.spacingNamed(named) }
             // Normally a no-op: see `seal` for the one case where the queue still holds them.
             await queue.remove(ids: batch.eventIds)
             TreebarsLogger.log("Uploaded \(count) event(s)")
@@ -378,11 +422,12 @@ actor EventUploader {
      One wake, at the earliest moment anything has asked for: a retry falling due, or a listed
      event's debounce running out.
 
-     Without it a two-second backoff would wait for the thirty-second timer, and the jitter would be
-     decoration — and so would a trigger. A closed gate reports itself on every flush attempt — each
-     event past the batch size is one — so a wake still sleeping towards this time or an earlier one
-     is left alone: it will find the gate and ask again. A wake whose time has come is not treated as
-     pending, because the flush that schedules the next retry is usually that wake's own.
+     Without it a two-second backoff would wait for the next event to arm an upload, and the jitter
+     would be decoration — and so would a trigger. A closed gate reports itself on every flush
+     attempt — each event past the batch size is one — so a wake still sleeping towards this time or
+     an earlier one is left alone: it will find the gate and ask again. A wake whose time has come is
+     not treated as pending, because the flush that schedules the next retry is usually that wake's
+     own.
      */
     private func scheduleWake(at: Int64) {
         guard let wakes else { return }
@@ -401,7 +446,7 @@ actor EventUploader {
      A fired wake is spent before it flushes, told rather than inferred from the clock: the sleep runs
      on a monotonic clock and `now` is the wall clock, so a wake can fire a moment before `now`
      reaches the time it was armed for — and one that still looked asleep would refuse to arm the
-     next, leaving a retry to the thirty-second tick.
+     next, leaving a retry with nothing to wake it.
      */
     private func woken(at: Int64) async {
         if wakeAt == at { wakeAt = 0 }

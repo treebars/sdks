@@ -9,7 +9,7 @@ From Maven Central, in your app's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.treebars:sdk-android:0.4.0")
+    implementation("com.treebars:sdk-android:0.5.0")
 }
 ```
 

@@ -12,7 +12,7 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * An opted-out install sends nothing, whoever asks for a flush — the public `Treebars.flush()`, the
- * timer, the lifecycle, a wake or the flush on the way up — so events an earlier launch left behind
+ * pace, the lifecycle, a wake or the flush on the way up — so events an earlier launch left behind
  * never go out once the install has said no. The gate is in the uploader (`paused`), asked before
  * each batch.
  */

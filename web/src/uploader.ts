@@ -10,6 +10,7 @@ import {
   STORAGE_KEYS,
   TRIGGER_FLUSH_DEBOUNCE_MS,
 } from './generated/constants';
+import { boundedFlushSpacing, readFlushSpacing } from './flush-pace';
 import { safeGet, safeSet, type EventStore } from './storage';
 import type { TriggerEvents } from './triggers';
 import type { QueuedEvent } from './types';
@@ -50,6 +51,12 @@ export interface UploaderState {
   auth_blocked_until: number;
   /** The write key that was refused. A different key is not held to its cooldown. */
   auth_key: string | null;
+  /**
+   * The spacing between uploads the last accepted one named, in milliseconds and within the bounds
+   * this SDK accepts. Null until one has. Kept here so the next page load starts with it rather
+   * than with the default.
+   */
+  flush_spacing_ms: number | null;
 }
 
 export interface UploadResponse {
@@ -57,6 +64,8 @@ export interface UploadResponse {
   retryAfter: string | null;
   /** `X-Treebars-Triggers-Version`, which the ingest endpoint sets on an accepted upload and nothing else. */
   triggersVersion?: string | null;
+  /** `X-Treebars-Flush-Ms`: how far apart the ingest endpoint asks this device to keep its uploads, on an accepted one. */
+  flushSpacing?: string | null;
 }
 
 /** Sends one batch. A rejection is a network failure; any HTTP answer resolves. */
@@ -68,13 +77,15 @@ const emptyState = (): UploaderState => ({
   next_allowed_at: 0,
   auth_blocked_until: 0,
   auth_key: null,
+  flush_spacing_ms: null,
 });
 
 const finite = (value: unknown): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : 0;
 
 /**
- * The persisted half: pending batches and both gates, under a key of their own.
+ * The persisted half: pending batches, both gates and the spacing the server named, under a key of
+ * their own.
  *
  * With storage disabled it keeps nothing, and the uploader's own copy is the whole of it — the
  * same trade the queue makes, and for the same consent reason.
@@ -103,6 +114,8 @@ export class UploaderStore {
         next_allowed_at: finite(parsed.next_allowed_at),
         auth_blocked_until: finite(parsed.auth_blocked_until),
         auth_key: typeof parsed.auth_key === 'string' ? parsed.auth_key : null,
+        // Held to the bounds again: storage is somewhere other scripts can write.
+        flush_spacing_ms: boundedFlushSpacing(parsed.flush_spacing_ms),
       };
     } catch {
       return emptyState();
@@ -136,6 +149,24 @@ export interface UploaderOptions {
   wake?: (at: number) => void;
   /** The trigger list. Absent means no event flushes early and no version is acted on. */
   triggers?: TriggerEvents;
+  /**
+   * Told the spacing an accepted upload named, already within bounds. When the next upload is due
+   * is decided beside the uploader (`flush-pace.ts`), and this is the one fact that decision needs
+   * and only an upload's answer holds.
+   */
+  spacingNamed?: (milliseconds: number) => void;
+  /**
+   * Told when a drain ends with events still waiting and neither gate closed: it sent as many
+   * batches as one drain may, or the server refused one for good. Nothing here sends the rest —
+   * how soon they may follow is the spacing's to say (`flush-pace.ts`) — so whoever paces the
+   * uploads arms the next one.
+   *
+   * Not told while a gate is closed. A retry has the uploader's own wake, a refused write key waits
+   * out its cooldown, and an upload armed for either would send nothing and be asked for again for
+   * as long as the gate stayed closed. Nor by a flush that was turned away because one was already
+   * running: that one says so itself when it ends.
+   */
+  backlogLeft?: () => void;
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -210,6 +241,8 @@ export class Uploader {
   private readonly log: (message: string) => void;
   private readonly wake: ((at: number) => void) | null;
   private readonly triggers: TriggerEvents | null;
+  private readonly spacingNamed: ((milliseconds: number) => void) | null;
+  private readonly backlogLeft: (() => void) | null;
   private state: UploaderState;
   private flushing = false;
   /** When the one wake is due, or zero when none is armed. */
@@ -229,6 +262,8 @@ export class Uploader {
     this.log = options.log ?? (() => {});
     this.wake = options.wake ?? null;
     this.triggers = options.triggers ?? null;
+    this.spacingNamed = options.spacingNamed ?? null;
+    this.backlogLeft = options.backlogLeft ?? null;
 
     this.state = this.store.load();
     /*
@@ -244,13 +279,19 @@ export class Uploader {
 
   /**
    * Drops the queue and every sealed batch, with the gates they had closed — for an opt-out or a wipe,
-   * where the person said stop rather than "after these".
+   * where the person said stop rather than "after these". The spacing stays: it is the server's word
+   * about uploads, and says nothing about the person.
    */
   discard(): void {
     this.generation += 1;
     this.queue.clear();
-    this.state = emptyState();
+    this.state = { ...emptyState(), flush_spacing_ms: this.state.flush_spacing_ms };
     this.store.save(this.state);
+  }
+
+  /** The spacing the last accepted upload named, on this page load or an earlier one. Null when none has. */
+  get flushSpacing(): number | null {
+    return this.state.flush_spacing_ms;
   }
 
   /** Events sealed into batches and not yet acknowledged. */
@@ -279,6 +320,8 @@ export class Uploader {
     } finally {
       this.flushing = false;
     }
+    // Before the list is fetched, so what is still waiting is not held up behind it either.
+    if (this.backlogLeft && this.waiting() && !this.gated(this.now())) this.backlogLeft();
     await this.triggers?.observe(this.seenTriggersVersion);
   }
 
@@ -287,8 +330,8 @@ export class Uploader {
    *
    * Told rather than inferred from the clock. The timer runs on a monotonic clock and `now()` is the
    * wall clock, so a wake can fire a moment before `now()` reaches the time it was armed for — and
-   * a wake that still looked pending would refuse to arm the next one, leaving a retry to the
-   * thirty-second tick.
+   * a wake that still looked pending would refuse to arm the next one, leaving a retry with nothing
+   * to send it until the page logged another event.
    */
   woken(): Promise<void> {
     this.wakeAt = 0;
@@ -360,6 +403,11 @@ export class Uploader {
     return this.state.pending[0] ?? this.seal();
   }
 
+  /** Whether anything is waiting to be sent: a sealed batch not yet acknowledged, or an event on the queue. */
+  private waiting(): boolean {
+    return this.state.pending.length > 0 || this.queue.size > 0;
+  }
+
   private pendingEventIds(): Set<string> {
     return new Set(this.state.pending.flatMap((batch) => batch.events.map((event) => event.event_id)));
   }
@@ -423,6 +471,7 @@ export class Uploader {
     if (response && status >= 200 && status < 300) {
       this.finish(batch);
       this.clearGates();
+      this.keepSpacing(response.flushSpacing);
       this.save();
       this.log(`uploaded ${batch.events.length} event(s)`);
       return true;
@@ -483,6 +532,18 @@ export class Uploader {
     this.log(`upload not accepted (${status || 'network'}); next attempt in ${delay}ms`);
     this.requestWake(this.state.next_allowed_at);
     return false;
+  }
+
+  /**
+   * The spacing an accepted upload named: held, written with the state its answer already changes,
+   * and passed on to whoever paces the uploads. An answer that names none, or none this can read,
+   * changes nothing.
+   */
+  private keepSpacing(header: string | null | undefined): void {
+    const named = readFlushSpacing(header);
+    if (named === null) return;
+    this.state.flush_spacing_ms = named;
+    this.spacingNamed?.(named);
   }
 
   /** A batch that will never succeed. Gone from both stores, and the drain ends with it. */

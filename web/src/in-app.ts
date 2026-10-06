@@ -434,6 +434,12 @@ interface Ledger {
    * nothing all cover it already.
    */
   policy?: InAppPolicy | null;
+  /**
+   * When a sync last answered for this browser, in epoch milliseconds: what a page opening inside a running session
+   * reads to decide whether to ask again (`syncedWithin`). Here for the reason the policy is: a sign-out, a write-key
+   * change and a store that keeps nothing each make the next page open ask, with no key of its own to forget.
+   */
+  synced_at?: number;
 }
 
 /*
@@ -479,8 +485,9 @@ export class InAppStore {
     }
   }
 
-  accept(response: InAppSyncResponse): void {
+  accept(response: InAppSyncResponse, now: number = Date.now()): void {
     this.messages = response.messages;
+    this.ledger.synced_at = now;
     if (response.policy) {
       this.ledger.policy = response.policy;
       // The server's count already includes anything shown before this moment.
@@ -497,6 +504,15 @@ export class InAppStore {
 
   list(): InAppMessage[] {
     return this.messages;
+  }
+
+  /**
+   * Whether a sync answered for this browser within the last `spacingMs`. False when none has, and when the clock has
+   * been set back past the last one: a time in the future is not a recent answer.
+   */
+  syncedWithin(spacingMs: number, now: number = Date.now()): boolean {
+    const at = this.ledger.synced_at;
+    return typeof at === 'number' && at <= now && now - at < spacingMs;
   }
 
   /**

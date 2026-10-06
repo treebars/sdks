@@ -7,7 +7,7 @@ The client SDKs for [Treebars](https://treebars.com): events, identity, sessions
 | Web — [`web`](web) | `npm install @treebars/web-sdk` |
 | React Native — [`react-native`](react-native) | `npm install @treebars/react-native-sdk` |
 | iOS — [`ios`](ios) | Swift Package Manager: `https://github.com/treebars/sdks`, product `TreebarsSDK`; or CocoaPods: `pod 'TreebarsSDK'` |
-| Android — [`android`](android) | `implementation("com.treebars:sdk-android:0.4.0")`, from Maven Central |
+| Android — [`android`](android) | `implementation("com.treebars:sdk-android:0.5.0")`, from Maven Central |
 
 Every SDK shares one version number, and a tag here marks each release.
 

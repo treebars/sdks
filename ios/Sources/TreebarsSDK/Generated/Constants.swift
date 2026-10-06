@@ -19,6 +19,7 @@ enum TreebarsConstants {
     static let writeKeyHeader = "X-Treebars-Key"
     static let deviceAuthHeader = "X-Treebars-Device-Auth"
     static let triggersVersionHeader = "X-Treebars-Triggers-Version"
+    static let flushSpacingHeader = "X-Treebars-Flush-Ms"
     static let linkResolveHeader = "X-Treebars-Resolve"
     static let userSignatureHeader = "X-Treebars-User-Signature"
     static let userIdHeader = "X-Treebars-User-Id"
@@ -36,9 +37,20 @@ enum TreebarsConstants {
     /// Seconds on iOS, where the other three hold milliseconds. Self-consistent, and frozen.
     static let sessionTimeout: TimeInterval = 1800
     static let contextReportTtl: TimeInterval = 7 * 24 * 60 * 60
+    /// How long a device's description has stood before it is reported again: what the app sets beside its start is in it by then.
+    static let contextSettle: TimeInterval = 2
     static let defaultFlushInterval: TimeInterval = 30
     /// How soon after a listed event its flush goes out. Armed by the first, not moved by later ones.
     static let triggerFlushDebounce: TimeInterval = 1
+    /// How soon after any event its flush goes out, when nothing was uploaded within the spacing.
+    static let flushDebounce: TimeInterval = 1
+    /// The least time between two uploads while busy: the default, on a metered network, and under a test key.
+    static let flushSpacing: TimeInterval = 5
+    static let flushSpacingMetered: TimeInterval = 15
+    static let flushSpacingTest: TimeInterval = 1
+    /// The bounds on the spacing a response may name.
+    static let flushSpacingMin: TimeInterval = 1
+    static let flushSpacingMax: TimeInterval = 60
     static let defaultInAppPollInterval: TimeInterval = 900
     static let inAppPresentationHold: TimeInterval = 30
     /// Attempts at Apple's AdServices endpoint, each wait drawn by `jitterMs`. iOS only: nothing
@@ -84,7 +96,7 @@ enum TreebarsConstants {
     static let maxDeepLinkPathLength = 512
     static let deferredDeepLinkWindowMs: Int64 = 24 * 60 * 60 * 1000
 
-    static let sdkVersion = "0.4.0"
+    static let sdkVersion = "0.5.0"
     static let sdkName = "treebars-ios"
     static let deviceIdPrefix = "dev_"
 

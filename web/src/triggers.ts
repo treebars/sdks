@@ -3,8 +3,9 @@ import { safeGet, safeSet } from './storage';
 
 /**
  * The environment's trigger list: the events this page sends within a second of logging them,
- * rather than at the thirty-second tick. The Android and iOS SDKs implement the same list, and
- * all three run the same scenarios (`test/fixtures/trigger-scenarios.json`).
+ * however lately it last uploaded — every other event waits out the spacing between uploads
+ * (`flush-pace.ts`). The Android and iOS SDKs implement the same list, and all three run the same
+ * scenarios (`test/fixtures/trigger-scenarios.json`).
  *
  * Treebars decides what is on it — the events that start or advance a live campaign or journey —
  * and hands it over in the in-app sync. Every accepted upload carries the list's version, so a

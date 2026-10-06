@@ -10,8 +10,8 @@ import { Uploader, UploaderStore } from '../src/uploader';
  * A timer runs on a monotonic clock and the uploader reads `Date.now()`, so a wake can fire while
  * `now()` is still a moment short of the time it was armed for. So the uploader does not decide
  * from the clock whether its wake is still asleep: a wake that looked asleep would not arm the next
- * one, and a retry refused again at that instant would be left to the thirty-second tick. The host
- * says the wake fired (`woken`), and this pins that it is believed.
+ * one, and a retry refused again at that instant would have nothing left to send it until the page
+ * logged another event. The host says the wake fired (`woken`), and this pins that it is believed.
  */
 
 function memoryStorage() {

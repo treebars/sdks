@@ -114,6 +114,9 @@ describe('the browser glue around the trigger flush', () => {
         ? Response.json({ messages: [], policy: null, trigger_events: { version: 'v1', names: ['signup'] }, server_time: 'now' })
         : new Response('{}', { status: 200 });
     start(true);
+    // What `init` uploads on its own leaves first, a turn after it, so no upload of this page is still being
+    // compressed when the test ends.
+    await vi.advanceTimersByTimeAsync(0);
     sdk.track('screen_view');
     await vi.advanceTimersByTimeAsync(0);
 

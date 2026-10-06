@@ -1,3 +1,4 @@
+import { expireSharedCookie, readCookieValues, writeSharedCookie } from './cookies';
 import { ACQUISITION, MAX_REFERRER_LENGTH, STORAGE_KEYS } from './generated/constants';
 
 /**
@@ -61,62 +62,36 @@ export function hasAdClick(href: string): boolean {
  * browser.
  *
  * Set on the SHORTEST domain the browser accepts — `shop.acme.com` tries `acme.com` first — which is the
- * browser enforcing the public suffix list for us: `co.uk` is refused and `acme.co.uk` sticks. Null when
+ * browser enforcing the public suffix list for us: `co.uk` is refused and `acme.co.uk` sticks
+ * (`writeSharedCookie`, which the device cookie of `shared-device.ts` goes through too). Null when
  * cookies are off, and the visit is then matched as a browser of its own.
  */
 export const SHARED_BROWSER_COOKIE = 'tbrs_bs';
 const SHARED_BROWSER_SECONDS = 6 * 60 * 60;
+const BROWSER_ID_SHAPE = /^[a-z0-9]{22}$/;
 
 export function sharedBrowserId(): string | null {
   try {
-    const held = document.cookie
-      .split(';')
-      .map((part) => part.trim())
-      .find((part) => part.startsWith(`${SHARED_BROWSER_COOKIE}=`))
-      ?.slice(SHARED_BROWSER_COOKIE.length + 1);
-    const id = held && /^[a-z0-9]{22}$/.test(held) ? held : mintBrowserId();
-    return writeSharedBrowserId(id) ? id : null;
+    const id = readCookieValues(SHARED_BROWSER_COOKIE).find((held) => BROWSER_ID_SHAPE.test(held)) ?? mintBrowserId();
+    return writeSharedCookie(SHARED_BROWSER_COOKIE, id, SHARED_BROWSER_SECONDS) ? id : null;
   } catch {
     return null;
   }
 }
 
 /**
- * Expires `tbrs_bs` wherever `writeSharedBrowserId` could have set it — each registrable-domain
- * candidate, then host-only — for `wipeLocalData`. A browser id is this browser; a wipe that left it
- * would let the next visit be matched to the last one.
+ * Expires `tbrs_bs` wherever it could have been set — each registrable-domain candidate, then
+ * host-only — for `wipeLocalData`. A browser id is this browser; a wipe that left it would let the
+ * next visit be matched to the last one.
  */
 export function forgetSharedBrowserId(): void {
-  try {
-    const labels = window.location.hostname.split('.');
-    const expired = '; Max-Age=0; Path=/';
-    for (let take = 2; take <= labels.length; take += 1) {
-      document.cookie = `${SHARED_BROWSER_COOKIE}=; Domain=${labels.slice(-take).join('.')}${expired}`;
-    }
-    document.cookie = `${SHARED_BROWSER_COOKIE}=${expired}`;
-  } catch {
-    // No document, or cookies refused: nothing was set.
-  }
+  expireSharedCookie(SHARED_BROWSER_COOKIE);
 }
 
 function mintBrowserId(): string {
   const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
   const bytes = crypto.getRandomValues(new Uint8Array(22));
   return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
-}
-
-function writeSharedBrowserId(id: string): boolean {
-  const labels = window.location.hostname.split('.');
-  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-  const attributes = `; Max-Age=${SHARED_BROWSER_SECONDS}; Path=/; SameSite=Lax${secure}`;
-  // The shortest domain the browser will take, then host-only for an address or `localhost`.
-  for (let take = 2; take <= labels.length; take += 1) {
-    const domain = labels.slice(-take).join('.');
-    document.cookie = `${SHARED_BROWSER_COOKIE}=${id}; Domain=${domain}${attributes}`;
-    if (document.cookie.includes(`${SHARED_BROWSER_COOKIE}=${id}`)) return true;
-  }
-  document.cookie = `${SHARED_BROWSER_COOKIE}=${id}${attributes}`;
-  return document.cookie.includes(`${SHARED_BROWSER_COOKIE}=${id}`);
 }
 
 /**

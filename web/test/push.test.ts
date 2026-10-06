@@ -91,6 +91,33 @@ describe('every page load', () => {
     expect(tracked.filter(([event]) => event === 'push_token_registered')).toEqual([]);
   });
 
+  it('registers the same subscription again, once, for the device a page moved to', async () => {
+    browser('https://push.example/same');
+    localStorage.setItem('treebars.push.registered.v1', JSON.stringify({ endpoint: 'https://push.example/same', path: '/sw.js' }));
+    localStorage.setItem('treebars.push.permission.v1', 'authorized');
+    const { tracked, push } = host();
+    await push.refresh();
+    expect(tracked).toEqual([]);
+
+    // The subscription has not moved; the device it was registered for has (`shareAcrossSubdomains`).
+    push.deviceChanged();
+    await push.refresh();
+    expect(tracked.map(([event]) => event)).toEqual(['push_token_registered']);
+    expect(JSON.parse(localStorage.getItem('treebars.push.registered.v1')!)).toEqual({ endpoint: 'https://push.example/same', path: '/sw.js' });
+
+    await push.refresh();
+    expect(tracked).toHaveLength(1);
+  });
+
+  it('does not subscribe a browser the site never subscribed because its device changed', async () => {
+    browser('https://push.example/someone-elses');
+    const { tracked, push } = host();
+    push.deviceChanged();
+    await push.refresh();
+    expect(tracked.filter(([event]) => event === 'push_token_registered')).toEqual([]);
+    expect(localStorage.getItem('treebars.push.registered.v1')).toBeNull();
+  });
+
   it('reports a permission revoked since the last page', async () => {
     browser(null, 'denied');
     localStorage.setItem('treebars.push.permission.v1', 'authorized');

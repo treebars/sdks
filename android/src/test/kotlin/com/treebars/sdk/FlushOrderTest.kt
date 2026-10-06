@@ -23,7 +23,7 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * `track(); flush()` sends what was just tracked. A flush waits for the records launched before it (`InFlight`);
- * otherwise it could drain before the event was queued, and the event would wait for the next tick.
+ * otherwise it could drain before the event was queued, and the event would go with a later upload.
  *
  * A flush that finds a drain running does nothing, but the running drain seals the queue again after every send, so
  * an event queued while a batch is on the wire goes out in that same drain. The last test pins that — it is what
@@ -69,7 +69,7 @@ class FlushOrderTest {
         .put("sdk_version", TreebarsConstants.SDK_VERSION)
 
     @Test
-    fun `an event queued while a batch is on the wire goes out in the same drain, not with the tick`() = runBlocking {
+    fun `an event queued while a batch is on the wire goes out in the same drain, not with a later one`() = runBlocking {
         val directory = temp.newFolder()
         val queue = EventQueue(directory)
         queue.append(event("first"))
@@ -88,7 +88,7 @@ class FlushOrderTest {
             }
             UploadResponse(200)
         }
-        // No wake scope: nothing but the flushes themselves may send, so the tick cannot be what rescued it.
+        // No wake scope and no pace: nothing but the flushes themselves may send, so nothing else can be what rescued it.
         val uploader = EventUploader(queue, transport, UploaderStore(directory), writeKey = "pk_test_fixture", ioContext = Dispatchers.IO)
 
         val running = async(Dispatchers.Default) { uploader.flush() }

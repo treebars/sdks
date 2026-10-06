@@ -1,0 +1,83 @@
+{
+  "about": "Cases every Treebars SDK runs against its own implementation, shared so that the SDKs cannot disagree. Generated; do not edit.",
+  "cases": [
+    {
+      "name": "in-app messages on, drawn by the SDK",
+      "context": {
+        "app_id": "com.example.shop",
+        "device_type": "phone",
+        "locale": "en-GB",
+        "os_name": "Android",
+        "platform_type": "android",
+        "timezone": "Europe/London",
+        "in_app_display": "sdk"
+      },
+      "hash": "da259714"
+    },
+    {
+      "name": "in-app messages on, drawn by the app’s own renderer",
+      "context": {
+        "app_id": "com.example.shop",
+        "device_type": "phone",
+        "locale": "en-GB",
+        "os_name": "Android",
+        "platform_type": "android",
+        "timezone": "Europe/London",
+        "in_app_display": "app"
+      },
+      "hash": "0a5bf65f"
+    },
+    {
+      "name": "in-app messages off",
+      "context": {
+        "app_id": "com.example.shop",
+        "device_type": "phone",
+        "locale": "en-GB",
+        "os_name": "Android",
+        "platform_type": "android",
+        "timezone": "Europe/London",
+        "in_app_display": "off"
+      },
+      "hash": "c9002371"
+    },
+    {
+      "name": "a context from before in_app_display existed, which no report made now can hash to",
+      "context": {
+        "app_id": "com.example.shop",
+        "device_type": "phone",
+        "locale": "en-GB",
+        "os_name": "Android",
+        "platform_type": "android",
+        "timezone": "Europe/London"
+      },
+      "hash": "562cc5d3"
+    },
+    {
+      "name": "keys are sorted before they are joined, whatever order they were given in",
+      "context": {
+        "timezone": "Europe/London",
+        "in_app_display": "app",
+        "platform_type": "android",
+        "app_id": "com.example.shop",
+        "os_name": "Android",
+        "locale": "en-GB",
+        "device_type": "phone"
+      },
+      "hash": "0a5bf65f"
+    },
+    {
+      "name": "an empty value is still a pair",
+      "context": {
+        "in_app_display": "sdk",
+        "locale": "",
+        "platform_type": "web"
+      },
+      "hash": "f8a50c20"
+    },
+    {
+      "name": "nothing at all",
+      "context": {},
+      "hash": "811c9dc5"
+    }
+  ]
+}

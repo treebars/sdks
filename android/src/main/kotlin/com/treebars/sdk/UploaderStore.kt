@@ -57,6 +57,15 @@ internal data class UploaderState(
     val authBlockedUntil: Long = 0,
     /** The write key that was refused. A different key is not held to its cooldown. */
     val authKey: String? = null,
+    /**
+     * The spacing the last accepted upload named, in milliseconds, already held to the bounds a
+     * device accepts. Null before any upload has named one.
+     *
+     * Kept here, with the rest of what an upload's answer leaves behind, so the next launch keeps
+     * the pace this one was told rather than starting again from the default — and so it is dropped
+     * with everything else here when the write key changes, since it was said about that key.
+     */
+    val spacingMs: Long? = null,
 ) {
     val pendingEventIds: Set<String> get() = pending.flatMapTo(mutableSetOf()) { it.eventIds }
 
@@ -66,6 +75,7 @@ internal data class UploaderState(
         .put("next_allowed_at", nextAllowedAt)
         .put("auth_blocked_until", authBlockedUntil)
         .put("auth_key", authKey ?: JSONObject.NULL)
+        .put("flush_spacing_ms", spacingMs ?: JSONObject.NULL)
 
     companion object {
         fun fromJson(json: JSONObject): UploaderState {
@@ -78,6 +88,8 @@ internal data class UploaderState(
                 nextAllowedAt = json.optLong("next_allowed_at", 0),
                 authBlockedUntil = json.optLong("auth_blocked_until", 0),
                 authKey = if (json.isNull("auth_key")) null else json.optString("auth_key"),
+                // Checked again on the way out of storage, as it was off the wire: a file is not trusted either.
+                spacingMs = namedSpacingMs(json.opt("flush_spacing_ms")?.toString()),
             )
         }
     }

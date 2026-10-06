@@ -11,7 +11,7 @@ plugins {
 // A coordinate, so the React Native wrapper can name this module rather than duplicate it.
 // `version` tracks the SDK version the events themselves carry.
 group = "com.treebars"
-version = "0.4.0"
+version = "0.5.0"
 
 android {
     namespace = "com.treebars.sdk"

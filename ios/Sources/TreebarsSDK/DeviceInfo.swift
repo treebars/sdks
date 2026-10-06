@@ -280,6 +280,20 @@ final class DeviceInfo {
         return values
     }()
 
+    /**
+     The app's name: its display name, else its bundle name, or nil when the bundle declares neither.
+
+     As the bundle declares it and not as a localisation shows it, so one app reports one name
+     whatever language the phone is set to.
+     */
+    static func appName(in info: [String: Any]? = Bundle.main.infoDictionary) -> String? {
+        for key in ["CFBundleDisplayName", "CFBundleName"] {
+            let name = (info?[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !name.isEmpty { return name }
+        }
+        return nil
+    }
+
     /// The low-cardinality dimensions carried on every event.
     ///
     /// Sent per event because a stored event is never rewritten: it has to record the
@@ -328,6 +342,21 @@ final class DeviceInfo {
         return values
     }
 
+    /**
+     What `device_context` says of this app's in-app messages, as `in_app_display`: `off` when nothing
+     will be drawn — in-app is switched off (`Treebars.disableInApps()`) — `app` when the app
+     registered its own renderer (`Treebars.setInAppRenderer`), and `sdk` when this SDK draws them,
+     which is the default.
+
+     The same three words in every Treebars SDK. Not part of `context()`: that is what the device
+     says of itself, and this is what the app's code has said, so it is read from the two values a
+     draw is decided by at the moment a report is built, and kept nowhere.
+     */
+    static func inAppDisplay(enabled: Bool, ownRenderer: Bool) -> String {
+        if !enabled { return "off" }
+        return ownRenderer ? "app" : "sdk"
+    }
+
     /// A stable 32-bit FNV-1a over the sorted context.
     ///
     /// Not a cryptographic hash: it only has to change when the context does. FNV rather
@@ -362,6 +391,14 @@ final class DeviceInfo {
     static func shouldReportContext(_ hash: String) -> Bool {
         guard let stored = UserDefaults.standard.string(forKey: contextHashKey) else { return true }
         return isStale(stored, hash)
+    }
+
+    /// Whether this device has reported its context before, whatever it said then.
+    ///
+    /// A device that has not is one nobody has heard from: its first report is what registers it, so
+    /// that one is made at once, where every later one waits until the launch has settled.
+    static func hasReportedContext() -> Bool {
+        UserDefaults.standard.string(forKey: contextHashKey) != nil
     }
 
     /**
@@ -479,17 +516,28 @@ final class DeviceInfo {
     }
 }
 
-/// Reports the current connection type.
+/// Reports the current connection: its type, whether using it costs the person anything, and the
+/// moment it comes back.
 ///
 /// A passive read of the last observed path rather than a request-time query, because
 /// `NWPathMonitor` only delivers a path asynchronously and blocking an event on it would
 /// put a wait on the hot path for a single dimension. Before the first update lands this
-/// reports nil, so an event says nothing rather than something wrong.
-final class NetworkMonitor {
+/// reports nil, so an event says nothing rather than something wrong — and a network nobody has
+/// described yet is taken as neither metered nor saving data.
+///
+/// One monitor for all of it: a second would be a second standing subscription to the same path.
+final class NetworkMonitor: @unchecked Sendable {
     static let shared = NetworkMonitor()
 
     private let lock = NSLock()
     private var latest: String?
+    /// Low Data Mode is on for the network in use.
+    private var constrained = false
+    /// The network in use is cellular or a personal hotspot.
+    private var expensive = false
+    /// Nil until the first path has been delivered.
+    private var satisfied: Bool?
+    private var regained: (@Sendable () -> Void)?
     #if canImport(Network)
     /// Held for the process lifetime. A monitor that goes out of scope is deallocated and
     /// silently stops delivering, which would leave network_type permanently nil.
@@ -513,9 +561,17 @@ final class NetworkMonitor {
                 type = nil
             }
 
+            let nowSatisfied = path.status == .satisfied
             self.lock.lock()
+            let wasSatisfied = self.satisfied
+            self.satisfied = nowSatisfied
             self.latest = type
+            self.constrained = path.isConstrained
+            self.expensive = path.isExpensive
+            let regained = self.regained
             self.lock.unlock()
+            // A path that was down and is up. The first path of a launch is not one: nothing was lost.
+            if wasSatisfied == false, nowSatisfied { regained?() }
         }
         monitor.start(queue: DispatchQueue(label: "treebars.network-monitor"))
         #endif
@@ -525,5 +581,31 @@ final class NetworkMonitor {
         lock.lock()
         defer { lock.unlock() }
         return latest
+    }
+
+    /// What the network in use costs: `constrained` in Low Data Mode, `metered` on cellular or a hotspot.
+    func cost() -> (constrained: Bool, metered: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (constrained, expensive)
+    }
+
+    /// Called each time the network comes back after being away, on the monitor's own queue. One
+    /// listener; nil removes it.
+    func onRegained(_ handler: (@Sendable () -> Void)?) {
+        lock.lock()
+        regained = handler
+        lock.unlock()
+    }
+}
+
+extension FlushConditions {
+    /// This device's own answer, now: Low Power Mode and the network in use.
+    static func current() -> FlushConditions {
+        let network = NetworkMonitor.shared.cost()
+        return FlushConditions(
+            constrained: ProcessInfo.processInfo.isLowPowerModeEnabled || network.constrained,
+            metered: network.metered
+        )
     }
 }

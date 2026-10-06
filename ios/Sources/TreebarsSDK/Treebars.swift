@@ -87,9 +87,9 @@ public enum PushProvider: String {
 ///
 /// Call `initialize` once, at launch; everything else is a static call on this type. Events are
 /// written to a queue on disk that survives the process being killed, and uploaded in batches —
-/// on a timer, when the app leaves the foreground, and on `flush()` — with exponential backoff
-/// when the network fails. The Android SDK behaves the same way, and the React Native SDK is a
-/// bridge over this one.
+/// about a second after an event on a quiet device and every few seconds on a busy one, when the
+/// app leaves the foreground, and on `flush()` — with exponential backoff when the network fails.
+/// The Android SDK behaves the same way, and the React Native SDK is a bridge over this one.
 public final class Treebars {
     public static let shared = Treebars()
 
@@ -104,13 +104,18 @@ public final class Treebars {
     public static let deliveryIdKey = TreebarsConstants.deliveryIdKey
     public static let campaignIdKey = TreebarsConstants.campaignIdKey
 
-    /// The intervals `initialize` uses when none is passed, in seconds: `flushInterval` and
-    /// `inAppPollInterval`.
+    /// The spacing a device saving power or data keeps between two uploads, in seconds: one in Low
+    /// Power Mode, or on a network in Low Data Mode.
     ///
-    /// Taken from the values every Treebars SDK shares, so they cannot drift from the other
-    /// platforms. Public because a public function's default argument may name only public
-    /// declarations.
+    /// It is not what `initialize` uses when no `flushInterval` is passed. An app that chooses no
+    /// interval gets the SDK's own pace, which is much shorter; this is the pace that device falls
+    /// back to when the person has asked the phone to do less.
     public static let defaultFlushInterval = TreebarsConstants.defaultFlushInterval
+    /// The interval `initialize` uses when no `inAppPollInterval` is passed, in seconds.
+    ///
+    /// Both are taken from the values every Treebars SDK shares, so they cannot drift from the
+    /// other platforms. Public because a public function's default argument may name only public
+    /// declarations.
     public static let defaultInAppPollInterval = TreebarsConstants.defaultInAppPollInterval
 
     /// The events the SDK emits on its own. The names are reserved for the SDK.
@@ -194,6 +199,13 @@ public final class Treebars {
     }()
     private var inAppRenderer: InAppRenderer?
     private var inAppEnabled = true
+    /// How this app's in-app messages are drawn, read now from the two values that decide a draw (`in_app_display`).
+    private var inAppDisplay: String { DeviceInfo.inAppDisplay(enabled: inAppEnabled, ownRenderer: inAppRenderer != nil) }
+    /// The wait before this device's description is put to the gate again (`ContextSettle`, `settleContext`).
+    private let contextSettle = ContextSettle(
+        inFront: { await Treebars.shared.inAppSurfaceReady() },
+        report: { await Treebars.shared.reportDeviceContext(settled: true) }
+    )
     #if canImport(UIKit)
     /// The HTML message on screen, drawn by this SDK, or nil.
     @MainActor private var htmlHost: InAppHtmlHost?
@@ -254,7 +266,8 @@ public final class Treebars {
     private var backendClient: BackendClient?
     private var uploader: EventUploader?
     private var triggers: TriggerEvents?
-    private var flushTimer: Timer?
+    /// When an event is uploaded: armed by each queued event, told of each upload by the uploader.
+    private var pace: FlushPace?
 
     private static let batchSize = TreebarsConstants.batchSize
 
@@ -284,7 +297,12 @@ public final class Treebars {
        - env: Accepted and not read: no event or request carries it, and passing a different value
          changes nothing this SDK does. The write key is what names the environment — each environment
          of a project has its own, so the key an app is built with is the whole of that choice.
-       - flushInterval: Seconds between automatic uploads.
+       - flushInterval: The least number of seconds between two uploads while the app is busy, for an
+         app that wants to choose it. Leave it out for the SDK's own pace: an event is uploaded about
+         a second after it happens, and a busy device uploads every few seconds, at a spacing the
+         server names. Either way a quiet device still uploads a second after an event, a chosen
+         interval is never shorter than that second, and a device saving power or data keeps
+         `defaultFlushInterval`.
        - debug: Logs what the SDK does to the console.
        - autoTrackLifecycle: Records `app_open`, `app_foreground` and `app_background`. Turning it off
          also turns off the upload made as the app goes to the background, so call `flush()` from your
@@ -304,7 +322,7 @@ public final class Treebars {
         writeKey: String,
         backendURL: URL,
         env: TreebarsEnv = .production,
-        flushInterval: TimeInterval = Treebars.defaultFlushInterval,
+        flushInterval: TimeInterval? = nil,
         debug: Bool = false,
         /// Emit `app_open`, `app_foreground` and `app_background` automatically.
         ///
@@ -371,8 +389,8 @@ public final class Treebars {
         let instance = shared
         /*
          * Idempotent, as Android's is. A second call would register the lifecycle observers and
-         * arm the timers again against the same singleton — every foreground emitting
-         * `app_foreground` twice, and two flush loops racing one queue. Under React Native a
+         * arm the in-app poll again against the same singleton — every foreground emitting
+         * `app_foreground` twice, and two uploaders racing one queue. Under React Native a
          * second call is routine: a fast refresh re-runs the JavaScript `init()` against a native
          * singleton that never went away.
          */
@@ -492,16 +510,39 @@ public final class Treebars {
          */
         let uploaderStore = UploaderStore()
         if instance.optedOut { uploaderStore.save(UploaderState()) }
+        /*
+         * The pace is built first and handed to the uploader, which tells it as each batch goes out —
+         * so every upload is counted, whoever asked for it, without each caller having to say so. What
+         * the pace does in return is ask that uploader for a flush.
+         */
+        let pace = FlushPace(
+            chosen: flushInterval,
+            testKey: FlushPace.isTestKey(writeKey),
+            conditions: { FlushConditions.current() }
+        )
+        instance.pace = pace
         instance.uploader = EventUploader(
             queue: instance.queue,
             transport: client,
             store: uploaderStore,
             writeKey: writeKey,
             triggers: triggers,
+            pace: pace,
             paused: { instance.optedOut }
         )
+        pace.onDue { [weak uploader = instance.uploader] in await uploader?.flush() }
 
-        instance.startAutoFlush(interval: flushInterval)
+        /*
+         * The network coming back is a reason to upload at once: what was logged without it is
+         * waiting. It asks for a flush and nothing more, so a `Retry-After` or a refused write key
+         * still holds what it was holding.
+         */
+        NetworkMonitor.shared.onRegained { [weak uploader = instance.uploader] in
+            Task {
+                guard let uploader, await uploader.pending() > 0 else { return }
+                await uploader.flush()
+            }
+        }
         if autoTrackLifecycle { instance.observeLifecycle() }
         instance.observeActivation()
 
@@ -513,7 +554,7 @@ public final class Treebars {
                 instance.foregroundedAt = Date().timeIntervalSince1970
                 await instance.enqueue(
                     eventName: DefaultEvent.appOpen,
-                    properties: ["is_first_launch": instance.firstLaunch]
+                    properties: Self.lifecycleProperties(["is_first_launch": instance.firstLaunch])
                 )
             }
             await instance.reportDeviceContext()
@@ -545,7 +586,7 @@ public final class Treebars {
              *
              * `initialize` may be called from any thread — a `DispatchQueue.global()` block, a
              * background bootstrap — and a timer armed there is retained and never fires, with
-             * no error to say so. The auto-flush timer is armed the same way.
+             * no error to say so.
              */
             DispatchQueue.main.async {
                 instance.inAppPollTimer?.invalidate()
@@ -718,6 +759,23 @@ public final class Treebars {
         }
     }
 
+    /// What `device_context` carries: what the device says of itself, and what the app has said of its
+    /// in-app messages (`in_app_display`, `DeviceInfo.inAppDisplay`). One place, so the hash is always
+    /// of the whole of it and every report — the gated one, a forced one, the one a sign-in re-states —
+    /// says the same thing.
+    private func deviceContext() -> [String: Any] {
+        var context = DeviceInfo.context()
+        context["in_app_display"] = inAppDisplay
+        return context
+    }
+
+    /// Starts the wait after which this device's description is put to the gate (`ContextSettle`):
+    /// from a launch, a return to the foreground, or a change to how in-app messages are drawn.
+    private func settleContext() {
+        guard writeKey != nil else { return }
+        contextSettle.start()
+    }
+
     /// Emits `device_context` when this device's context differs from the last reported one.
     ///
     /// A reserved event rather than a bespoke endpoint, so it inherits the batching, retry
@@ -729,7 +787,13 @@ public final class Treebars {
     /// that has said `claim_required`: this device's secret is not registered yet, and
     /// waiting out the seven-day TTL would leave in-app messages and the notification
     /// centre unavailable for a week.
-    private func reportDeviceContext(force: Bool = false) async {
+    ///
+    /// **When.** A device nobody has heard from reports at once: that report registers its secret,
+    /// and nothing it may fetch is answered until it has landed. A forced report is at once too.
+    /// Every other one waits for the launch to settle (`settleContext`) and comes back here as
+    /// `settled`, since it is a correction and can afford to be right about what the app has said
+    /// by then.
+    private func reportDeviceContext(force: Bool = false, settled: Bool = false) async {
         // Read the permission first, so the context this builds is current rather than
         // whatever was true when the process started. `getNotificationSettings` has no
         // synchronous form, which is why this is awaited here rather than read inline.
@@ -755,7 +819,15 @@ public final class Treebars {
         // device from describing itself — or registering its secret — for a week after `optIn()`.
         guard !optedOut else { return }
 
-        let context = DeviceInfo.context()
+        // The identity first: a device new to this install forgets a record that was restored with the
+        // preferences, and the question below is about that record.
+        _ = DeviceInfo.getDeviceId()
+        if !force, !settled, DeviceInfo.hasReportedContext() {
+            settleContext()
+            return
+        }
+
+        let context = deviceContext()
         let hash = DeviceInfo.hashContext(context)
         guard force || DeviceInfo.shouldReportContext(hash) else { return }
 
@@ -854,7 +926,7 @@ public final class Treebars {
             // Re-reported so the device row picks up the identity it was registered
             // without. Forced rather than left to shouldReportContext, whose hash covers
             // the device's own attributes and is unchanged by a login.
-            let context = DeviceInfo.context()
+            let context = shared.deviceContext()
             var properties = context
             properties["context_hash"] = DeviceInfo.hashContext(context)
             properties["fetch_secret"] = DeviceInfo.getFetchSecret()
@@ -1153,20 +1225,22 @@ public final class Treebars {
     }
 
     /**
-     Seconds until the auto-flush next runs, or nil when nothing is scheduled.
+     Seconds until the next automatic upload, or nil when none is armed.
 
-     Nil rather than zero when the timer is not running, which is the distinction a caller
-     needs: "no flush is scheduled" and "a flush is due right now" are different sentences and
-     a screen showing 0 for both would be lying about one of them. Clamped at zero on the low
-     side, because a negative countdown reads as a bug.
+     An upload is armed by an event and spent as it goes, so between events nothing is scheduled
+     and this answers nil — as it does before `initialize`. Nil rather than zero, which is the
+     distinction a caller needs: "no upload is scheduled" and "an upload is due right now" are
+     different sentences and a screen showing 0 for both would be lying about one of them. Clamped
+     at zero on the low side, because a negative countdown reads as a bug.
      */
     public static func secondsUntilNextFlush() -> TimeInterval? {
-        shared.nextFlushAt.map { max(0, $0.timeIntervalSinceNow) }
+        guard let due = shared.pace?.dueAt else { return nil }
+        return max(0, TimeInterval(due) / 1000 - Date().timeIntervalSince1970)
     }
 
     /**
-     Uploads the events waiting on this device now, rather than on the next timer — including every
-     event logged before this call, even one still being written to the queue.
+     Uploads the events waiting on this device now, rather than at the pace they were armed for —
+     including every event logged before this call, even one still being written to the queue.
 
      Returns at once; the upload runs in the background, never throws, and backs off and retries on
      its own when the network fails. Does nothing while opted out.
@@ -1296,6 +1370,8 @@ public final class Treebars {
      */
     public static func wipeLocalData() {
         let instance = shared
+        // A description waiting to be reported was the forgotten device's.
+        instance.contextSettle.stop()
         instance.userId = nil
         instance.userSignature = nil
         instance.currentScreen = nil
@@ -1350,9 +1426,16 @@ public final class Treebars {
      Native bridge, whose JavaScript host unmounts and mounts while the module lives on, and which hands its
      outstanding overlay straight back. Anything else is a host that has just mounted, and whatever it was showing
      went with the view that drew it.
+
+     Which of the two draws is part of this device's `device_context` (`in_app_display`: `app` or `sdk`), so a change
+     is reported — once it has stood for a moment with the app in front, and only when it is a change: another
+     renderer in place of one, or the same one detached and attached again, reports nothing.
      */
     public static func setInAppRenderer(_ renderer: InAppRenderer?, reattaching: Bool = false) {
+        let display = shared.inAppDisplay
         shared.inAppRenderer = renderer
+        // Only when the answer moved, so a host that registers on every rebuild does not keep pushing the wait back.
+        if shared.inAppDisplay != display { shared.settleContext() }
         TreebarsLogger.log(renderer == nil ? "in-app: renderer detached" : "in-app: renderer attached\(reattaching ? " again" : "")")
         /*
          * Released only for a new host. On a re-attach the overlay handed back is still up, and releasing the screen
@@ -1417,8 +1500,13 @@ public final class Treebars {
     /// The message on screen goes too, and so do the nudges. This SDK draws an HTML message itself, and a standard one
     /// when no renderer is registered, so removing the renderer does not stop messages; this does. The React Native SDK
     /// calls it for `in_app_enabled: false`.
+    ///
+    /// The device says so: its `device_context` reports `in_app_display: off` from here on, which is how a project
+    /// can tell an app that shows no messages from one that was sent none.
     public static func disableInApps() {
+        let display = shared.inAppDisplay
         shared.inAppEnabled = false
+        if shared.inAppDisplay != display { shared.settleContext() }
         #if canImport(UIKit)
         Task { @MainActor in
             InAppHtmlHost.cool()
@@ -3199,13 +3287,29 @@ public final class Treebars {
      Every event a call put on the queue, the session boundaries included — a journey can
      start on `session_start` as readily as on anything the app logs. After the appends, so
      the flush a listed one asks for finds it there.
+
+     Then the pace, which arms one upload for whatever was queued: a listed event goes by the
+     uploader's own wake and the rest by this one. And a full batch waits for neither.
      */
     private func announceQueued(_ names: [String]) async {
         for name in names { await uploader?.eventLogged(name) }
+        if !names.isEmpty { pace?.eventLogged() }
 
         if await queue.count >= Self.batchSize {
             await uploader?.flush()
         }
+    }
+
+    /**
+     A lifecycle event's properties: what the moment measured, and `name`, the app it happened in —
+     so a list of these events says which app each one is, where otherwise every row reads the
+     same. Left out when the bundle declares no name.
+     */
+    static func lifecycleProperties(_ measured: [String: Any], appName: String? = DeviceInfo.appName()) -> [String: Any] {
+        guard let appName else { return measured }
+        var properties = measured
+        properties["name"] = appName
+        return properties
     }
 
     /// The dimensions an event was stamped with: the names an in-app trigger may read, taken from the
@@ -3247,16 +3351,6 @@ public final class Treebars {
     }
 
     /**
-     When the auto-flush timer is next due. Nil when it is not running.
-
-     Recorded rather than derived: `Timer` exposes a `fireDate`, but reading it means holding
-     the timer and knowing it is the right one, and the value has to survive the timer being
-     replaced. Written when the timer is armed and again on each fire, so a caller reading it
-     mid-upload gets the next one rather than one already in the past.
-     */
-    private var nextFlushAt: Date?
-
-    /**
      What to call this SDK on the wire, when a wrapper is the thing an integrator installed.
 
      Nil means this SDK. The React Native bridge passes `treebars-react-native`, and it has
@@ -3265,20 +3359,6 @@ public final class Treebars {
      every React Native device indistinguishable from a native one.
      */
     private var sdkNameOverride: String?
-
-    /// Armed on the main queue, as the in-app poll is: `Timer.scheduledTimer` attaches to the current
-    /// run loop, and `initialize` may be called from a thread that has none running.
-    private func startAutoFlush(interval: TimeInterval) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.flushTimer?.invalidate()
-            self.nextFlushAt = Date().addingTimeInterval(interval)
-            self.flushTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-                self?.nextFlushAt = Date().addingTimeInterval(interval)
-                Task { await self?.uploader?.flush() }
-            }
-        }
-    }
 
     /**
      The app became active: the moment a trigger held for want of a screen can be answered. Registered
@@ -3294,6 +3374,8 @@ public final class Treebars {
             queue: .main
         ) { [weak self] _ in
             guard let self, self.writeKey != nil else { return }
+            // A description whose wait ended while the app was not in front waits again, now that it is.
+            self.contextSettle.cameToFront()
             Task { await self.replayUndrawnTriggers() }
         }
         // A queue kept from the last run can draw an HTML message on this launch's first event, before any sync.
@@ -3355,7 +3437,7 @@ public final class Treebars {
             Task {
                 await self.enqueue(
                     eventName: DefaultEvent.appForeground,
-                    properties: ["background_ms": backgroundMs]
+                    properties: Self.lifecycleProperties(["background_ms": backgroundMs])
                 )
 
                 /*
@@ -3367,6 +3449,8 @@ public final class Treebars {
                  *
                  * Nearly free: `reportDeviceContext` short-circuits on the stored hash, so
                  * a foreground where nothing moved costs a settings read and no network.
+                 * Asked a moment after the return rather than in it (`settleContext`), once
+                 * the app is active again.
                  */
                 await self.reportDeviceContext()
             }
@@ -3399,7 +3483,7 @@ public final class Treebars {
                 if hadForeground {
                     await self.enqueue(
                         eventName: DefaultEvent.appBackground,
-                        properties: ["foreground_ms": foregroundMs]
+                        properties: Self.lifecycleProperties(["foreground_ms": foregroundMs])
                     )
                 }
                 await self.uploader?.flush()

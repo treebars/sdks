@@ -54,7 +54,7 @@ internal class TriggerStore(directory: File, filename: String = TreebarsConstant
 
 /**
  * The environment's trigger list: the events this device sends within a second of logging them,
- * rather than at the thirty-second tick. One of three implementations — `TriggerEvents.swift` and
+ * however lately it last uploaded. One of three implementations — `TriggerEvents.swift` and
  * `sdks/web/src/triggers.ts` are the others — and all three run the same shared scenarios.
  *
  * The server decides what is on it — the events that start or advance a live campaign or journey —

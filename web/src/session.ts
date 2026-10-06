@@ -74,16 +74,22 @@ export class SessionManager {
    * activity turns out to be past the gap. The caller emits `session_end` backdated to
    * `endedAt`, the real last moment of that session rather than whenever the visitor
    * happened to come back.
+   *
+   * `at` is for an event recorded after the moment it happened — an `app_background`, which waits to see that the
+   * page stayed hidden: the session is asked about as of that moment, so the event lands in the session it happened
+   * in and counts as that session's activity then, however much later it is recorded.
    */
-  touch(counts = true): SessionTouch {
-    const now = Date.now();
+  touch(counts = true, at?: number): SessionTouch {
+    const now = at ?? Date.now();
     const existing = this.current ?? (this.persist ? read() : null);
     // `counts` is false for `contextToken()`: asking for a token is activity — it keeps the session open, since the
     // purchase it is for is about to happen in it — but it is not an event, and `session_end`'s count is of events.
     const step = counts ? 1 : 0;
 
     if (existing && now - existing.lastActivity < SESSION_TIMEOUT_MS) {
-      const updated = { ...existing, lastActivity: now, eventCount: (existing.eventCount ?? 0) + step };
+      // An earlier moment never moves the last activity back: something may have been recorded since.
+      const lastActivity = at === undefined ? now : Math.max(existing.lastActivity, now);
+      const updated = { ...existing, lastActivity, eventCount: (existing.eventCount ?? 0) + step };
       this.current = updated;
       if (this.persist) write(updated);
       return { sessionId: updated.id, isNew: false, expired: null };
@@ -111,6 +117,14 @@ export class SessionManager {
     this.current = created;
     if (this.persist) write(created);
     return { sessionId: created.id, isNew: true, expired };
+  }
+
+  /**
+   * The id of the session this tab holds, still open or not, or null when it holds none. Read without touching it:
+   * asking is not activity.
+   */
+  held(): string | null {
+    return (this.current ?? (this.persist ? read() : null))?.id ?? null;
   }
 
   /**

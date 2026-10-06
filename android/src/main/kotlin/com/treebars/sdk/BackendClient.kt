@@ -10,7 +10,7 @@ import java.net.URLEncoder
 import java.util.zip.GZIPOutputStream
 
 /**
- * What an upload got back: the status, and the two headers the upload policy reads.
+ * What an upload got back: the status, and the three headers the upload policy reads.
  *
  * A thrown exception is the other outcome — no answer at all — and the uploader treats the two
  * differently, so a status of zero is never used to stand for "the network failed".
@@ -20,6 +20,11 @@ internal data class UploadResponse(
     val retryAfter: String? = null,
     /** `X-Treebars-Triggers-Version`, which the server sets on an accepted upload and nothing else. */
     val triggersVersion: String? = null,
+    /**
+     * `X-Treebars-Flush-Ms` as it arrived: how far apart the server asks a busy device to keep its
+     * uploads. Unread here — the uploader checks it and holds it to the bounds a device accepts.
+     */
+    val flushSpacing: String? = null,
 )
 
 /** What `/v1/context-token` answered; see [BackendClient.postContextToken]. */
@@ -96,6 +101,7 @@ internal class BackendClient(
                 connection.responseCode,
                 connection.getHeaderField("Retry-After"),
                 connection.getHeaderField(TreebarsConstants.TRIGGERS_VERSION_HEADER),
+                connection.getHeaderField(TreebarsConstants.FLUSH_SPACING_HEADER),
             )
         } finally {
             connection.disconnect()

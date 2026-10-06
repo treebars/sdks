@@ -46,17 +46,23 @@ struct UploaderState {
     var authBlockedUntil: Int64 = 0
     /// The write key that was refused. A different key is not held to its cooldown.
     var authKey: String?
+    /// The spacing between uploads the last accepted one named, in milliseconds. Nil until one has.
+    /// Not part of the upload policy: kept here so it is written with the acknowledgement that
+    /// carried it, and dropped with everything else another write key left.
+    var flushSpacingMs: Int64?
 
     var pendingEventIds: Set<String> { pending.reduce(into: Set<String>()) { $0.formUnion($1.eventIds) } }
 
     var json: [String: Any] {
-        [
+        var object: [String: Any] = [
             "pending": pending.map(\.json),
             "attempt": attempt,
             "next_allowed_at": nextAllowedAt,
             "auth_blocked_until": authBlockedUntil,
             "auth_key": authKey ?? NSNull(),
         ]
+        if let flushSpacingMs { object["flush_spacing_ms"] = flushSpacingMs }
+        return object
     }
 
     init() {}
@@ -67,6 +73,7 @@ struct UploaderState {
         nextAllowedAt = (json["next_allowed_at"] as? NSNumber)?.int64Value ?? 0
         authBlockedUntil = (json["auth_blocked_until"] as? NSNumber)?.int64Value ?? 0
         authKey = json["auth_key"] as? String
+        flushSpacingMs = (json["flush_spacing_ms"] as? NSNumber)?.int64Value
     }
 }
 
