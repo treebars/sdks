@@ -25,6 +25,8 @@ internal data class UploadResponse(
      * uploads. Unread here — the uploader checks it and holds it to the bounds a device accepts.
      */
     val flushSpacing: String? = null,
+    /** `X-Treebars-Config-Version`, which the server sets on an accepted upload once the environment has published a config. */
+    val configVersion: String? = null,
 )
 
 /** What `/v1/context-token` answered; see [BackendClient.postContextToken]. */
@@ -102,6 +104,7 @@ internal class BackendClient(
                 connection.getHeaderField("Retry-After"),
                 connection.getHeaderField(TreebarsConstants.TRIGGERS_VERSION_HEADER),
                 connection.getHeaderField(TreebarsConstants.FLUSH_SPACING_HEADER),
+                connection.getHeaderField(TreebarsConstants.CONFIG_VERSION_HEADER),
             )
         } finally {
             connection.disconnect()
@@ -127,6 +130,34 @@ internal class BackendClient(
     fun postIdentify(payload: JSONObject, signature: String?): Boolean {
         val (status, body) = postAsDevice(TreebarsConstants.IDENTIFY_PATH, payload, signature, 15_000, 30_000)
         return status == 403 && body.contains("signature_required")
+    }
+
+    /**
+     * This install's remote config answers: the body, or how the ask failed. Throws when no answer arrived.
+     *
+     * The write key, and the signature when somebody is signed in — and no device secret, unlike every other
+     * call here that names the device. The answer is this install's own experience and nothing of anybody's,
+     * and a secret would lock a fresh install out of its flags until its first upload had registered it.
+     */
+    fun postConfig(payload: JSONObject, signature: String?): ConfigAnswer {
+        val connection = URL("${baseUrl.trimEnd('/')}${TreebarsConstants.CONFIG_PATH}").openConnection() as HttpURLConnection
+
+        return try {
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 15_000
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.setRequestProperty(TreebarsConstants.WRITE_KEY_HEADER, writeKey)
+            signature?.let { connection.setRequestProperty(TreebarsConstants.USER_SIGNATURE_HEADER, it) }
+            connection.outputStream.use { it.write(payload.toString().toByteArray()) }
+
+            val status = connection.responseCode
+            if (status !in 200..299) return ConfigAnswer.Failed(status, connection.getHeaderField("Retry-After"))
+            ConfigAnswer.Answered(runCatching { JSONObject(connection.inputStream.bufferedReader().use { it.readText() }) }.getOrNull())
+        } finally {
+            connection.disconnect()
+        }
     }
 
     /**

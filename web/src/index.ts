@@ -1,4 +1,5 @@
 import {
+  automationFlag,
   defaultUserAttributes,
   getFlushConditions,
   getWebDeviceContext,
@@ -164,6 +165,26 @@ interface PageHide {
 const pageHidden = (): boolean => typeof document !== 'undefined' && document.visibilityState === 'hidden';
 
 /**
+ * How this browser describes itself, as one string that changes when the description does: remote config asks for its
+ * values again when it differs from the last ask's. Without the network type, which changes as somebody walks out of
+ * the door and is no reason to ask.
+ */
+const configContext = (): string => {
+  const { network_type: _moves, ...steady } = getWebDeviceDimensions();
+  return Object.keys(steady)
+    .sort()
+    .map((key) => `${key}=${String((steady as Record<string, unknown>)[key] ?? '')}`)
+    .join(' ');
+};
+
+/**
+ * A batch as it is sent. The stored batch is resent unchanged, so what is added here is added at the moment of
+ * sending and never kept with it: whether automation is driving this browser is a fact about the page that sends,
+ * not about the events a previous page left behind.
+ */
+const wireBatch = (batch: PendingBatch): string => JSON.stringify({ ...batch, ...automationFlag() });
+
+/**
  * How long after a page opens — or, opened hidden, is first seen — the answer to its own sync may still be shown on
  * it, in milliseconds.
  *
@@ -232,9 +253,10 @@ interface PageOpening {
 import { DEFAULT_EVENTS } from './types';
 import type { TreebarsWebConfig, EventProperties, QueuedEvent } from './types';
 import { TriggerEvents, readTriggerList, type TriggerList } from './triggers';
+import { RemoteConfig, type ConfigAnswer, type ConfigAsk, type ConfigAttributes } from './config';
 import { Uploader, UploaderStore, type PendingBatch, type UploadResponse } from './uploader';
 import { claimWithRetries, rewardRefusal, type RewardAttempt } from './reward-claim';
-import { BATCH_SIZE, CONTEXT_SETTLE_MS, DEFAULT_BACKEND_URL, ENDPOINTS, HEADERS, SDK_NAME, SDK_VERSION, ACQUISITION, IN_APP_PRESENTATION_HOLD_MS, PUSH_PERMISSION_LINK, WEB_EVENTS } from './generated/constants';
+import { BATCH_SIZE, CONFIG_READY_TIMEOUT_MS, CONTEXT_SETTLE_MS, DEFAULT_BACKEND_URL, ENDPOINTS, HEADERS, SDK_NAME, SDK_VERSION, ACQUISITION, IN_APP_PRESENTATION_HOLD_MS, PUSH_PERMISSION_LINK, WEB_EVENTS } from './generated/constants';
 
 /**
  * The SDK's own reports that the page is going away, which are never a moment to show anything.
@@ -486,6 +508,11 @@ class TreebarsWeb {
   private warnedSignature = false;
   private uploader: Uploader | null = null;
   private triggers: TriggerEvents | null = null;
+  private remoteConfig: RemoteConfig | null = null;
+  /** Who asked to hear that a config value may have changed. Kept here so a page may ask before `init`. */
+  private readonly configListeners = new Set<() => void>();
+  /** What the page said about config before `init`, applied by it. */
+  private configBeforeInit: { attributes?: ConfigAttributes; overrides: Map<string, unknown> } = { overrides: new Map() };
   /** The one-shot wake the uploader asks for: a retry falling due, or a listed event's debounce. */
   private wakeTimer: ReturnType<typeof setTimeout> | null = null;
   /** When an event is uploaded: each one arms an upload, and this decides when it is due (`flush-pace.ts`). */
@@ -524,6 +551,11 @@ class TreebarsWeb {
    * when a consent prompt answers first, and read back from storage by it.
    */
   private optedOut = false;
+  /**
+   * Whether the next session to open arrived with this page: true from the page's load until the first thing it
+   * does. See `landing`.
+   */
+  private arriving = true;
   /**
    * An answer given before `init`, which it keeps over whatever an earlier visit stored — and stores
    * only then, once it knows whether the page allows storage at all (`disableStorage`).
@@ -620,6 +652,26 @@ class TreebarsWeb {
       fetch: () => this.fetchTriggerEvents(),
       log: (message) => this.log(message),
     });
+    this.remoteConfig = new RemoteConfig({
+      persist,
+      fetch: (ask) => this.fetchConfigAnswers(ask),
+      /*
+       * A read answered an experiment's variant: recorded as an event, so who was shown which variant is in the
+       * same place as what they did next. On the queue like any event, so it survives a page that is closed.
+       */
+      expose: (exposure) =>
+        this.track(DEFAULT_EVENTS.EXPERIMENT_EXPOSED, {
+          experiment_id: exposure.experimentId,
+          experiment_key: exposure.experimentKey,
+          variant: exposure.variant,
+          variable: exposure.variable,
+          unit: exposure.unit,
+        }),
+      log: (message) => this.log(message),
+    });
+    this.remoteConfig.onChange(() => {
+      for (const listener of [...this.configListeners]) listener();
+    });
     this.uploader = new Uploader({
       queue: this.store,
       store: new UploaderStore(persist),
@@ -637,6 +689,7 @@ class TreebarsWeb {
       log: (message) => this.log(message),
       wake: (at) => this.wake(at),
       triggers: this.triggers,
+      configSeen: (version) => this.remoteConfig?.observe(version),
       spacingNamed: (milliseconds) => this.pace?.spacingNamed(milliseconds),
       backlogLeft: () => this.pace?.backlogLeft(),
     });
@@ -696,6 +749,15 @@ class TreebarsWeb {
      */
     this.userId = readSignedInUser(persist) ?? undefined;
     this.userSignature = this.userId ? (readSignedInUserSignature(persist) ?? undefined) : undefined;
+
+    /*
+     * Remote config, told who is asking before the first event opens the session — and what the page said about it
+     * before `init`. The session itself arrives with that first event (`advanceSession`).
+     */
+    for (const [key, value] of this.configBeforeInit.overrides) this.remoteConfig.override(key, value);
+    if (this.configBeforeInit.attributes) this.remoteConfig.setAttributes(this.configBeforeInit.attributes);
+    this.configBeforeInit = { overrides: new Map() };
+    if (!this.optedOut) this.remoteConfig.start({ userId: this.userId ?? null, context: configContext() });
 
     if (typeof window !== 'undefined') {
       this.installLifecycleHooks();
@@ -983,6 +1045,11 @@ class TreebarsWeb {
     // `at` is for an event recorded after the moment it happened (`recordBackground`): the session as it stood then.
     const { sessionId, isNew, expired } = this.sessions!.touch(countsAsEvent, at);
     this.currentSessionId = sessionId;
+    // A config key keeps its answer for a session: this is where a new one is heard of.
+    this.remoteConfig?.sessionStarted(sessionId);
+    // Read once: only the first thing a page does can open a session that arrived with the page.
+    const arrived = this.arriving;
+    this.arriving = false;
 
     if (this.config?.autoSessions !== false) {
       /*
@@ -1012,13 +1079,35 @@ class TreebarsWeb {
         // Opened at the event's own moment, so a session never starts after the first event in it.
         this.enqueue(
           DEFAULT_EVENTS.SESSION_START,
-          { is_first_session: first },
+          { is_first_session: first, ...this.landing(arrived) },
           sessionId,
           at === undefined ? undefined : new Date(at).toISOString(),
         );
       }
     }
     return { sessionId, isNew };
+  }
+
+  /**
+   * How a session's visit began, for its `session_start`: the page it opened on and, when the session arrived with
+   * the page, the page before it. From these two the visit's source is worked out — a search, a social post, another
+   * site, a campaign's labels, or nothing, which is somebody typing the address.
+   *
+   * On the session rather than on each page view, because the referrer is the document's and does not change as a
+   * single-page app moves between its pages: read off page views, every page of a visit that began on a search would
+   * be another arrival from it.
+   *
+   * **The referrer is sent only for a session that opens as the page loads.** A session that opens later in the same
+   * document — the tab left for half an hour and come back to — did not arrive from that page again, so it reports
+   * where it is and an empty referrer. Both values are trimmed exactly as a page view's are (`./page-url`): origin and
+   * path, with only campaign labels, click ids and `pageUrlParams` kept on the address.
+   */
+  private landing(arrived: boolean): { url?: string; referrer?: string } {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return {};
+    return {
+      url: analyticsUrl(window.location.href, this.config?.pageUrlParams),
+      referrer: arrived ? analyticsReferrer(document.referrer) : '',
+    };
   }
 
   /**
@@ -1052,7 +1141,7 @@ class TreebarsWeb {
           [HEADERS.deviceAuth]: this.fetchSecret,
           ...(this.userId && this.userSignature ? { [HEADERS.userSignature]: this.userSignature } : {}),
         },
-        body: JSON.stringify({ device_id: this.deviceId, session_id: sessionId, ...(this.userId ? { user_id: this.userId } : {}) }),
+        body: JSON.stringify({ device_id: this.deviceId, session_id: sessionId, ...(this.userId ? { user_id: this.userId } : {}), ...automationFlag() }),
         ...(typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? { signal: AbortSignal.timeout(CONTEXT_TOKEN_TIMEOUT_MS) } : {}),
       });
       const body = (await response.json().catch(() => null)) as { token?: unknown; error?: unknown } | null;
@@ -1115,6 +1204,8 @@ class TreebarsWeb {
     this.userId = userId;
     // So the next page load knows who this is, and can prove it.
     writeSignedInUser(userId, this.persist, this.userSignature);
+    // After the signature above is held, so the config asked for as this person can prove who is asking.
+    this.remoteConfig?.identityChanged(userId);
     /*
      * What this browser holds was the last person's, as a read in flight is: gone before this sign-in's own events are
      * tracked. After the id above is set, so a list that fetches again when told of the change asks as the new person.
@@ -1133,7 +1224,7 @@ class TreebarsWeb {
 
     void this.post(
       ENDPOINTS.identify,
-      { user_id: userId, device_id: this.deviceId, attributes: merged },
+      { user_id: userId, device_id: this.deviceId, attributes: merged, ...automationFlag() },
       {
         // The device this sign-in names, proven with its secret.
         [HEADERS.deviceAuth]: this.fetchSecret,
@@ -1230,6 +1321,8 @@ class TreebarsWeb {
 
     this.userId = undefined;
     this.userSignature = undefined;
+    // The config answers that depended on the account go now, before the next ones arrive.
+    this.remoteConfig?.identityChanged(null);
     // Whatever a read in flight brings back was the previous person's.
     this.identityEpoch += 1;
     this.sessions?.reset();
@@ -1296,6 +1389,8 @@ class TreebarsWeb {
     }
     writeOptedOut(true, this.storageAllowed);
     this.uploader?.discard();
+    // Asking for config says which device is asking: nothing is asked, and what was held goes.
+    this.remoteConfig?.clear();
     // An `app_background` waiting to see whether its hide lasts is waiting to be sent too, here and in storage.
     this.forgetBackground();
     if (this.persist) dropPendingBackgrounds();
@@ -1347,6 +1442,7 @@ class TreebarsWeb {
     this.inApp?.reset();
     this.notificationStore?.reset();
     this.lastNotificationServerTime = null;
+    this.remoteConfig?.clear();
     // After the stores above have written their empty selves, so nothing they wrote survives it.
     wipeStoredData();
     forgetSharedBrowserId();
@@ -1428,6 +1524,197 @@ class TreebarsWeb {
     });
     this.syncOut = { epoch: this.identityEpoch, at: Date.now(), done };
     return done;
+  }
+
+  /**
+   * A remote config value, read as the kind its fallback is: `getConfig('new_checkout', false)` is on or off,
+   * `getConfig('headline', 'Welcome')` is text, `getConfig('limit', 25)` a number, and an object or a list a JSON value.
+   * The fallback answers when nothing is held for `key`, or what is held is another kind — so pass the value the
+   * page behaves with today, and adding the read changes nothing by itself.
+   *
+   * The kind comes from the fallback and never from what was published: a flag somebody set to the text "false"
+   * must not read as on. With no fallback to give, name the kind instead — `getConfigString('headline')` answers
+   * `null` until a value is held. `getConfig(key, null)` has no kind to read as, and answers `null`.
+   *
+   * A read never waits and never fails: it answers from what this browser already holds. **The first read of a key
+   * fixes its answer for the session**, "not set" included, so a page never changes under somebody because newer
+   * values arrived half-way through; a key not read yet takes the newest values held. To hold the first screen for
+   * a first visit's values, `await treebars.configReady()` before reading.
+   */
+  getConfig(key: string, fallback: boolean): boolean;
+  getConfig(key: string, fallback: string): string;
+  getConfig(key: string, fallback: number): number;
+  getConfig<T extends object>(key: string, fallback: T): T;
+  getConfig(key: string, fallback: unknown): unknown {
+    switch (typeof fallback) {
+      case 'boolean':
+        return this.getConfigBoolean(key, fallback);
+      case 'string':
+        return this.getConfigString(key, fallback);
+      case 'number':
+        return this.getConfigNumber(key, fallback);
+      case 'object':
+        if (fallback !== null) return this.getConfigJson(key, fallback);
+    }
+    this.log(`getConfig('${key}') was given no fallback to read a kind from. Pass one, or name the kind: getConfigString('${key}').`);
+    return null;
+  }
+
+  /**
+   * A remote config value that is on or off: a feature flag. `fallback` when nothing is held for `key`, or what is
+   * held is not a boolean; with no fallback, `null` then. See `getConfig` for how long an answer is kept.
+   */
+  getConfigBoolean(key: string): boolean | null;
+  getConfigBoolean(key: string, fallback: boolean): boolean;
+  getConfigBoolean(key: string, fallback: boolean | null = null): boolean | null {
+    return this.remoteConfig ? this.remoteConfig.read(key, 'boolean', fallback) : fallback;
+  }
+
+  /** A remote config text value, or `null` with no fallback and nothing held. See `getConfig`. */
+  getConfigString(key: string): string | null;
+  getConfigString(key: string, fallback: string): string;
+  getConfigString(key: string, fallback: string | null = null): string | null {
+    return this.remoteConfig ? this.remoteConfig.read(key, 'string', fallback) : fallback;
+  }
+
+  /** A remote config number, or `null` with no fallback and nothing held. See `getConfig`. */
+  getConfigNumber(key: string): number | null;
+  getConfigNumber(key: string, fallback: number): number;
+  getConfigNumber(key: string, fallback: number | null = null): number | null {
+    return this.remoteConfig ? this.remoteConfig.read(key, 'number', fallback) : fallback;
+  }
+
+  /**
+   * A remote config JSON value, as it was published: an object, a list, or any JSON value — or `null` with no
+   * fallback and nothing held. It is not checked against `T`: check what the page depends on. See `getConfig`.
+   */
+  getConfigJson<T = unknown>(key: string): T | null;
+  getConfigJson<T = unknown>(key: string, fallback: T): T;
+  getConfigJson<T = unknown>(key: string, fallback: T | null = null): T | null {
+    return this.remoteConfig ? this.remoteConfig.read(key, 'json', fallback) : fallback;
+  }
+
+  /** Every remote config key this browser holds, with the value a read would answer. Reading them fixes them for the session. */
+  allConfig(): Record<string, unknown> {
+    return this.remoteConfig?.all() ?? {};
+  }
+
+  /**
+   * Asks for this browser's config values now. Resolves true when values arrived, false when they could not be had;
+   * never rejects. Seldom needed: the SDK asks by itself whenever a newer config has been published, or who is
+   * asking has changed. Values that arrive apply to keys not read yet — `activateConfig()` applies them to the rest.
+   *
+   * Resolves false before `init` and after `optOut()`.
+   */
+  fetchConfig(): Promise<boolean> {
+    if (!this.started || !this.remoteConfig || this.optedOut) return Promise.resolve(false);
+    return this.remoteConfig.refresh();
+  }
+
+  /**
+   * Applies the newest values held to keys already read in this session, now, where they would otherwise wait for
+   * the next session. Returns whether any read answers differently. Call it at a moment the page can redraw.
+   */
+  activateConfig(): boolean {
+    return this.remoteConfig?.activate() ?? false;
+  }
+
+  /**
+   * Resolves once this browser holds config values, or `timeoutMs` has passed — whichever is first — with whether it
+   * holds any. For a first visit that should start with the published values rather than the page's own: await it
+   * before the first read. A browser that already holds values resolves at once and asks nothing; a newer config
+   * reaches it with its next upload.
+   *
+   * Resolves false before `init` and after `optOut()`.
+   */
+  async configReady(timeoutMs: number = CONFIG_READY_TIMEOUT_MS): Promise<boolean> {
+    const config = this.remoteConfig;
+    if (!this.started || !config || this.optedOut) return false;
+    if (config.wanting) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const waited = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, Math.max(0, timeoutMs));
+      });
+      await Promise.race([config.refresh(), waited]);
+      if (timer !== undefined) clearTimeout(timer);
+    }
+    return config.version !== null;
+  }
+
+  /**
+   * Calls `callback` whenever what a config read answers may have changed: newer values arrived, a session began,
+   * `activateConfig()` applied them, or somebody signed in or out. Returns the function that stops it. May be called
+   * before `init`.
+   */
+  onConfigChange(callback: () => void): () => void {
+    const guarded = (): void => {
+      try {
+        callback();
+      } catch (error) {
+        this.log(`a config change listener threw: ${String(error)}`);
+      }
+    };
+    this.configListeners.add(guarded);
+    return () => this.configListeners.delete(guarded);
+  }
+
+  /**
+   * What the page knows about this visitor that a config rule may be written against: `{ plan: 'pro', seats: 5 }`.
+   * Text, numbers and booleans. The whole set each time — a key left out is no longer set. They are kept in this
+   * browser, so setting the same ones on every page load asks for nothing; different ones ask for the values again.
+   */
+  setConfigAttributes(attributes: Record<string, string | number | boolean>): void {
+    if (!this.remoteConfig) {
+      this.configBeforeInit.attributes = attributes;
+      return;
+    }
+    if (!this.optedOut) this.remoteConfig.setAttributes(attributes);
+  }
+
+  /**
+   * Answers `key` with `value` on this page, whatever was published — for trying a variant during development.
+   * `undefined` takes it back. Never stored and never sent: a reload forgets it.
+   */
+  setConfigOverride(key: string, value: unknown): void {
+    if (!this.remoteConfig) {
+      if (value === undefined || value === null) this.configBeforeInit.overrides.delete(key);
+      else this.configBeforeInit.overrides.set(key, value);
+      return;
+    }
+    this.remoteConfig.override(key, value);
+  }
+
+  /**
+   * This browser's config values, asked of the ingest endpoint: the write key, the device, the account when somebody
+   * is signed in — with the signature that proves it, where one is held — how the browser describes itself, and what
+   * the page set. No device secret: the answer is this browser's own experience and nothing of anybody's.
+   */
+  private async fetchConfigAnswers(ask: ConfigAsk): Promise<ConfigAnswer> {
+    if (!this.config || this.optedOut) return { ok: false };
+    try {
+      const response = await fetch(`${this.backendUrl}${ENDPOINTS.config}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          [HEADERS.writeKey]: this.config.writeKey,
+          ...(ask.userId && ask.userId === this.userId && this.userSignature ? { [HEADERS.userSignature]: this.userSignature } : {}),
+        },
+        body: JSON.stringify({
+          device_id: this.deviceId,
+          ...(ask.userId ? { user_id: ask.userId } : {}),
+          context: getWebDeviceDimensions(),
+          ...(Object.keys(ask.attributes).length > 0 ? { attributes: ask.attributes } : {}),
+        }),
+      });
+      if (!response.ok) {
+        this.log(`config refused (${response.status})`);
+        return { ok: false, status: response.status, retryAfter: response.headers.get('Retry-After') };
+      }
+      return { ok: true, body: await response.json() };
+    } catch (error) {
+      this.log(`config fetch failed: ${String(error)}`);
+      return { ok: false };
+    }
   }
 
   /**
@@ -2653,7 +2940,7 @@ class TreebarsWeb {
    * for the third.
    */
   private async sendBatch(batch: PendingBatch): Promise<UploadResponse> {
-    const json = JSON.stringify(batch);
+    const json = wireBatch(batch);
     /*
      * Not while the page is hidden. Compressing is asynchronous, and the page-hide path depends on
      * a flush getting its request out before the handler returns (see `Uploader.flush`) — a page
@@ -2687,6 +2974,7 @@ class TreebarsWeb {
       status: response.status,
       retryAfter: response.headers.get('Retry-After'),
       triggersVersion: response.headers.get(HEADERS.triggersVersion),
+      configVersion: response.headers.get(HEADERS.configVersion),
       flushSpacing: response.headers.get(HEADERS.flushSpacing),
     };
   }
@@ -2738,7 +3026,7 @@ class TreebarsWeb {
 
     // The gzip copy a flush already made of this very batch, when there is one — there is no time to compress now.
     const compressed = this.compressed?.batchId === batch.batch_id ? this.compressed.bytes : null;
-    const body = compressed ?? JSON.stringify(batch);
+    const body = compressed ?? wireBatch(batch);
     const size = compressed ? compressed.byteLength : new TextEncoder().encode(body as string).byteLength;
     try {
       fetch(`${this.backendUrl}${ENDPOINTS.events}`, {
@@ -3103,6 +3391,7 @@ class TreebarsWeb {
           ...(browserId ? { browser_id: browserId } : {}),
           ...(storeTap ? { store_tap: true } : {}),
           ...deviceSignals(),
+          ...automationFlag(),
         }),
         keepalive: true,
       });

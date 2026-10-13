@@ -251,3 +251,33 @@ private final class PushHandlerBox: @unchecked Sendable {
     /// A `navigate` or `custom` that arrived before any handler; see `setPushActionHandler`.
     var pending: (type: String, values: [String: String])?
 }
+
+/// Push receipts (`notification_opened`, `push_dismissed`) that arrived before `Treebars.initialize`.
+///
+/// A tap that launches the app reaches the notification delegate before the app has called `initialize`, and an
+/// event logged then is dropped for want of a write key. So it is kept here, in `UserDefaults` so a launch that dies
+/// before `initialize` does not lose it either, and `initialize` sends it. The Android SDK's `PendingPushReceipts`
+/// does the same; the cap and the order match it.
+enum PendingPushReceipts {
+    private static let key = "treebars.push.pending_receipts.v1"
+    private static let max = 20
+    private static let lock = NSLock()
+
+    static func add(eventName: String, properties: [String: Any]) {
+        lock.lock(); defer { lock.unlock() }
+        var list = UserDefaults.standard.array(forKey: key) as? [[String: Any]] ?? []
+        list.append(["event": eventName, "properties": properties])
+        UserDefaults.standard.set(Array(list.suffix(max)), forKey: key)
+    }
+
+    /// Everything held, in the order it happened, and forgotten in the same step.
+    static func drain() -> [(eventName: String, properties: [String: Any])] {
+        lock.lock(); defer { lock.unlock() }
+        guard let list = UserDefaults.standard.array(forKey: key) as? [[String: Any]] else { return [] }
+        UserDefaults.standard.removeObject(forKey: key)
+        return list.compactMap { entry in
+            guard let event = entry["event"] as? String, !event.isEmpty else { return nil }
+            return (event, entry["properties"] as? [String: Any] ?? [:])
+        }
+    }
+}

@@ -41,7 +41,8 @@ enum WriteKeyStamp {
         defaults: UserDefaults = .standard,
         queueFilename: String = EventQueue.defaultFilename,
         uploaderFilename: String = TreebarsConstants.uploaderFile,
-        triggersFilename: String = TreebarsConstants.triggersFile
+        triggersFilename: String = TreebarsConstants.triggersFile,
+        configFilename: String = TreebarsConstants.configFile
     ) -> Bool {
         let stamped = defaults.string(forKey: key)
         if stamped == writeKey { return false }
@@ -50,6 +51,8 @@ enum WriteKeyStamp {
             EventQueue.forget(filename: queueFilename)
             UploaderStore(filename: uploaderFilename).save(UploaderState())
             TriggerStore(filename: triggersFilename).forget()
+            // The other project's config answers, the reads they fixed and the attributes set for its rules.
+            ConfigStore(filename: configFilename).forget()
             // The session record goes and `ever_started` stays: the install has been used.
             SessionManager.forgetRecord(in: defaults)
             DeviceInfo.forgetReportedContext(in: defaults)

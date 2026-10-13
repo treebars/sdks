@@ -65,6 +65,14 @@ actor EventUploader {
     private let wakes: (any UploadWakes)?
     /// The trigger list. Nil means no event flushes early and no version is acted on.
     private let triggers: TriggerEvents?
+    /**
+     Told, after a flush in which an upload was accepted, the config version its answers named — or nil when
+     none did. Remote config decides from it whether to ask for its answers again.
+     */
+    private let configSeen: (@Sendable (String?) -> Void)?
+    private var seenConfigVersion: String?
+    /// Whether an upload was accepted in the flush that is running.
+    private var accepted = false
     /// Whoever paces the uploads. Nil in the upload and trigger scenarios, which pace nothing.
     private let pace: (any UploadPacing)?
     /**
@@ -124,6 +132,7 @@ actor EventUploader {
         newBatchId: @escaping @Sendable () -> String = { UUID().uuidString },
         wakes: (any UploadWakes)? = TaskWakes(),
         triggers: TriggerEvents? = nil,
+        configSeen: (@Sendable (String?) -> Void)? = nil,
         pace: (any UploadPacing)? = nil,
         paused: @escaping @Sendable () -> Bool = { false }
     ) {
@@ -137,6 +146,7 @@ actor EventUploader {
         self.newBatchId = newBatchId
         self.wakes = wakes
         self.triggers = triggers
+        self.configSeen = configSeen
         self.pace = pace
         self.paused = paused
         let stored = store.load()
@@ -155,10 +165,14 @@ actor EventUploader {
         guard !isFlushing else { return }
         isFlushing = true
         seenTriggersVersion = nil
+        seenConfigVersion = nil
+        accepted = false
         uploading = false
         await drain()
         if uploading { await reportBacklog() }
         isFlushing = false
+        // Only after an accepted upload: a flush the endpoint refused, or never reached, says nothing about the config.
+        if accepted { configSeen?(seenConfigVersion) }
         await triggers?.observe(seenTriggersVersion)
     }
 
@@ -229,6 +243,10 @@ actor EventUploader {
             // Settling it anyway would split or retry a batch that no longer exists.
             if generation != started { return }
             if let version = response?.triggersVersion { seenTriggersVersion = version }
+            if let response, (200..<300).contains(response.status) {
+                accepted = true
+                if let version = response.configVersion { seenConfigVersion = version }
+            }
             sends += 1
             guard await settle(batch, response) else { return }
         }

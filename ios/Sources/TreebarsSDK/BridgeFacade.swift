@@ -115,6 +115,8 @@ public final class TreebarsBridge: NSObject {
 
     private static var notificationsUnsubscribe: (() -> Void)?
 
+    private static var configUnsubscribe: (@Sendable () -> Void)?
+
     // ------------------------------------------------------------------------------------
     // Lifecycle
     // ------------------------------------------------------------------------------------
@@ -280,6 +282,7 @@ public final class TreebarsBridge: NSObject {
         _ = setEventsSubscribed("[]", sink: nil)
         notificationsUnsubscribe?()
         notificationsUnsubscribe = nil
+        setConfigChangeSink(nil)
     }
 
     @objc(reset)
@@ -600,6 +603,116 @@ public final class TreebarsBridge: NSObject {
     public static func msUntilNextFlush() -> Int {
         guard let seconds = Treebars.secondsUntilNextFlush() else { return -1 }
         return Int((seconds * 1000).rounded())
+    }
+
+    // ------------------------------------------------------------------------------------
+    // Remote config
+    //
+    // None of these is gated on the bridge having started. The core answers a read made before
+    // `initialize` with the fallback, which is the true answer — it holds nothing yet — and keeps
+    // attributes, an override and a listener given early. Refusing would make the bridge stricter
+    // than the core.
+    // ------------------------------------------------------------------------------------
+
+    /**
+     Tells React Native's emitter that a config read may answer differently, or stops telling it.
+
+     Installed before `start`, so the first values a launch is given cannot arrive ahead of it. The
+     core keeps a list of listeners and this holds its own entry's way out, so replacing the sink —
+     a reload hands a new one — never leaves the old runtime's behind.
+     */
+    @objc(setConfigChangeSink:)
+    public static func setConfigChangeSink(_ sink: (@Sendable () -> Void)?) {
+        configUnsubscribe?()
+        configUnsubscribe = sink.map { sink in Treebars.onConfigChange { sink() } }
+    }
+
+    @objc(configBoolean:fallback:)
+    public static func configBoolean(_ key: String, fallback: Bool) -> Bool {
+        Treebars.getConfigBoolean(key, fallback: fallback)
+    }
+
+    @objc(configString:fallback:)
+    public static func configString(_ key: String, fallback: String) -> String {
+        Treebars.getConfigString(key, fallback: fallback)
+    }
+
+    @objc(configNumber:fallback:)
+    public static func configNumber(_ key: String, fallback: Double) -> Double {
+        Treebars.getConfigNumber(key, fallback: fallback)
+    }
+
+    /// JSON text, or nil when nothing is held for the key: JavaScript decodes it and holds the fallback.
+    @objc(configJson:)
+    public static func configJson(_ key: String) -> String? {
+        Treebars.getConfigJson(key)
+    }
+
+    /// A typed read with no fallback, as JSON text — `true`, `"text"`, `25` — or nil when nothing of that kind
+    /// is held. The typed reads answer nil for that themselves; this only spells the value for the wire.
+    @objc(configValue:kind:)
+    public static func configValue(_ key: String, kind: String) -> String? {
+        switch kind {
+        case "boolean": return Treebars.getConfigBoolean(key).map { $0 ? "true" : "false" }
+        case "string": return Treebars.getConfigString(key).map { ConfigEntry.canonical($0) }
+        case "number": return Treebars.getConfigNumber(key).map { ConfigEntry.canonical($0) }
+        case "json": return Treebars.getConfigJson(key)
+        default: return nil
+        }
+    }
+
+    /// Every key held with the value a read would answer, as one JSON object.
+    @objc(allConfig)
+    public static func allConfig() -> String {
+        ConfigEntry.canonical(Treebars.allConfig())
+    }
+
+    @objc(fetchConfig:)
+    public static func fetchConfig(_ completion: @escaping @Sendable (Bool) -> Void) {
+        Task { completion(await Treebars.fetchConfig()) }
+    }
+
+    @objc(activateConfig)
+    public static func activateConfig() -> Bool {
+        Treebars.activateConfig()
+    }
+
+    /// The wait crosses the bridge in milliseconds, as every duration on it does; the core counts seconds.
+    @objc(configReady:completion:)
+    public static func configReady(_ timeoutMs: Double, completion: @escaping @Sendable (Bool) -> Void) {
+        Task { completion(await Treebars.configReady(timeout: timeoutMs / 1000)) }
+    }
+
+    @objc(setConfigAttributes:)
+    public static func setConfigAttributes(_ attributesJson: String) -> TreebarsBridgeFailure? {
+        guard let attributes = dictionary(attributesJson) else {
+            return TreebarsBridgeFailure(
+                BridgeCode.badPayload,
+                "setConfigAttributes: the attributes could not be read as a JSON object"
+            )
+        }
+        Treebars.setConfigAttributes(attributes)
+        return nil
+    }
+
+    /// The value arrives as JSON so one argument can be a boolean, text, a number or an object. Nil, and a JSON
+    /// `null`, take the override back.
+    @objc(setConfigOverride:valueJson:)
+    public static func setConfigOverride(_ key: String, valueJson: String?) -> TreebarsBridgeFailure? {
+        guard let valueJson else {
+            Treebars.setConfigOverride(key, value: nil)
+            return nil
+        }
+        guard let data = valueJson.data(using: .utf8),
+              let value = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        else {
+            return TreebarsBridgeFailure(
+                BridgeCode.badPayload,
+                "setConfigOverride: the value could not be read as JSON"
+            )
+        }
+        Treebars.setConfigOverride(key, value: value is NSNull ? nil : value)
+        return nil
     }
 
     // ------------------------------------------------------------------------------------

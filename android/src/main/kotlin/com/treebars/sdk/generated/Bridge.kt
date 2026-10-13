@@ -19,7 +19,7 @@ internal object TreebarsBridge {
     const val FRAME_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https:; img-src https: data: blob:; font-src https: data:; media-src https: data:; base-uri 'none'; form-action 'none'"
 
     /** The base styles a fragment is framed with, as the preview frames it. */
-    const val FRAME_RULES = "\n    html,body{margin:0;padding:0;background:transparent}\n    body{font:14px/1.5 -apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,sans-serif;color:#111827}\n    img{max-width:100%;display:block}\n    a{color:inherit}\n  "
+    const val FRAME_RULES = "\n    html,body{margin:0;padding:0;background:transparent}\n    body{font:14px/1.5 -apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,sans-serif;color:#111827}\n    img{max-width:100%;display:block}\n    a{color:inherit}\n    button{color:inherit}\n  "
 
     /** How an HTML body is sized in each shape. */
     const val MODAL_MAX_WIDTH = 420

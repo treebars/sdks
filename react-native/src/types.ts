@@ -116,6 +116,7 @@ export const DEFAULT_EVENTS = {
   NOTIFICATION_READ: 'notification_read',
   NOTIFICATION_DISMISSED: 'notification_dismissed',
   DEVICE_CONTEXT: 'device_context',
+  EXPERIMENT_EXPOSED: 'experiment_exposed',
 } as const;
 
 export type DefaultEventName = (typeof DEFAULT_EVENTS)[keyof typeof DEFAULT_EVENTS];
@@ -204,6 +205,12 @@ import type { InAppContent, InAppTokens } from './InApp';
  * from outside it.
  * ---------------------------------------------------------------------------------------
  */
+/**
+ * What the app knows about an install that a remote config rule may be written against: text, numbers and
+ * booleans, by name.
+ */
+export type ConfigAttributes = Record<string, string | number | boolean>;
+
 export type NotificationChannel = 'push' | 'in_app';
 
 export interface TreebarsNotification {

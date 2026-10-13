@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
+import org.json.JSONTokener
 import java.util.UUID
 
 /**
@@ -71,6 +72,9 @@ class TreebarsNativeModule(reactContext: ReactApplicationContext) :
 
   /** The core's own unsubscribe, held so 1→0 can hand it back. */
   private var notificationsWatcher: (() -> Unit)? = null
+
+  /** The core's unsubscribe for remote config changes, held from [initialize] until [invalidate]. */
+  private var configWatcher: (() -> Unit)? = null
 
   /**
    * The last page emitted, kept across an unsubscribe so a re-subscribe can be answered.
@@ -139,6 +143,15 @@ class TreebarsNativeModule(reactContext: ReactApplicationContext) :
      * absent flush interval is the core's own name for "the app chose none": JavaScript sends the
      * key only when the app set it, and without it the core keeps its own pace.
      */
+    /*
+     * Before `Treebars.initialize`, which the core allows, so the first values this launch is given cannot arrive
+     * ahead of the listener that reports them. Nothing is spent by listening: a change is news that a read may
+     * answer differently, and the read itself is where the answer is.
+     */
+    if (configWatcher == null) {
+      configWatcher = Treebars.onConfigChange { guarded("a config change") { emitOnConfigChange("") } }
+    }
+
     Treebars.initialize(
       context = reactApplicationContext,
       writeKey = writeKey,
@@ -475,7 +488,7 @@ class TreebarsNativeModule(reactContext: ReactApplicationContext) :
   }
 
   /**
-   * The only synchronous method, and the only one that cannot answer with a rejection.
+   * Synchronous, and so without a promise to reject into.
    *
    * `-1` is the wire's spelling of "nothing is scheduled", which is a different sentence from
    * "a flush is due right now" — a screen showing `0` for both would be lying about one of
@@ -486,6 +499,91 @@ class TreebarsNativeModule(reactContext: ReactApplicationContext) :
     runCatching { Treebars.msUntilNextFlush()?.toDouble() ?: -1.0 }
       .onFailure { Log.w(TAG, "msUntilNextFlush failed", it) }
       .getOrDefault(-1.0)
+
+  // -----------------------------------------------------------------------------------------
+  // Remote config
+  //
+  // No started gate on any of these, where most of this file has one. The core answers a read made before
+  // `initialize` with the fallback, which is the true answer — it holds nothing yet — and keeps attributes, an
+  // override and a listener given early, as it keeps an opt-out. Refusing would make the bridge stricter than
+  // the core.
+  // -----------------------------------------------------------------------------------------
+
+  /**
+   * The reads are synchronous, as a read in the core is: it answers from memory, and JavaScript calls it while a
+   * screen is being drawn. A read that fails answers the fallback it was handed, which is what a fallback is —
+   * the answer when no usable value is held.
+   */
+  override fun configBoolean(key: String, fallback: Boolean): Boolean =
+    runCatching { Treebars.getConfigBoolean(key, fallback) }
+      .onFailure { Log.w(TAG, "configBoolean failed", it) }
+      .getOrDefault(fallback)
+
+  override fun configString(key: String, fallback: String): String =
+    runCatching { Treebars.getConfigString(key, fallback) }
+      .onFailure { Log.w(TAG, "configString failed", it) }
+      .getOrDefault(fallback)
+
+  override fun configNumber(key: String, fallback: Double): Double =
+    runCatching { Treebars.getConfigNumber(key, fallback) }
+      .onFailure { Log.w(TAG, "configNumber failed", it) }
+      .getOrDefault(fallback)
+
+  /** JSON text, or null when nothing is held for the key: JavaScript decodes it and holds the fallback. */
+  override fun configJson(key: String): String? =
+    runCatching { Treebars.getConfigJson(key, null) }
+      .onFailure { Log.w(TAG, "configJson failed", it) }
+      .getOrNull()
+
+  /**
+   * A typed read with no fallback, as JSON text — `true`, `"text"`, `25` — or null when nothing of that kind
+   * is held. The core answers null for that itself; this only spells the value for the wire.
+   */
+  override fun configValue(key: String, kind: String): String? =
+    runCatching {
+      when (kind) {
+        "boolean" -> Treebars.getConfigBoolean(key)?.toString()
+        "string" -> Treebars.getConfigString(key)?.let(JSONObject::quote)
+        "number" -> Treebars.getConfigNumber(key)?.let(JSONObject::numberToString)
+        "json" -> Treebars.getConfigJson(key)
+        else -> null
+      }
+    }
+      .onFailure { Log.w(TAG, "configValue failed", it) }
+      .getOrNull()
+
+  /** Unguarded on purpose: a throw here reaches JavaScript as an error, where `{}` would read as "nothing held". */
+  override fun allConfig(): String = JSONObject(Treebars.allConfig()).toString()
+
+  override fun activateConfig(): Boolean = Treebars.activateConfig()
+
+  override fun fetchConfig(promise: Promise) {
+    scope.launch { answer(promise, "the config values") { Treebars.fetchConfig() } }
+  }
+
+  override fun configReady(timeoutMs: Double, promise: Promise) {
+    scope.launch { answer(promise, "the config values") { Treebars.configReady(timeoutMs.toLong()) } }
+  }
+
+  override fun setConfigAttributes(attributesJson: String, promise: Promise) {
+    val attributes = readObject(attributesJson, "the config attributes", promise) ?: return
+    Treebars.setConfigAttributes(attributes.toValueMap())
+    promise.resolve(null)
+  }
+
+  /**
+   * The value arrives as JSON so one argument can be a boolean, text, a number or an object; null, and a JSON
+   * `null`, take the override back. An object stays a `JSONObject`, which is what the core holds a JSON value as.
+   */
+  override fun setConfigOverride(key: String, valueJson: String?, promise: Promise) {
+    val value = if (valueJson == null) null else try {
+      JSONTokener(valueJson).nextValue().takeUnless { it == JSONObject.NULL }
+    } catch (error: JSONException) {
+      return promise.reject(BAD_PAYLOAD, "Treebars: the config override was not readable JSON. ${error.message}", error)
+    }
+    Treebars.setConfigOverride(key, value)
+    promise.resolve(null)
+  }
 
   // -----------------------------------------------------------------------------------------
   // In-app
@@ -785,6 +883,9 @@ class TreebarsNativeModule(reactContext: ReactApplicationContext) :
   override fun invalidate() {
     notificationsWatcher?.invoke()
     notificationsWatcher = null
+    // One of a list in the core, like the watcher above, so it is this module's own to take back.
+    configWatcher?.invoke()
+    configWatcher = null
 
     if (owner === this) {
       Treebars.setInAppRenderer(null)

@@ -16,6 +16,7 @@ export const ENDPOINTS = {
   preview: '/v1/preview',
   inAppReward: '/v1/in-app/reward',
   contextToken: '/v1/context-token',
+  config: '/v1/config',
 } as const;
 
 export const HEADERS = {
@@ -23,6 +24,7 @@ export const HEADERS = {
   deviceAuth: 'X-Treebars-Device-Auth',
   preview: 'X-Treebars-Preview',
   triggersVersion: 'X-Treebars-Triggers-Version',
+  configVersion: 'X-Treebars-Config-Version',
   flushSpacing: 'X-Treebars-Flush-Ms',
   linkResolve: 'X-Treebars-Resolve',
   userSignature: 'X-Treebars-User-Signature',
@@ -62,6 +64,12 @@ export const IN_APP_PRESENTATION_HOLD_MS = 30000;
 /** A reward claim refused with a 429 or 503, or unanswered, is asked again this many times, all within the budget. */
 export const REWARD_CLAIM_RETRIES = 2;
 export const REWARD_CLAIM_BUDGET_MS = 8000;
+/** Seconds. How long a failed config request waits before the next, when the failure names no wait of its own. */
+export const CONFIG_RETRY_SECONDS = 60;
+/** How long configReady() waits by default. */
+export const CONFIG_READY_TIMEOUT_MS = 2000;
+/** Seconds. The least time between two reports of the same variant of the same experiment. */
+export const CONFIG_EXPOSURE_FLOOR_SECONDS = 86400;
 
 export const FNV_OFFSET_BASIS = 0x811c9dc5;
 export const FNV_PRIME = 0x01000193;
@@ -105,7 +113,7 @@ export const ACQUISITION = {
 /** Play's cap on the referrer it hands back, so a page cannot build one the store will truncate. */
 export const MAX_REFERRER_LENGTH = 1000;
 
-export const SDK_VERSION = '0.5.0';
+export const SDK_VERSION = '0.6.0';
 export const SDK_NAME = 'treebars-react-native';
 export const DEVICE_ID_PREFIX = 'dev_';
 
@@ -143,6 +151,8 @@ export const RESERVED_EVENT_NAMES = [
   'whatsapp_opt_in',
   'install_referrer',
   'apple_ads_attribution',
+  'experiment_exposed',
+  'config_exposed',
   'install_attributed',
   'link_opened',
   'reengagement_attributed',
@@ -158,6 +168,9 @@ export const FILTER_OPERATOR_CODES = [
   'ends_with',
   'in',
   'not_in',
+  'has_any',
+  'has_all',
+  'has_none',
   'gt',
   'gte',
   'lt',
@@ -173,6 +186,17 @@ export const LIST_MAX = 50;
 /** Ingest's caps, in UTF-16 code units: a trimmed device field, and a screen name. */
 export const DEVICE_FIELD_LENGTH = 128;
 export const STRING_VALUE_LENGTH = 1024;
+/**
+ * The limits an event property is read within, by its key: the entries of the map that are read, a path's
+ * length in UTF-16 code units and its depth in segments, the widest nested object that is still read, and a
+ * list's distinct items and each item's length.
+ */
+export const PROPERTY_KEYS_MAX = 128;
+export const PROPERTY_PATH_LENGTH = 128;
+export const PROPERTY_PATH_DEPTH = 5;
+export const PROPERTY_OBJECT_KEYS = 32;
+export const LIST_PROPERTY_ITEMS = 100;
+export const LIST_PROPERTY_ITEM_LENGTH = 256;
 
 /** The dimension names an in-app trigger may read: an allowlist of keys, and nothing about what a row answers. */
 export const IN_APP_DIMENSIONS = [

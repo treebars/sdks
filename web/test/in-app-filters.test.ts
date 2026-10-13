@@ -114,9 +114,52 @@ describe('the fourteen codes, as the server reads them', () => {
     expect(triggerMatches({ kind: 'event', event_name: 'purchase', filters: 'plan' } as never, 'purchase', { plan: 'pro' })).toBe(false);
   });
 
-  it('fails closed on a property that is not a scalar, the negated codes included', () => {
+  it('reads a list as set and as no single value, the negated codes included', () => {
     expect(on({ op: 'neq', value: 'pro' }, { v: ['pro'] })).toBe(false);
-    expect(on({ op: 'exists' }, { v: { tier: 'pro' } })).toBe(true);
+    expect(on({ op: 'eq', value: 'pro' }, { v: ['pro'] })).toBe(false);
+    expect(on({ op: 'exists' }, { v: ['pro'] })).toBe(true);
+    // An object holds nothing at its own key: its fields are the paths.
+    expect(on({ op: 'exists' }, { v: { tier: 'pro' } })).toBe(false);
+    expect(on({ op: 'neq', value: 'pro' }, { v: { tier: 'pro' } })).toBe(true);
+  });
+
+  it('asks a list which of the row’s items it holds, as text, whole and by case', () => {
+    const tags = { v: ['new', 'sale', 5, true] };
+    expect(on({ op: 'has_any', value: '["clearance","sale"]' }, tags)).toBe(true);
+    expect(on({ op: 'has_any', value: '["clearance"]' }, tags)).toBe(false);
+    expect(on({ op: 'has_all', value: '["5","new","true"]' }, tags)).toBe(true);
+    expect(on({ op: 'has_all', value: '["new","clearance"]' }, tags)).toBe(false);
+    expect(on({ op: 'has_none', value: '["clearance"]' }, tags)).toBe(true);
+    expect(on({ op: 'has_none', value: '["Sale"]' }, tags)).toBe(true);
+    expect(on({ op: 'has_none', value: '["sale"]' }, tags)).toBe(false);
+    // Not set holds none of anything; one value is set and is not a list.
+    expect(on({ op: 'has_none', value: '["sale"]' }, {})).toBe(true);
+    expect(on({ op: 'has_none', value: '["sale"]' }, { v: [] })).toBe(true);
+    expect(on({ op: 'has_none', value: '["clearance"]' }, { v: 'sale' })).toBe(false);
+    // A row that says nothing matches nobody, "contains none of" included.
+    expect(on({ op: 'has_none', value: '[]' }, {})).toBe(false);
+    expect(on({ op: 'has_none', value: '[5]' }, {})).toBe(false);
+    expect(on({ op: 'has_none', value: '["sale"]', type: 'string' }, {})).toBe(false);
+    expect(on({ op: 'neq', value: 'sale', type: 'array' }, {})).toBe(false);
+  });
+
+  it('reads a key as a path, and a key sent with a dot in it first', () => {
+    const filters = (key: string, op: string, value?: unknown) => trigger([{ key, op, ...(value === undefined ? {} : { value }) }] as never);
+    expect(triggerMatches(filters('cart.total', 'gte', 100), 'purchase', { cart: { total: 150 } })).toBe(true);
+    expect(triggerMatches(filters('cart.total', 'eq', 9), 'purchase', { cart: { total: 5 }, 'cart.total': 9 })).toBe(true);
+    expect(triggerMatches(filters('line_items.category', 'has_all', '["bags","shoes"]'), 'purchase', { line_items: [{ category: 'shoes' }, { category: 'bags' }] })).toBe(true);
+    // A name every object inherits finds nothing, at the top or down a path.
+    expect(triggerMatches(filters('toString', 'exists'), 'purchase', {})).toBe(false);
+    expect(triggerMatches(filters('cart.constructor', 'exists'), 'purchase', { cart: {} })).toBe(false);
+  });
+
+  // An event keeps its first 128 properties, in the order they were sent.
+  it('reads the first 128 properties of an event and no more', () => {
+    const properties: Record<string, unknown> = {};
+    for (let index = 0; index < 130; index += 1) properties[`k${index}`] = index;
+    const filters = (key: string) => trigger([{ key, op: 'exists' }] as never);
+    expect(triggerMatches(filters('k127'), 'purchase', properties)).toBe(true);
+    expect(triggerMatches(filters('k128'), 'purchase', properties)).toBe(false);
   });
 
   it('reads a row whose value is not a scalar as saying nothing, except under exists', () => {

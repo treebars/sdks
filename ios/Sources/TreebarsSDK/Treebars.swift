@@ -128,6 +128,8 @@ public final class Treebars {
         public static let screenView = "screen_view"
         public static let userIdentified = "user_identified"
         public static let userSignedOut = "user_signed_out"
+        /// A read answered an experiment's variant: `experiment_id`, `experiment_key`, `variant`, `variable` and `unit`.
+        public static let experimentExposed = "experiment_exposed"
         public static let notificationRead = "notification_read"
         public static let notificationDismissed = "notification_dismissed"
         /// Once per install, with consent. See `Acquisition.swift`.
@@ -266,6 +268,14 @@ public final class Treebars {
     private var backendClient: BackendClient?
     private var uploader: EventUploader?
     private var triggers: TriggerEvents?
+    /// Remote config: the answers this install holds, and when it asks again. Nil before `initialize`.
+    private var remoteConfig: RemoteConfig?
+    /// Who asked to hear that a config value may have changed, and what the app said about config before
+    /// `initialize`, which applies it. Behind a lock of their own: an app may say any of it from any thread.
+    private let configLock = NSLock()
+    private var configListeners: [UUID: @Sendable () -> Void] = [:]
+    private var configAttributesBeforeInit: [String: Any]?
+    private var configOverridesBeforeInit: [String: Any] = [:]
     /// When an event is uploaded: armed by each queued event, told of each upload by the uploader.
     private var pace: FlushPace?
 
@@ -504,6 +514,50 @@ public final class Treebars {
         instance.triggers = triggers
         instance.backendClient = client
         /*
+         * Remote config, built before the uploader that tells it what version an upload's answer named. It reads
+         * what it holds as it is built, and is told who is asking and how the device describes itself at once; the
+         * session arrives with the first event (`advanceSession`).
+         */
+        let config = RemoteConfig(
+            store: ConfigStore(),
+            fetch: { ask in await instance.askForConfig(ask, from: client) },
+            /*
+             * A read answered an experiment's variant: recorded as an event, so who was shown which variant is in
+             * the same place as what they did next. In a task — a read never waits, and recording touches the
+             * queue's file.
+             */
+            expose: { exposure in
+                Task {
+                    await instance.enqueue(
+                        eventName: DefaultEvent.experimentExposed,
+                        properties: [
+                            "experiment_id": exposure.experimentId,
+                            "experiment_key": exposure.experimentKey,
+                            "variant": exposure.variant,
+                            "variable": exposure.variable,
+                            "unit": exposure.unit,
+                        ]
+                    )
+                }
+            }
+        )
+        config.onChange { instance.announceConfigChange() }
+        instance.configLock.lock()
+        let overrides = instance.configOverridesBeforeInit
+        let attributes = instance.configAttributesBeforeInit
+        instance.configOverridesBeforeInit = [:]
+        instance.configAttributesBeforeInit = nil
+        instance.configLock.unlock()
+        for (key, value) in overrides { config.override(key, value) }
+        if let attributes { config.setAttributes(attributes) }
+        instance.remoteConfig = config
+        // Asking for config says which device is asking: an install that starts opted out holds none and asks for none.
+        if instance.optedOut {
+            config.clear()
+        } else {
+            config.start(sessionId: nil, userId: instance.userId, context: Treebars.configContext())
+        }
+        /*
          An install that starts opted out drops the batches an earlier launch sealed, before the uploader
          reads them: an opt-out given before this call had no uploader to drop them from (its queue it
          clears itself), and a later `optIn()` would otherwise send events recorded before the "no".
@@ -527,6 +581,7 @@ public final class Treebars {
             store: uploaderStore,
             writeKey: writeKey,
             triggers: triggers,
+            configSeen: { [weak config] version in config?.observe(version) },
             pace: pace,
             paused: { instance.optedOut }
         )
@@ -556,6 +611,10 @@ public final class Treebars {
                     eventName: DefaultEvent.appOpen,
                     properties: Self.lifecycleProperties(["is_first_launch": instance.firstLaunch])
                 )
+            }
+            // A push tapped or swiped while the app was not running, before this call (`PendingPushReceipts`).
+            for receipt in PendingPushReceipts.drain() {
+                await instance.enqueue(eventName: receipt.eventName, properties: receipt.properties)
             }
             await instance.reportDeviceContext()
             await instance.uploader?.flush()
@@ -900,6 +959,8 @@ public final class Treebars {
         } else {
             UserDefaults.standard.removeObject(forKey: TreebarsConstants.keySignedInUserSignature)
         }
+        // After the signature above is held, so the config asked for as this person can prove who is asking.
+        shared.remoteConfig?.identityChanged(userId)
 
         /*
          * What the SDK knows, underneath what the app said.
@@ -959,6 +1020,224 @@ public final class Treebars {
      */
     public static func contextToken() async -> UUID? {
         await shared.contextToken(from: shared.backendClient)
+    }
+
+    /**
+     A remote config value that is on or off: a feature flag. `fallback` when nothing is held for `key`, or what is
+     held is not a boolean — so pass the value the app behaves with today.
+
+     A read never waits and never fails: it answers from what this install already holds, and is safe on the main
+     thread. **The first read of a key fixes its answer for the session**, "not set" included, so a screen never
+     changes under somebody because newer values arrived half-way through; a key not read yet takes the newest
+     values held. To hold the first screen for a first launch's values, `await Treebars.configReady()` before
+     reading.
+     */
+    public static func getConfigBoolean(_ key: String, fallback: Bool) -> Bool {
+        getConfigBoolean(key) ?? fallback
+    }
+
+    /// A remote config text value. See `getConfigBoolean` for when the fallback answers and how long an answer is kept.
+    public static func getConfigString(_ key: String, fallback: String) -> String {
+        getConfigString(key) ?? fallback
+    }
+
+    /// A remote config number. See `getConfigBoolean` for when the fallback answers and how long an answer is kept.
+    public static func getConfigNumber(_ key: String, fallback: Double) -> Double {
+        getConfigNumber(key) ?? fallback
+    }
+
+    /// A remote config flag with no fallback to give: `nil` until this install holds a boolean for `key`.
+    /// Otherwise as `getConfigBoolean` with one — the first read of a key fixes its answer for the session, "not
+    /// set" included.
+    public static func getConfigBoolean(_ key: String) -> Bool? {
+        (shared.remoteConfig?.read(key, as: "boolean") as? NSNumber)?.boolValue
+    }
+
+    /// A remote config text value with no fallback to give: `nil` until this install holds text for `key`.
+    public static func getConfigString(_ key: String) -> String? {
+        shared.remoteConfig?.read(key, as: "string") as? String
+    }
+
+    /// A remote config number with no fallback to give: `nil` until this install holds a number for `key`.
+    public static func getConfigNumber(_ key: String) -> Double? {
+        (shared.remoteConfig?.read(key, as: "number") as? NSNumber)?.doubleValue
+    }
+
+    /**
+     A remote config value, read as the kind its fallback is: `getConfig("new_checkout", fallback: false)` is on or
+     off, `getConfig("headline", fallback: "Welcome")` is text, `getConfig("limit", fallback: 25)` a number. The
+     fallback answers when nothing is held for `key`, or what is held is another kind — so pass the value the app
+     behaves with today.
+
+     The kind comes from the fallback and never from what was published: a flag somebody set to the text "false"
+     must not read as on. With no fallback to give, name the kind — `getConfigString(key)` answers `nil` until a
+     value is held. A JSON value is read by name too: `getConfigJson`.
+     */
+    public static func getConfig(_ key: String, fallback: Bool) -> Bool {
+        getConfigBoolean(key, fallback: fallback)
+    }
+
+    /// A remote config text value. See the `getConfig` that takes a flag for when the fallback answers.
+    public static func getConfig(_ key: String, fallback: String) -> String {
+        getConfigString(key, fallback: fallback)
+    }
+
+    /// A remote config number. See the `getConfig` that takes a flag for when the fallback answers.
+    public static func getConfig(_ key: String, fallback: Double) -> Double {
+        getConfigNumber(key, fallback: fallback)
+    }
+
+    /// A remote config number, as the whole number its fallback is: a published 2.9 reads as 2. Give a fallback
+    /// with a decimal point to read it whole.
+    public static func getConfig(_ key: String, fallback: Int) -> Int {
+        getConfigNumber(key).map { Int($0) } ?? fallback
+    }
+
+    /**
+     A remote config JSON value, as JSON text for the app to decode with whatever it decodes JSON with — `Codable`
+     over `Data(text.utf8)` — an object, a list, or any JSON value. See `getConfigBoolean` for when the fallback answers.
+     */
+    public static func getConfigJson(_ key: String, fallback: String? = nil) -> String? {
+        shared.remoteConfig?.read(key, as: "json").map(ConfigEntry.canonical) ?? fallback
+    }
+
+    /// Every remote config key this install holds, with the value a read would answer. Reading them fixes them for
+    /// the session.
+    public static func allConfig() -> [String: Any] {
+        shared.remoteConfig?.all() ?? [:]
+    }
+
+    /**
+     Asks for this install's config values now. True when values arrived, false when they could not be had. Seldom
+     needed: the SDK asks by itself whenever a newer config has been published, or who is asking has changed.
+     Values that arrive apply to keys not read yet — `activateConfig()` applies them to the rest.
+
+     False before `initialize` and while opted out.
+     */
+    @discardableResult
+    public static func fetchConfig() async -> Bool {
+        guard let config = shared.remoteConfig, !shared.optedOut else { return false }
+        return await config.refresh()
+    }
+
+    /**
+     Applies the newest values held to keys already read in this session, now, where they would otherwise wait for
+     the next session. Returns whether any read answers differently. Call it at a moment the app can redraw.
+     */
+    @discardableResult
+    public static func activateConfig() -> Bool {
+        shared.remoteConfig?.activate() ?? false
+    }
+
+    /**
+     Returns once this install holds config values, or `timeout` seconds have passed — whichever is first — with
+     whether it holds any. For a first launch that should start with the published values rather than the app's
+     own: await it before the first read. An install that already holds values returns at once and asks nothing;
+     a newer config reaches it with its next upload. Two seconds when no timeout is given.
+
+     False before `initialize` and while opted out.
+     */
+    @discardableResult
+    public static func configReady(timeout: TimeInterval? = nil) async -> Bool {
+        guard let config = shared.remoteConfig, !shared.optedOut else { return false }
+        if config.wanting {
+            let limit = max(0, timeout ?? TreebarsConstants.configReadyTimeout)
+            // Whichever comes first resumes the wait, once. Giving up waiting does not cancel the ask: its answer is
+            // still wanted, and arrives for the next read.
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let once = ConfigOnce()
+                Task {
+                    _ = await config.refresh()
+                    if once.claim() { continuation.resume() }
+                }
+                Task {
+                    try? await Task.sleep(nanoseconds: UInt64(limit * 1_000_000_000))
+                    if once.claim() { continuation.resume() }
+                }
+            }
+        }
+        return config.version != nil
+    }
+
+    /**
+     Calls `listener` whenever what a config read answers may have changed: newer values arrived, a session began,
+     `activateConfig()` applied them, or somebody signed in or out. On whichever thread that happened. Returns the
+     function that stops it. May be called before `initialize`.
+     */
+    @discardableResult
+    public static func onConfigChange(_ listener: @escaping @Sendable () -> Void) -> @Sendable () -> Void {
+        let instance = shared
+        let id = UUID()
+        instance.configLock.lock()
+        instance.configListeners[id] = listener
+        instance.configLock.unlock()
+        return {
+            instance.configLock.lock()
+            instance.configListeners.removeValue(forKey: id)
+            instance.configLock.unlock()
+        }
+    }
+
+    /**
+     What the app knows about this install that a config rule may be written against: `["plan": "pro", "seats": 5]`.
+     Text, numbers and booleans. The whole set each time — a key left out is no longer set. They are kept on the
+     device, so setting the same ones on every launch asks for nothing; different ones ask for the values again.
+     */
+    public static func setConfigAttributes(_ attributes: [String: Any]) {
+        guard let config = shared.remoteConfig else {
+            shared.configLock.lock()
+            shared.configAttributesBeforeInit = attributes
+            shared.configLock.unlock()
+            return
+        }
+        if !shared.optedOut { config.setAttributes(attributes) }
+    }
+
+    /**
+     Answers `key` with `value` in this process, whatever was published — for trying a variant during development.
+     Nil takes it back. Never stored and never sent: the next launch forgets it.
+     */
+    public static func setConfigOverride(_ key: String, value: Any?) {
+        guard let config = shared.remoteConfig else {
+            shared.configLock.lock()
+            shared.configOverridesBeforeInit[key] = value
+            shared.configLock.unlock()
+            return
+        }
+        config.override(key, value)
+    }
+
+    private func announceConfigChange() {
+        configLock.lock()
+        let hearing = Array(configListeners.values)
+        configLock.unlock()
+        for listener in hearing { listener() }
+    }
+
+    /**
+     This install's config values, asked of ingest: the device, the account when somebody is signed in — with the
+     signature that proves it, where one is held — how the device describes itself, and what the app set.
+     */
+    private func askForConfig(_ ask: ConfigAsk, from client: BackendClient) async -> ConfigAnswer {
+        guard !optedOut else { return .failed(status: nil, retryAfter: nil) }
+        var payload: [String: Any] = ["device_id": DeviceInfo.getDeviceId(), "context": DeviceInfo.dimensions()]
+        if let user = ask.userId { payload["user_id"] = user }
+        if !ask.attributes.isEmpty { payload["attributes"] = ask.attributes }
+        let signature = ask.userId != nil && ask.userId == userId ? userSignature : nil
+        return await client.postConfig(payload: payload, signature: signature)
+    }
+
+    /**
+     How this device describes itself, as one string that changes when the description does: remote config asks for
+     its values again when it differs from the last ask's. Without the network type, which changes as somebody
+     walks out of the door and is no reason to ask.
+     */
+    private static func configContext() -> String {
+        DeviceInfo.dimensions()
+            .filter { $0.key != "network_type" }
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: " ")
     }
 
     /// `contextToken()` against the client it is handed: `backendClient` in the SDK, one answered by a `URLProtocol` in
@@ -1139,6 +1418,12 @@ public final class Treebars {
             properties[TreebarsConstants.richPushButtonIdKey] = button
         }
 
+        // A tap that launched the app arrives before `initialize`, which would drop it: it is
+        // kept and sent by `initialize` instead (`PendingPushReceipts`), as on Android.
+        guard shared.writeKey != nil else {
+            PendingPushReceipts.add(eventName: "notification_opened", properties: properties)
+            return
+        }
         log("notification_opened", properties: properties)
         // Flushed rather than batched: this runs as the app is being brought up, which
         // is exactly when it is most likely to be suspended again.
@@ -1198,6 +1483,10 @@ public final class Treebars {
         var properties: [String: Any] = [deliveryIdKey: deliveryId]
         if let campaignId = userInfo[campaignIdKey] as? String, !campaignId.isEmpty {
             properties[campaignIdKey] = campaignId
+        }
+        guard shared.writeKey != nil else {
+            PendingPushReceipts.add(eventName: "push_dismissed", properties: properties)
+            return
         }
         log("push_dismissed", properties: properties)
     }
@@ -1293,6 +1582,8 @@ public final class Treebars {
         guard let signedOutUserId = shared.userId else { return }
         shared.userId = nil
         shared.userSignature = nil
+        // The config answers that depended on the account go now, before the next ones arrive.
+        shared.remoteConfig?.identityChanged(nil)
         shared.currentScreen = nil
         // The previous person's nudges, and where they were allowed.
         shared.nudgePlace = nil
@@ -1345,6 +1636,8 @@ public final class Treebars {
     public static func optOut() {
         shared.optedOut = true
         UserDefaults.standard.set(true, forKey: optedOutKey)
+        // Asking for config says which device is asking: nothing is asked, and what was held goes.
+        shared.remoteConfig?.clear()
         Task { await shared.discardUnsent() }
     }
 
@@ -1381,6 +1674,7 @@ public final class Treebars {
         DeviceInfo.forgetIdentity()
         instance.inApp.reset()
         instance.notificationStore.reset()
+        instance.remoteConfig?.clear()
         // The files its messages loaded: a forgotten device keeps nothing it was sent.
         instance.assetCache.clear()
         instance.lastNotificationServerTime = nil
@@ -3250,6 +3544,8 @@ public final class Treebars {
      */
     private func advanceSession(countsAsEvent: Bool) async -> SessionAdvance {
         let touch = await sessionManager.touch(countsAsEvent: countsAsEvent)
+        // A config key keeps its answer for a session: this is where a new one is heard of.
+        remoteConfig?.sessionStarted(touch.sessionId)
         var advance = SessionAdvance(sessionId: touch.sessionId)
         guard autoTrackSessions else { return advance }
 

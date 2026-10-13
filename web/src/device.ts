@@ -12,6 +12,8 @@
  * window dimensions, installed fonts or plugins, canvas or WebGL signals, hardware
  * concurrency, and device memory. Those are high-entropy values that could tell one
  * browser from another, and none of them answer a product question the coarse values do not.
+ * (The browser sends its own `User-Agent` header with every request, as it does to any
+ * server. This SDK does not read it into an event, and adds nothing to it.)
  *
  * `app_id` is the one value here that is not about the client at all: it is the page's
  * own origin, which the browser already sends as a header on the same request, so it adds
@@ -151,6 +153,28 @@ function deviceType(): string | undefined {
 function networkType(): string | undefined {
   const connection = (navigator as Navigator & { connection?: { effectiveType?: string } }).connection;
   return connection?.effectiveType;
+}
+
+/**
+ * Whether the browser reports that automation is driving it: a test runner, a headless browser, a crawler.
+ *
+ * `navigator.webdriver` is the browser's own word, and it is true only when something is controlling the
+ * page. One boolean that every automated browser answers alike, so it tells no two visitors apart.
+ */
+export function isAutomated(): boolean {
+  return typeof navigator !== 'undefined' && (navigator as Navigator & { webdriver?: boolean }).webdriver === true;
+}
+
+/**
+ * `{ automated: true }` for a request body from an automated browser, and nothing from any other. On the four
+ * requests that can make a person where there was none: an upload, a sign-in, a recorded visit and a context token.
+ *
+ * Sent so a project can leave automated visits out of its numbers or keep them, as it chooses. The SDK
+ * still works in full either way — a team's own browser tests have to be able to see a message drawn —
+ * and the field is absent, never `false`, from a person's browser.
+ */
+export function automationFlag(): { automated?: true } {
+  return isAutomated() ? { automated: true } : {};
 }
 
 /**

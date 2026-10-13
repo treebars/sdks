@@ -948,7 +948,7 @@ internal fun InAppFilter.isComplete(): Boolean {
  * gives them, so a trigger reaches the same people on every platform. `sdks/web/src/in-app.ts` is the
  * same rule in TypeScript.
  *
- * All fourteen operators, from the generated `FILTER_OPERATOR_CODES`; one this build does not know fails
+ * Every operator in the generated `FILTER_OPERATOR_CODES`; one this build does not know fails
  * closed, because showing a message to people who do not qualify is worse than showing it to nobody.
  * Incomplete rows are dropped before the conjunction rather than failed inside it — an unfinished row
  * beside a real one must leave the real one deciding.
@@ -966,9 +966,12 @@ internal fun matchesFilters(
 private val KNOWN_CODES: Set<String> = TreebarsConstants.FILTER_OPERATOR_CODES.toSet()
 
 /** The codes that match a value that is not set. */
-private val NEGATED_CODES = setOf("neq", "not_contains", "not_in", "not_exists")
+private val NEGATED_CODES = setOf("neq", "not_contains", "not_in", "not_exists", "has_none")
 private val TEXT_CODES = setOf("contains", "not_contains", "starts_with", "ends_with")
-private val FILTER_TYPES = setOf("string", "number", "boolean", "version")
+
+/** The codes asked of a property that holds a LIST: which of the row's items it holds. */
+private val LIST_CODES = setOf("has_any", "has_all", "has_none")
+private val FILTER_TYPES = setOf("string", "number", "boolean", "version", "array")
 private val IN_APP_DIMENSIONS: Set<String> = TreebarsConstants.IN_APP_DIMENSIONS.toSet()
 
 private fun matchesFilter(properties: Map<String, Any?>, filter: InAppFilter, dimensions: Map<String, Any?>?): Boolean {
@@ -988,8 +991,159 @@ private fun matchesFilter(properties: Map<String, Any?>, filter: InAppFilter, di
         val row = if (filter.type == "version") filter else filter.copy(type = "string")
         return compareValue(storedDimension(filter.key, dimensions[filter.key]), row)
     }
-    // By its literal key.
-    return compareValue(properties[filter.key], filter)
+    // By its key, read as Treebars stores the event: one value, or a list of items.
+    val found = propertyAt(properties, filter.key)
+    found.items?.let { return listHolds(it, filter) }
+    return compareValue(found.value, filter)
+}
+
+/** What an event holds at a key: one value, or — never both — the items of a list, as text. */
+private class FoundProperty {
+    var value: Any? = null
+    var items: MutableList<String>? = null
+}
+
+/**
+ * Text as Treebars stores it: cut at `max` UTF-16 code units without splitting a surrogate pair, and with
+ * any lone surrogate replaced by U+FFFD.
+ */
+internal fun storedText(value: String, max: Int): String {
+    var text = value
+    if (text.length > max) {
+        text = text.substring(0, max)
+        if (text.last().isHighSurrogate()) text = text.dropLast(1)
+    }
+    var out: StringBuilder? = null
+    var index = 0
+    while (index < text.length) {
+        val unit = text[index]
+        if (unit.isSurrogate()) {
+            if (unit.isHighSurrogate() && index + 1 < text.length && text[index + 1].isLowSurrogate()) {
+                out?.append(unit)?.append(text[index + 1])
+                index += 2
+                continue
+            }
+            if (out == null) out = StringBuilder(text.length).append(text, 0, index)
+            out.append('\uFFFD')
+        } else {
+            out?.append(unit)
+        }
+        index++
+    }
+    return out?.toString() ?: text
+}
+
+/** One value as stored: text cut at the value length, a finite number, a boolean. Anything else is nothing. */
+private fun storedValue(value: Any?): Any? = when (value) {
+    is String -> storedText(value, TreebarsConstants.STRING_VALUE_LENGTH)
+    is Boolean -> value
+    is Number -> value.toDouble().takeIf { it.isFinite() }
+    else -> null
+}
+
+/** One item of a list as stored: text, a number as JavaScript prints it, `true` or `false`. Empty text is none. */
+private fun storedItem(value: Any?): String? = when (value) {
+    is String -> if (value.isEmpty()) null else storedText(value, TreebarsConstants.LIST_PROPERTY_ITEM_LENGTH)
+    is Boolean -> value.toString()
+    is Number -> value.toDouble().takeIf { it.isFinite() }?.let(::jsNumberText)
+    else -> null
+}
+
+/** Adds an item to a list being read: distinct, in the order first seen, up to the list's length. */
+private fun addItem(found: FoundProperty, value: Any?) {
+    val item = storedItem(value) ?: return
+    val items = found.items
+    if (items == null) {
+        found.items = mutableListOf(item)
+    } else if (items.size < TreebarsConstants.LIST_PROPERTY_ITEMS && item !in items) {
+        items += item
+    }
+}
+
+/** An array as a host app or a parsed message may hand one over, or null for anything that is not one. */
+private fun entriesOf(value: Any?): List<Any?>? = when (value) {
+    is JSONArray -> List(value.length()) { value.opt(it) }
+    is Collection<*> -> value.toList()
+    is Array<*> -> value.toList()
+    else -> null
+}
+
+/**
+ * Walks `segments` from `index` into `value`. A map is stepped into by its key; an array adds no segment
+ * and makes everything under it a list — its values are items, and its maps are walked for the rest of the
+ * path. An array directly inside an array is not read. `element` says this value is an entry of an array.
+ */
+private fun seek(found: FoundProperty, value: Any?, segments: List<String>, index: Int, listed: Boolean, element: Boolean) {
+    if (value == null || value == JSONObject.NULL) return
+    entriesOf(value)?.let { entries ->
+        if (element) return
+        for (entry in entries) seek(found, entry, segments, index, listed = true, element = true)
+        return
+    }
+    if (value is JSONObject || value is Map<*, *>) {
+        // A map where the path ends holds nothing of its own: its fields are longer paths.
+        if (index >= segments.size) return
+        val segment = segments[index]
+        val next = if (value is JSONObject) {
+            if (value.length() > TreebarsConstants.PROPERTY_OBJECT_KEYS) return
+            value.opt(segment)
+        } else {
+            val map = value as Map<*, *>
+            if (map.size > TreebarsConstants.PROPERTY_OBJECT_KEYS) return
+            map[segment]
+        }
+        seek(found, next, segments, index + 1, listed, element = false)
+        return
+    }
+    if (index < segments.size) return
+    if (listed) addItem(found, value) else found.value = storedValue(value)
+}
+
+/**
+ * What an event holds at `key`, read as Treebars stores the event.
+ *
+ * A key is a path: `cart.total` is the `total` of the map sent as `cart`. An array is a list — `tags`
+ * holds each of its values as an item — and an array of maps is one list per field, so
+ * `line_items.category` holds the category of every line item. A key the app sent with a dot in it,
+ * `mapOf("cart.total" to 5)`, is read first, and wins over a nested path of the same name.
+ *
+ * Treebars reads the first `PROPERTY_KEYS_MAX` properties of an event in the order they were sent, and a
+ * map promises no order, so which of more than that many would be kept cannot be known here: every key
+ * is read.
+ */
+private fun propertyAt(properties: Map<String, Any?>, key: String): FoundProperty {
+    val found = FoundProperty()
+    if (key.isEmpty() || key.length > TreebarsConstants.PROPERTY_PATH_LENGTH) return found
+    if (!key.contains('.')) {
+        seek(found, properties[key], listOf(key), 1, listed = false, element = false)
+        return found
+    }
+    // The key as sent, dot and all: one value, or an array of values. A map under it is not read.
+    val literal = properties[key]
+    val entries = entriesOf(literal)
+    if (entries != null) for (entry in entries) addItem(found, entry) else found.value = storedValue(literal)
+    if (found.items != null || found.value != null) return found
+
+    val segments = key.split('.')
+    if (segments.size > TreebarsConstants.PROPERTY_PATH_DEPTH || segments.any { it.isEmpty() }) return found
+    seek(found, properties[segments[0]], segments, 1, listed = false, element = false)
+    return found
+}
+
+/**
+ * A list against a row. It is set, and it is not one value: "is set" is true, and every code that
+ * compares one value is false, the negated ones included. The three list codes ask which of the row's
+ * items the list holds, as text, whole and case-sensitively.
+ */
+private fun listHolds(items: List<String>, filter: InAppFilter): Boolean {
+    when (filter.op) {
+        "exists" -> return true
+        "not_exists" -> return false
+    }
+    if (filter.op !in LIST_CODES || saysNothing(filter)) return false
+    val wanted = decodeList(filter.value)?.texts ?: return false
+    if (filter.op == "has_all") return wanted.all { it in items }
+    return wanted.any { it in items } == (filter.op == "has_any")
 }
 
 /** One row's comparison in device mode, over a value already found by whichever side the row names. */
@@ -1005,7 +1159,9 @@ private fun compareValue(actual: Any?, filter: InAppFilter): Boolean {
     // one of []" must never read as "everyone without the property".
     if (saysNothing(filter)) return false
     if (unset) return filter.op in NEGATED_CODES
-    // A property that is not a scalar — a list, a map — fails closed, the negated codes included.
+    // A list code asked of one value: it is set, and it is not a list — false, "contains none of" included.
+    if (filter.op in LIST_CODES) return false
+    // A value that is not a scalar fails closed, the negated codes included.
     val value = scalar(actual) ?: return false
 
     if (filter.op == "in" || filter.op == "not_in") {
@@ -1086,6 +1242,14 @@ private fun compareValue(actual: Any?, filter: InAppFilter): Boolean {
 private fun saysNothing(filter: InAppFilter): Boolean {
     val value = filter.value
     if (value is JSONArray || value is JSONObject || value is Collection<*> || value is Map<*, *>) return true
+    // A list code is a list row: its type is `array` or absent, and its items are text.
+    if (filter.op in LIST_CODES) {
+        if (filter.type != null && filter.type != "array") return true
+        val items = decodeList(value) ?: return true
+        return items.numbers != null
+    }
+    // Every other code compares one value, which a list has no reading of.
+    if (filter.type == "array") return true
     if (filter.op == "in" || filter.op == "not_in") {
         val items = decodeList(value) ?: return true
         val listType = filter.type ?: if (items.numbers != null) "number" else "string"

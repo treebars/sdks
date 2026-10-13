@@ -116,7 +116,7 @@ export interface Spec extends TurboModule {
   pendingCount(): Promise<number>;
 
   /**
-   * Synchronous, and the only synchronous method here.
+   * Synchronous, as the remote config reads below are and nothing else here is.
    *
    * A debug screen may read it once a second to draw a countdown; a promise per tick would be
    * a round trip per tick for a number the native side already holds. `-1` rather than null
@@ -216,9 +216,47 @@ export interface Spec extends TurboModule {
   setDeferredDeepLinkSubscribed(subscribed: boolean): Promise<void>;
 
   // ---------------------------------------------------------------------------------------
+  // Remote config
+  //
+  // The native SDK holds the values, decides when to ask for them, and keeps a key's answer for
+  // the session; this carries a read down and its answer back. None of these is refused before
+  // `initialize`: the native SDK answers a read with the fallback until it has started, and keeps
+  // attributes, an override and a listener given early.
+  // ---------------------------------------------------------------------------------------
+
+  /**
+   * The three typed reads, synchronous because a read is made while a screen is being drawn and
+   * the native SDK answers from memory. Each carries its fallback down and gets back either the
+   * value held or that fallback, so "nothing is held" needs no spelling of its own on the wire.
+   */
+  configBoolean(key: string, fallback: boolean): boolean;
+  configString(key: string, fallback: string): string;
+  configNumber(key: string, fallback: number): number;
+  /** A JSON value as JSON text, or null when nothing is held for the key; the wrapper decodes it. */
+  configJson(key: string): string | null;
+  /**
+   * A typed read with no fallback to carry: the value held for the key as JSON text — `true`, `"text"`, `25` —
+   * or null when nothing of that kind is held. `kind` is `boolean`, `string`, `number` or `json`. Its own method
+   * because the three above answer their fallback, and "nothing is held" is exactly what this one must say.
+   */
+  configValue(key: string, kind: string): string | null;
+  /** Every key held with the value a read would answer, as one JSON object. */
+  allConfig(): string;
+  /** Asks for the values now. Resolves whether they arrived; a failed ask resolves false. */
+  fetchConfig(): Promise<boolean>;
+  /** Applies the newest values to keys already read. Synchronous, so the read that follows sees them. */
+  activateConfig(): boolean;
+  /** Resolves once values are held or `timeoutMs` has passed, with whether any are. */
+  configReady(timeoutMs: number): Promise<boolean>;
+  /** What the app knows about this install, a JSON object of text, numbers and booleans: the whole set. */
+  setConfigAttributes(attributesJson: string): Promise<void>;
+  /** Answers `key` with a value for this run of the app; `valueJson` is the value as JSON, or null to take it back. */
+  setConfigOverride(key: string, valueJson: string | null): Promise<void>;
+
+  // ---------------------------------------------------------------------------------------
   // Events out
   //
-  // All three follow one rule: native does not spend state for an absent listener, and the
+  // The first three follow one rule: native does not spend state for an absent listener, and the
   // outstanding value is re-emitted on re-subscribe. `EventEmitter` has no replay, and
   // `initialize` fires the device report, `app_open` and a sync before the app's effects
   // have run — so a rule written for one emitter and not the others just moves the lost event.
@@ -238,6 +276,13 @@ export interface Spec extends TurboModule {
 
   /** One of `setEventListener`'s events, as `{ name, data }` JSON; see `TreebarsEvents` in `types.ts`. */
   readonly onTreebarsEvent: EventEmitter<string>;
+
+  /**
+   * What a remote config read answers may have changed. Carries nothing — an empty string, since
+   * an emitter must carry something — and spends nothing, so it needs no subscription switch: a
+   * change nobody heard is still there for the next read.
+   */
+  readonly onConfigChange: EventEmitter<string>;
 }
 
 export default TurboModuleRegistry.get<Spec>('TreebarsNative');

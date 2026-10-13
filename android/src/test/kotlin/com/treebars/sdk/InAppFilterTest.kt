@@ -325,4 +325,57 @@ class InAppFilterTest {
         // A property holding the number 2.3 is no version.
         assertFalse(on("""{"key":"v","op":"neq","value":"2.3","type":"version"}""", mapOf("v" to 2.3)))
     }
+
+    /*
+     * A list reaches this SDK in three shapes: a Kotlin collection from a host app, an array, and a
+     * JSONArray — which is what a parsed message and the React Native module hand over. The generated
+     * conformance suite only ever passes the first, so the other two are asked here.
+     */
+    @Test
+    fun `a list is read whichever shape it arrives in`() {
+        val any = """{"key":"tags","op":"has_any","value":"[\"sale\"]"}"""
+        val all = """{"key":"tags","op":"has_all","value":"[\"new\",\"sale\"]"}"""
+        val none = """{"key":"tags","op":"has_none","value":"[\"clearance\"]"}"""
+        for (tags in listOf<Any>(listOf("new", "sale"), arrayOf("new", "sale"), JSONArray().put("new").put("sale"), setOf("new", "sale"))) {
+            val properties = mapOf("tags" to tags)
+            assertTrue(tags.javaClass.simpleName, on(any, properties))
+            assertTrue(tags.javaClass.simpleName, on(all, properties))
+            assertTrue(tags.javaClass.simpleName, on(none, properties))
+            assertTrue(tags.javaClass.simpleName, on("""{"key":"tags","op":"exists"}""", properties))
+            assertFalse("a list is not one value", on("""{"key":"tags","op":"neq","value":"clearance"}""", properties))
+        }
+        // An item JSON calls null is no item, and a list of nothing else is not set.
+        assertFalse(on("""{"key":"tags","op":"exists"}""", mapOf("tags" to JSONArray().put(JSONObject.NULL).put(""))))
+        assertTrue(on(none, mapOf("tags" to JSONArray())))
+    }
+
+    @Test
+    fun `a path is walked through a map and through a JSONObject alike`() {
+        val total = """{"key":"cart.total","op":"gte","value":100}"""
+        val category = """{"key":"line_items.category","op":"has_any","value":"[\"shoes\"]"}"""
+        val asMaps = mapOf(
+            "cart" to mapOf("total" to 150),
+            "line_items" to listOf(mapOf("category" to "shoes"), mapOf("category" to "bags")),
+        )
+        val asJson = mapOf(
+            "cart" to JSONObject().put("total", 150),
+            "line_items" to JSONArray().put(JSONObject().put("category", "shoes")).put(JSONObject().put("category", "bags")),
+        )
+        for (properties in listOf(asMaps, asJson)) {
+            assertTrue(on(total, properties))
+            assertTrue(on(category, properties))
+            assertFalse("a map holds nothing at its own key", on("""{"key":"cart","op":"exists"}""", properties))
+        }
+        // An Int, a Long and a Float item are each the text JavaScript would print.
+        assertTrue(on("""{"key":"n","op":"has_all","value":"[\"1.5\",\"5\",\"7\"]"}""", mapOf("n" to listOf(5, 7L, 1.5f))))
+    }
+
+    @Test
+    fun `stored text is cut on a pair boundary and holds no lone surrogate`() {
+        assertEquals("a".repeat(255), storedText("a".repeat(255) + "\uD83D\uDE00", 256))
+        assertEquals(256, storedText("a".repeat(254) + "\uD83D\uDE00", 256).length)
+        assertEquals("a\uFFFDb", storedText("a\uD83Db", 10))
+        assertEquals("a\uFFFDb", storedText("a\uDE00b", 10))
+        assertEquals("a\uD83D\uDE00b", storedText("a\uD83D\uDE00b", 10))
+    }
 }

@@ -1,8 +1,9 @@
 import { forgetAdoption, readAdoption } from './adoption';
-import { DEFAULT_BACKEND_URL } from './generated/constants';
+import { CONFIG_READY_TIMEOUT_MS, DEFAULT_BACKEND_URL } from './generated/constants';
 import type { InAppButton, InAppMessage, InAppTokens } from './InApp';
 import Native from './NativeTreebars';
 import type {
+  ConfigAttributes,
   EventProperties,
   NotificationChannel,
   NotificationPage,
@@ -105,6 +106,8 @@ export class TreebarsSDK {
   private deepLinkListener: ((path: string) => void) | null = null;
   /** `setEventListener`'s listeners, by event. */
   private eventListeners = new Map<TreebarsEventName, Set<(payload: never) => void>>();
+  /** `onConfigChange`'s listeners. Kept here: the native side tells this layer, and this layer tells them. */
+  private configListeners = new Set<() => void>();
 
   private module() {
     if (!this.native) {
@@ -245,6 +248,11 @@ export class TreebarsSDK {
       const event = parse<{ name: TreebarsEventName; data: unknown }>(payload, 'an event');
       // Copied before calling: a listener that unsubscribes itself would otherwise change the set mid-loop.
       for (const listener of [...(this.eventListeners.get(event.name) ?? [])]) (listener as (data: unknown) => void)(event.data);
+    });
+
+    // Carries nothing: what changed is read back with the reads themselves.
+    native.onConfigChange(() => {
+      for (const listener of [...this.configListeners]) listener();
     });
   }
 
@@ -715,6 +723,193 @@ export class TreebarsSDK {
     if (!this.ready) return 0;
     await this.ready;
     return this.module().pendingCount();
+  }
+
+  /**
+   * A remote config value, read as the kind its fallback is: `getConfig('new_checkout', false)` is
+   * on or off, `getConfig('headline', 'Welcome')` is text, `getConfig('limit', 25)` a number, and
+   * an object or a list a JSON value. The fallback answers when nothing is held for `key`, or what
+   * is held is another kind — so pass the value the app behaves with today.
+   *
+   * The kind comes from the fallback and never from what was published: a flag somebody set to the
+   * text "false" must not read as on. With no fallback to give, name the kind — `getConfigString(key)`
+   * answers `null` until a value is held. `getConfig(key, null)` has no kind to read as, and
+   * answers `null`.
+   *
+   * It never waits. The native SDK answers from what it holds, and the first read of a key in a
+   * session fixes its answer until the next session, so a screen never changes under somebody
+   * because a newer config arrived; `activateConfig()` moves it sooner. Values are asked for by
+   * the native SDK, on its own, whenever a newer config has been published or who is asking has
+   * changed.
+   *
+   * A read made before `init()` has resolved answers its fallback, and does not fix the key: the
+   * native SDK is started by `init()`, which is asynchronous here. To start a first screen with
+   * the published values, `await treebars.configReady()` before reading.
+   */
+  getConfig(key: string, fallback: boolean): boolean;
+  getConfig(key: string, fallback: string): string;
+  getConfig(key: string, fallback: number): number;
+  getConfig<T extends object>(key: string, fallback: T): T;
+  getConfig(key: string, fallback: unknown): unknown {
+    switch (typeof fallback) {
+      case 'boolean':
+        return this.getConfigBoolean(key, fallback);
+      case 'string':
+        return this.getConfigString(key, fallback);
+      case 'number':
+        return this.getConfigNumber(key, fallback);
+      case 'object':
+        if (fallback !== null) return this.getConfigJson(key, fallback);
+    }
+    return null;
+  }
+
+  /**
+   * A typed read with no fallback: what the native SDK holds for the key as that kind, or null.
+   * The native side answers JSON text, and text that cannot be read is nothing held — a read is
+   * made while a screen is drawn, and must not throw into it.
+   */
+  private held<T>(key: string, kind: 'boolean' | 'string' | 'number' | 'json'): T | null {
+    if (!this.native) return null;
+    const text = this.native.configValue(key, kind);
+    if (text === null || text === undefined) return null;
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * A remote config value that is on or off: a feature flag. `fallback` when nothing is held for
+   * `key`, or what is held is not a boolean; with no fallback, `null` then. See `getConfig`.
+   */
+  getConfigBoolean(key: string): boolean | null;
+  getConfigBoolean(key: string, fallback: boolean): boolean;
+  getConfigBoolean(key: string, fallback?: boolean): boolean | null {
+    if (fallback === undefined) return this.held<boolean>(key, 'boolean');
+    // No module is no values, which is what a fallback is for: a read must not throw into a render.
+    if (!this.native) return fallback;
+    return this.native.configBoolean(key, fallback);
+  }
+
+  /** A remote config text value, or `null` with no fallback and nothing held. See `getConfig`. */
+  getConfigString(key: string): string | null;
+  getConfigString(key: string, fallback: string): string;
+  getConfigString(key: string, fallback?: string): string | null {
+    if (fallback === undefined) return this.held<string>(key, 'string');
+    if (!this.native) return fallback;
+    return this.native.configString(key, fallback);
+  }
+
+  /** A remote config number, or `null` with no fallback and nothing held. See `getConfig`. */
+  getConfigNumber(key: string): number | null;
+  getConfigNumber(key: string, fallback: number): number;
+  getConfigNumber(key: string, fallback?: number): number | null {
+    if (fallback === undefined) return this.held<number>(key, 'number');
+    if (!this.native) return fallback;
+    return this.native.configNumber(key, fallback);
+  }
+
+  /**
+   * A remote config JSON value: an object, a list, or any JSON value, decoded — or `null` with no
+   * fallback and nothing held. The type is the caller's claim about its shape; nothing checks it.
+   * See `getConfig` for when the fallback answers.
+   */
+  getConfigJson<T = unknown>(key: string): T | null;
+  getConfigJson<T = unknown>(key: string, fallback: T): T;
+  getConfigJson<T = unknown>(key: string, fallback?: T): T | null {
+    if (fallback === undefined) return this.held<T>(key, 'json');
+    if (!this.native) return fallback;
+    const text = this.native.configJson(key);
+    if (text === null || text === undefined) return fallback;
+    /*
+     * The fallback, where everything else on this bridge throws on unreadable JSON. A read is
+     * called while a screen is drawn, and the fallback is by definition the answer for a value
+     * that cannot be used — the same answer a text value read as a number gets.
+     */
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return fallback;
+    }
+  }
+
+  /**
+   * Every remote config key this install holds, with the value a read would answer. Reading them
+   * fixes them for the session, as reading each would. Empty before `init()` has resolved.
+   */
+  allConfig(): Record<string, unknown> {
+    if (!this.native) return {};
+    return parse<Record<string, unknown>>(this.native.allConfig(), 'the config values');
+  }
+
+  /**
+   * Asks for this install's config values now. Resolves true when values arrived and false when
+   * they could not be had — offline, opted out, or before `init()`. Seldom needed: the native SDK
+   * asks by itself. Values that arrive apply to keys not read yet; `activateConfig()` applies
+   * them to the rest.
+   */
+  async fetchConfig(): Promise<boolean> {
+    await this.ready;
+    return this.module().fetchConfig();
+  }
+
+  /**
+   * Applies the newest values held to keys already read in this session, now, where they would
+   * otherwise wait for the next session. Returns whether any read answers differently. Call it
+   * at a moment the app can redraw.
+   */
+  activateConfig(): boolean {
+    if (!this.native) return false;
+    return this.native.activateConfig();
+  }
+
+  /**
+   * Resolves once this install holds config values, or `timeoutMs` has passed — whichever is
+   * first — with whether it holds any. For a first launch that should start with the published
+   * values rather than the app's own: `init(config)`, then await this before the first read. An
+   * install that already holds values resolves as soon as `init()` has, and asks nothing; a
+   * newer config reaches it with its next upload. Two seconds when no timeout is given.
+   *
+   * False when `init()` has not been called, and while opted out.
+   */
+  async configReady(timeoutMs: number = CONFIG_READY_TIMEOUT_MS): Promise<boolean> {
+    await this.ready;
+    return this.module().configReady(timeoutMs);
+  }
+
+  /**
+   * Calls `listener` whenever what a config read answers may have changed: newer values arrived,
+   * a session began, `activateConfig()` applied them, or somebody signed in or out. Returns the
+   * function that stops it. Safe before `init()`.
+   */
+  onConfigChange(listener: () => void): () => void {
+    this.configListeners.add(listener);
+    return () => {
+      this.configListeners.delete(listener);
+    };
+  }
+
+  /**
+   * What the app knows about this install that a config rule may be written against:
+   * `{ plan: 'pro', seats: 5 }`. The whole set each time — a key left out is no longer set. The
+   * native SDK keeps them on the device, so setting the same ones on every launch asks for
+   * nothing; different ones ask for the values again. Safe before `init()`.
+   */
+  async setConfigAttributes(attributes: ConfigAttributes): Promise<void> {
+    await this.ready;
+    await this.module().setConfigAttributes(json(attributes));
+  }
+
+  /**
+   * Answers `key` with `value` in this run of the app, whatever was published — for trying a
+   * variant during development. `null` or `undefined` takes it back. Never stored and never
+   * sent: the next launch forgets it. Await it before the read that should see it.
+   */
+  async setConfigOverride(key: string, value: unknown): Promise<void> {
+    await this.ready;
+    await this.module().setConfigOverride(key, value === null || value === undefined ? null : JSON.stringify(value));
   }
 
   /**

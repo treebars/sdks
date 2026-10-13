@@ -64,6 +64,8 @@ export interface UploadResponse {
   retryAfter: string | null;
   /** `X-Treebars-Triggers-Version`, which the ingest endpoint sets on an accepted upload and nothing else. */
   triggersVersion?: string | null;
+  /** `X-Treebars-Config-Version`, which the ingest endpoint sets on an accepted upload once the environment has published a config. */
+  configVersion?: string | null;
   /** `X-Treebars-Flush-Ms`: how far apart the ingest endpoint asks this device to keep its uploads, on an accepted one. */
   flushSpacing?: string | null;
 }
@@ -149,6 +151,11 @@ export interface UploaderOptions {
   wake?: (at: number) => void;
   /** The trigger list. Absent means no event flushes early and no version is acted on. */
   triggers?: TriggerEvents;
+  /**
+   * Told, after a flush in which an upload was accepted, the config version its answers named — or null when
+   * none did. Remote config decides from it whether to ask for its answers again.
+   */
+  configSeen?: (version: string | null) => void;
   /**
    * Told the spacing an accepted upload named, already within bounds. When the next upload is due
    * is decided beside the uploader (`flush-pace.ts`), and this is the one fact that decision needs
@@ -241,6 +248,10 @@ export class Uploader {
   private readonly log: (message: string) => void;
   private readonly wake: ((at: number) => void) | null;
   private readonly triggers: TriggerEvents | null;
+  private readonly configSeen: ((version: string | null) => void) | null;
+  private seenConfigVersion: string | null = null;
+  /** Whether an upload was accepted in the flush that is running. */
+  private accepted = false;
   private readonly spacingNamed: ((milliseconds: number) => void) | null;
   private readonly backlogLeft: (() => void) | null;
   private state: UploaderState;
@@ -262,6 +273,7 @@ export class Uploader {
     this.log = options.log ?? (() => {});
     this.wake = options.wake ?? null;
     this.triggers = options.triggers ?? null;
+    this.configSeen = options.configSeen ?? null;
     this.spacingNamed = options.spacingNamed ?? null;
     this.backlogLeft = options.backlogLeft ?? null;
 
@@ -315,6 +327,8 @@ export class Uploader {
     if (this.flushing) return;
     this.flushing = true;
     this.seenTriggersVersion = null;
+    this.seenConfigVersion = null;
+    this.accepted = false;
     try {
       await this.drain();
     } finally {
@@ -322,6 +336,8 @@ export class Uploader {
     }
     // Before the list is fetched, so what is still waiting is not held up behind it either.
     if (this.backlogLeft && this.waiting() && !this.gated(this.now())) this.backlogLeft();
+    // Only after an accepted upload: a flush the endpoint refused, or never reached, says nothing about the config.
+    if (this.accepted) this.configSeen?.(this.seenConfigVersion);
     await this.triggers?.observe(this.seenTriggersVersion);
   }
 
@@ -369,6 +385,10 @@ export class Uploader {
       // Discarded while the request was out: the batch it answers for is gone, and all behind it.
       if (this.generation !== started) return;
       if (response?.triggersVersion) this.seenTriggersVersion = response.triggersVersion;
+      if (response && response.status >= 200 && response.status < 300) {
+        this.accepted = true;
+        if (response.configVersion) this.seenConfigVersion = response.configVersion;
+      }
       if (!this.settle(batch, response)) return;
     }
   }

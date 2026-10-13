@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.joinAll
@@ -216,6 +217,8 @@ object Treebars {
     const val EVENT_SCREEN_VIEW = "screen_view"
     const val EVENT_USER_IDENTIFIED = "user_identified"
     const val EVENT_USER_SIGNED_OUT = "user_signed_out"
+    /** A read answered an experiment's variant: `experiment_id`, `experiment_key`, `variant`, `variable` and `unit`. */
+    const val EVENT_EXPERIMENT_EXPOSED = "experiment_exposed"
     /**
      * Traits a message set with nobody signed in. The values in `traits` go on the person and are not kept with the
      * event; `trait_keys` is what the event keeps, as `user_identified` keeps its keys.
@@ -260,6 +263,26 @@ object Treebars {
     private lateinit var queue: EventQueue
     private lateinit var uploader: EventUploader
     private lateinit var triggers: TriggerEvents
+
+    /** Remote config: the answers this install holds, and when it asks again. Null before [initialize]. */
+    @Volatile
+    private var remoteConfig: RemoteConfig? = null
+
+    /** Who asked to hear that a config value may have changed. Kept here so an app may ask before [initialize]. */
+    private val configListeners = java.util.concurrent.CopyOnWriteArraySet<() -> Unit>()
+
+    /** What the app said about config before [initialize], applied by it. */
+    @Volatile
+    private var configAttributesBeforeInit: Map<String, Any?>? = null
+    private val configOverridesBeforeInit = java.util.concurrent.ConcurrentHashMap<String, Any>()
+
+    /**
+     * The config state waiting to be written, and the lock its writes take turns under. A read on the main thread
+     * must not wait on a file, so a write is handed off — and each one writes whatever is newest when its turn
+     * comes, so two handed off close together cannot leave the older one on disk.
+     */
+    private val configState = java.util.concurrent.atomic.AtomicReference<JSONObject?>(null)
+    private val configWrites = Mutex()
 
     /** When the next upload is due ([FlushPace]). Null before [initialize]. */
     @Volatile
@@ -570,6 +593,48 @@ object Treebars {
         )
         client = BackendClient(backendUrl, writeKey, deviceSecret = { fetchSecret() })
         /*
+         * Remote config, built before the uploader that tells it what version an upload's answer named. It reads what
+         * it holds as it is built; who is asking and how the device describes itself follow off the caller's thread,
+         * and the session arrives with the first event ([advanceSession]).
+         */
+        val config = RemoteConfig(
+            store = ConfigStore(appContext.filesDir),
+            fetch = { ask -> askForConfig(ask) },
+            launch = { block -> scope.launch { block() } },
+            persist = { store, state ->
+                configState.set(state)
+                scope.launch(Dispatchers.IO) { configWrites.withLock { configState.getAndSet(null)?.let(store::save) } }
+            },
+            /*
+             * A read answered an experiment's variant: recorded as an event, so who was shown which variant is in
+             * the same place as what they did next. Off the reading thread — a read never waits, and recording
+             * touches the queue's file.
+             */
+            expose = { exposure ->
+                scope.launch {
+                    record(
+                        EVENT_EXPERIMENT_EXPOSED,
+                        mapOf(
+                            "experiment_id" to exposure.experimentId,
+                            "experiment_key" to exposure.experimentKey,
+                            "variant" to exposure.variant,
+                            "variable" to exposure.variable,
+                            "unit" to exposure.unit,
+                        ),
+                    )
+                }
+            },
+        )
+        config.onChange { for (listener in configListeners) listener() }
+        for ((key, value) in configOverridesBeforeInit) config.override(key, value)
+        configOverridesBeforeInit.clear()
+        configAttributesBeforeInit?.let(config::setAttributes)
+        configAttributesBeforeInit = null
+        remoteConfig = config
+        // Asking for config says which device is asking: an install that starts opted out holds none and asks for none.
+        if (optedOut) config.clear()
+        else scope.launch { config.start(sessionId = null, userId = userId, context = configContext()) }
+        /*
          * The pace and the uploader, each handed the other: the pace asks the uploader to send and
          * reads the spacing its answers named, and the uploader tells the pace as each request
          * leaves and when an upload ends with events still waiting. The pace and the network watch
@@ -595,6 +660,7 @@ object Treebars {
             writeKey = writeKey,
             scope = scope,
             triggers = triggers,
+            configSeen = { version -> remoteConfig?.observe(version) },
             paused = { optedOut },
             uploadBegan = paced::uploadBegan,
             backlogLeft = paced::backlogLeft,
@@ -2758,6 +2824,8 @@ object Treebars {
      */
     private suspend fun advanceSession(device: DeviceSnapshot, isEvent: Boolean): SessionStep {
         val touch = sessions.touch(isEvent)
+        // A config key keeps its answer for a session: this is where a new one is heard of.
+        remoteConfig?.sessionStarted(touch.sessionId)
         if (!autoTrackSessions) return SessionStep(touch.sessionId, emptyList(), null)
 
         val boundaries = mutableListOf<String>()
@@ -2893,6 +2961,8 @@ object Treebars {
         if (held != null) editor.putString(TreebarsConstants.KEY_SIGNED_IN_USER_SIGNATURE, held)
         else editor.remove(TreebarsConstants.KEY_SIGNED_IN_USER_SIGNATURE)
         editor.apply()
+        // After the signature above is held, so the config asked for as this person can prove who is asking.
+        remoteConfig?.identityChanged(userId)
 
         scope.launch {
             /*
@@ -2981,6 +3051,219 @@ object Treebars {
             TreebarsLogger.log("context token failed: $error")
             null
         }
+    }
+
+    /**
+     * A remote config value that is on or off: a feature flag. [fallback] when nothing is held for [key], or what
+     * is held is not a boolean — so pass the value the app behaves with today.
+     *
+     * A read never waits and never fails: it answers from what this install already holds, and is safe on the main
+     * thread. **The first read of a key fixes its answer for the session**, "not set" included, so a screen never
+     * changes under somebody because newer values arrived half-way through; a key not read yet takes the newest
+     * values held. To hold the first screen for a first launch's values, call [configReady] before reading.
+     */
+    @JvmStatic
+    fun getConfigBoolean(key: String, fallback: Boolean): Boolean = getConfigBoolean(key) ?: fallback
+
+    /** A remote config text value. See [getConfigBoolean] for when the fallback answers and how long an answer is kept. */
+    @JvmStatic
+    fun getConfigString(key: String, fallback: String): String = getConfigString(key) ?: fallback
+
+    /** A remote config number. See [getConfigBoolean] for when the fallback answers and how long an answer is kept. */
+    @JvmStatic
+    fun getConfigNumber(key: String, fallback: Double): Double = getConfigNumber(key) ?: fallback
+
+    /**
+     * A remote config flag with no fallback to give: null until this install holds a boolean for [key]. Otherwise
+     * as [getConfigBoolean] with one — the first read of a key fixes its answer for the session, "not set" included.
+     */
+    @JvmStatic
+    fun getConfigBoolean(key: String): Boolean? = remoteConfig?.read(key, "boolean") as? Boolean
+
+    /** A remote config text value with no fallback to give: null until this install holds text for [key]. */
+    @JvmStatic
+    fun getConfigString(key: String): String? = remoteConfig?.read(key, "string") as? String
+
+    /** A remote config number with no fallback to give: null until this install holds a number for [key]. */
+    @JvmStatic
+    fun getConfigNumber(key: String): Double? = (remoteConfig?.read(key, "number") as? Number)?.toDouble()
+
+    /** A remote config JSON value as JSON text, with no fallback to give: null until this install holds one for [key]. */
+    @JvmStatic
+    fun getConfigJson(key: String): String? = getConfigJson(key, null)
+
+    /**
+     * A remote config value, read as the kind its fallback is: `getConfig("new_checkout", false)` is on or off,
+     * `getConfig("headline", "Welcome")` is text, `getConfig("limit", 25)` a number. The fallback answers when nothing is
+     * held for [key], or what is held is another kind — so pass the value the app behaves with today.
+     *
+     * The kind comes from the fallback and never from what was published: a flag somebody set to the text "false"
+     * must not read as on. With no fallback to give, name the kind — [getConfigString] with a key alone answers null
+     * until a value is held. A JSON value is read by name too: [getConfigJson].
+     */
+    @JvmStatic
+    fun getConfig(key: String, fallback: Boolean): Boolean = getConfigBoolean(key, fallback)
+
+    /** A remote config text value. See the [getConfig] that takes a flag for when the fallback answers. */
+    @JvmStatic
+    fun getConfig(key: String, fallback: String): String = getConfigString(key, fallback)
+
+    /** A remote config number. See the [getConfig] that takes a flag for when the fallback answers. */
+    @JvmStatic
+    fun getConfig(key: String, fallback: Double): Double = getConfigNumber(key, fallback)
+
+    /**
+     * A remote config number, as the whole number its fallback is: a published 2.9 reads as 2. Give a fallback with
+     * a decimal point to read it whole.
+     */
+    @JvmStatic
+    fun getConfig(key: String, fallback: Int): Int = getConfigNumber(key)?.toInt() ?: fallback
+
+    /** A remote config number as a whole number, for one too large for an [Int]. */
+    @JvmStatic
+    fun getConfig(key: String, fallback: Long): Long = getConfigNumber(key)?.toLong() ?: fallback
+
+    /**
+     * A remote config JSON value, as JSON text for the app to decode with whatever it decodes JSON with: an object,
+     * a list, or any JSON value. See [getConfigBoolean] for when the fallback answers.
+     */
+    @JvmStatic
+    fun getConfigJson(key: String, fallback: String?): String? = remoteConfig?.read(key, "json")?.let(::configJsonText) ?: fallback
+
+    /**
+     * Every remote config key this install holds, with the value a read would answer — a JSON value as maps and
+     * lists. Reading them fixes them for the session.
+     */
+    @JvmStatic
+    fun allConfig(): Map<String, Any?> = remoteConfig?.all()?.mapValues { configPlain(it.value) } ?: emptyMap()
+
+    /**
+     * Asks for this install's config values now. True when values arrived, false when they could not be had; never
+     * throws for a failed ask. Seldom needed: the SDK asks by itself whenever a newer config has been published, or
+     * who is asking has changed. Values that arrive apply to keys not read yet — [activateConfig] applies them to
+     * the rest.
+     *
+     * False before [initialize] and while opted out.
+     */
+    @JvmStatic
+    suspend fun fetchConfig(): Boolean {
+        val config = remoteConfig ?: return false
+        if (optedOut) return false
+        return config.refresh()
+    }
+
+    /**
+     * Applies the newest values held to keys already read in this session, now, where they would otherwise wait for
+     * the next session. Returns whether any read answers differently. Call it at a moment the app can redraw.
+     */
+    @JvmStatic
+    fun activateConfig(): Boolean = remoteConfig?.activate() ?: false
+
+    /**
+     * Returns once this install holds config values, or [timeoutMs] has passed — whichever is first — with whether
+     * it holds any. For a first launch that should start with the published values rather than the app's own: call
+     * it before the first read. An install that already holds values returns at once and asks nothing; a newer
+     * config reaches it with its next upload.
+     *
+     * False before [initialize] and while opted out.
+     */
+    @JvmStatic
+    suspend fun configReady(timeoutMs: Long = TreebarsConstants.CONFIG_READY_TIMEOUT_MS): Boolean {
+        val config = remoteConfig ?: return false
+        if (optedOut) return false
+        if (config.wanting) {
+            // On the SDK's own scope: giving up waiting must not cancel the ask, whose answer is still wanted.
+            val asked = scope.async { config.refresh() }
+            kotlinx.coroutines.withTimeoutOrNull(maxOf(0L, timeoutMs)) { asked.await() }
+        }
+        return config.version != null
+    }
+
+    /**
+     * Calls [listener] whenever what a config read answers may have changed: newer values arrived, a session began,
+     * [activateConfig] applied them, or somebody signed in or out. On whichever thread that happened. Returns the
+     * function that stops it. May be called before [initialize].
+     */
+    @JvmStatic
+    fun onConfigChange(listener: () -> Unit): () -> Unit {
+        val guarded: () -> Unit = {
+            try {
+                listener()
+            } catch (error: Exception) {
+                TreebarsLogger.log("a config change listener threw: $error")
+            }
+        }
+        configListeners.add(guarded)
+        return { configListeners.remove(guarded) }
+    }
+
+    /**
+     * What the app knows about this install that a config rule may be written against: `mapOf("plan" to "pro",
+     * "seats" to 5)`. Text, numbers and booleans. The whole set each time — a key left out is no longer set. They
+     * are kept on the device, so setting the same ones on every launch asks for nothing; different ones ask for the
+     * values again.
+     */
+    @JvmStatic
+    fun setConfigAttributes(attributes: Map<String, Any?>) {
+        val config = remoteConfig
+        if (config == null) {
+            configAttributesBeforeInit = attributes
+            return
+        }
+        if (!optedOut) config.setAttributes(attributes)
+    }
+
+    /**
+     * Answers [key] with [value] in this process, whatever was published — for trying a variant during development.
+     * Null takes it back. Never stored and never sent: the next launch forgets it.
+     */
+    @JvmStatic
+    fun setConfigOverride(key: String, value: Any?) {
+        val config = remoteConfig
+        if (config == null) {
+            if (value == null) configOverridesBeforeInit.remove(key) else configOverridesBeforeInit[key] = value
+            return
+        }
+        config.override(key, value)
+    }
+
+    /**
+     * This install's config values, asked of the ingest endpoint: the device, the account when somebody is signed
+     * in — with the signature that proves it, where one is held — how the device describes itself, and what the app
+     * set.
+     */
+    private suspend fun askForConfig(ask: ConfigAsk): ConfigAnswer {
+        if (optedOut) return ConfigAnswer.Failed()
+        val payload = JSONObject().put("device_id", deviceId())
+        ask.userId?.let { payload.put("user_id", it) }
+        payload.put("context", JSONObject(DeviceInfo.dimensions(appContext) as Map<*, *>))
+        if (ask.attributes.isNotEmpty()) payload.put("attributes", JSONObject(ask.attributes as Map<*, *>))
+        val signature = userSignature.takeIf { ask.userId != null && ask.userId == userId }
+        return kotlinx.coroutines.withContext(Dispatchers.IO) { client?.postConfig(payload, signature) } ?: ConfigAnswer.Failed()
+    }
+
+    /**
+     * How this device describes itself, as one string that changes when the description does: remote config asks for
+     * its values again when it differs from the last ask's. Without the network type, which changes as somebody
+     * walks out of the door and is no reason to ask.
+     */
+    private fun configContext(): String =
+        DeviceInfo.dimensions(appContext).filterKeys { it != "network_type" }.toSortedMap().entries.joinToString(" ") { "${it.key}=${it.value}" }
+
+    /** A config value as JSON text. */
+    private fun configJsonText(value: Any): String = when (value) {
+        is String -> JSONObject.quote(value)
+        is Map<*, *> -> JSONObject(value).toString()
+        is Collection<*> -> JSONArray(value).toString()
+        else -> value.toString()
+    }
+
+    /** A config value with its JSON as maps and lists, which is what an app holds. */
+    private fun configPlain(value: Any?): Any? = when (value) {
+        null, JSONObject.NULL -> null
+        is JSONObject -> value.keys().asSequence().associateWith { configPlain(value.opt(it)) }
+        is JSONArray -> (0 until value.length()).map { configPlain(value.opt(it)) }
+        else -> value
     }
 
     /** The handful of profile attributes the SDK can fill in before the app says anything. */
@@ -3254,6 +3537,8 @@ object Treebars {
         if (signedOutUserId == null) return
         userId = null
         userSignature = null
+        // The config answers that depended on the account go now, before the next ones arrive.
+        remoteConfig?.identityChanged(null)
         currentScreen = null
         // The previous person's nudges, and where they were allowed.
         nudgePlace = null
@@ -3306,6 +3591,8 @@ object Treebars {
             return
         }
         appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putBoolean(KEY_OPTED_OUT, true).apply()
+        // Asking for config says which device is asking: nothing is asked, and what was held goes.
+        remoteConfig?.clear()
         scope.launch { discardUnsent() }
     }
 
@@ -3355,6 +3642,7 @@ object Treebars {
             }
             inAppStore?.reset()
             notificationStore?.reset()
+            remoteConfig?.clear()
             // The files its messages loaded: a forgotten device keeps nothing it was sent.
             assetCache?.clear()
             lastNotificationServerTime = null

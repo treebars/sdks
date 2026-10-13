@@ -14,10 +14,12 @@ internal object TreebarsConstants {
     const val CONTEXT_TOKEN_PATH = "/v1/context-token"
     const val NOTIFICATIONS_PATH = "/v1/notifications"
     const val NOTIFICATION_STATE_PATH = "/v1/notifications/state"
+    const val CONFIG_PATH = "/v1/config"
 
     const val WRITE_KEY_HEADER = "X-Treebars-Key"
     const val DEVICE_AUTH_HEADER = "X-Treebars-Device-Auth"
     const val TRIGGERS_VERSION_HEADER = "X-Treebars-Triggers-Version"
+    const val CONFIG_VERSION_HEADER = "X-Treebars-Config-Version"
     const val FLUSH_SPACING_HEADER = "X-Treebars-Flush-Ms"
     const val LINK_RESOLVE_HEADER = "X-Treebars-Resolve"
     const val USER_SIGNATURE_HEADER = "X-Treebars-User-Signature"
@@ -56,6 +58,12 @@ internal object TreebarsConstants {
     /** A reward claim refused with a 429 or 503, or unanswered, is asked again this many times, all within the budget. */
     const val REWARD_CLAIM_RETRIES = 2
     const val REWARD_CLAIM_BUDGET_MS = 8000L
+    /** Seconds. How long a failed config request waits before the next, when the failure names no wait of its own. */
+    const val CONFIG_RETRY_SECONDS = 60L
+    /** How long configReady() waits by default. */
+    const val CONFIG_READY_TIMEOUT_MS = 2000L
+    /** Seconds. The least time between two reports of the same variant of the same experiment. */
+    const val CONFIG_EXPOSURE_FLOOR_SECONDS = 86400L
 
     /** 0x811c9dc5 does not fit a signed Int. */
     const val FNV_OFFSET_BASIS = -0x7ee3623b
@@ -97,7 +105,7 @@ internal object TreebarsConstants {
     /** Our click id's parameter, read out of the URL that opened the app. */
     const val ACQUISITION_CLICK_ID_PARAM = "tbrs_click_id"
 
-    const val SDK_VERSION = "0.5.0"
+    const val SDK_VERSION = "0.6.0"
     const val SDK_NAME = "treebars-android"
     const val DEVICE_ID_PREFIX = "dev_"
 
@@ -132,6 +140,8 @@ internal object TreebarsConstants {
         "whatsapp_opt_in",
         "install_referrer",
         "apple_ads_attribution",
+        "experiment_exposed",
+        "config_exposed",
         "install_attributed",
         "link_opened",
         "reengagement_attributed",
@@ -147,6 +157,9 @@ internal object TreebarsConstants {
         "ends_with",
         "in",
         "not_in",
+        "has_any",
+        "has_all",
+        "has_none",
         "gt",
         "gte",
         "lt",
@@ -162,6 +175,15 @@ internal object TreebarsConstants {
     // Ingest's caps, in UTF-16 code units: a trimmed device field, and a screen name.
     const val DEVICE_FIELD_LENGTH = 128
     const val STRING_VALUE_LENGTH = 1024
+    // The limits an event property is read within, by its key: the entries of the map that are read, a path's
+    // length in UTF-16 code units and its depth in segments, the widest nested object that is still read, and a
+    // list's distinct items and each item's length.
+    const val PROPERTY_KEYS_MAX = 128
+    const val PROPERTY_PATH_LENGTH = 128
+    const val PROPERTY_PATH_DEPTH = 5
+    const val PROPERTY_OBJECT_KEYS = 32
+    const val LIST_PROPERTY_ITEMS = 100
+    const val LIST_PROPERTY_ITEM_LENGTH = 256
 
     // The dimension names an in-app trigger may read: an allowlist of keys, and nothing about what a row answers.
     val IN_APP_DIMENSIONS = arrayOf(
@@ -191,6 +213,7 @@ internal object TreebarsConstants {
     const val QUEUE_FILE = "treebars-queue.json"
     const val UPLOADER_FILE = "treebars-uploader.json"
     const val TRIGGERS_FILE = "treebars-triggers.json"
+    const val CONFIG_FILE = "treebars-config.json"
     const val KEY_FIRST_SEEN_AT = "first_seen_at"
     const val KEY_DEVICE_ID = "device_id"
     const val KEY_FETCH_SECRET = "fetch_secret"

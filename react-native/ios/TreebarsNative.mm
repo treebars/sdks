@@ -215,6 +215,15 @@ RCT_EXPORT_MODULE()
      * has built it, so installing it first would install it into nothing — a listener that is
      * demonstrably set and reports no upload ever.
      */
+    // Before `start`, which the core allows, so the first values this launch is given cannot
+    // arrive ahead of the listener that reports them.
+    [TreebarsBridge setConfigChangeSink:^{
+      __typeof(self) strongSelf = weakSelf;
+      if ([strongSelf canEmit]) {
+        [strongSelf emitOnConfigChange:@""];
+      }
+    }];
+
     TreebarsBridgeFailure *failure = [TreebarsBridge
         startWithConfigJson:configJson
                  uploadSink:^(NSString *json) {
@@ -499,10 +508,106 @@ RCT_EXPORT_MODULE()
   });
 }
 
-/// The only synchronous method here, and `-1` is how it says "nothing is scheduled".
+/// Synchronous, and `-1` is how it says "nothing is scheduled".
 - (NSNumber *)msUntilNextFlush
 {
   return @([TreebarsBridge msUntilNextFlush]);
+}
+
+// -----------------------------------------------------------------------------------------
+// Remote config
+//
+// No started gate on any of these, where most of this file has one: the core answers a read made
+// before `initialize` with the fallback, which is the true answer, and keeps attributes, an
+// override and a listener given early.
+// -----------------------------------------------------------------------------------------
+
+// The reads are synchronous, as a read in the core is: it answers from memory, and JavaScript
+// calls it while a screen is being drawn. Nothing below them raises, so none needs a guard.
+- (NSNumber *)configBoolean:(NSString *)key fallback:(BOOL)fallback
+{
+  return @([TreebarsBridge configBoolean:key fallback:fallback]);
+}
+
+- (NSString *)configString:(NSString *)key fallback:(NSString *)fallback
+{
+  return [TreebarsBridge configString:key fallback:fallback];
+}
+
+- (NSNumber *)configNumber:(NSString *)key fallback:(double)fallback
+{
+  return @([TreebarsBridge configNumber:key fallback:fallback]);
+}
+
+- (NSString *_Nullable)configJson:(NSString *)key
+{
+  return [TreebarsBridge configJson:key];
+}
+
+- (NSString *_Nullable)configValue:(NSString *)key kind:(NSString *)kind
+{
+  return [TreebarsBridge configValue:key kind:kind];
+}
+
+- (NSString *)allConfig
+{
+  return [TreebarsBridge allConfig];
+}
+
+- (NSNumber *)activateConfig
+{
+  return @([TreebarsBridge activateConfig]);
+}
+
+// Both completions run off a Swift `Task`, so each carries its own guard, as `pendingCount`'s does.
+- (void)fetchConfig:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
+{
+  TreebarsAnswer(reject, ^{
+    [TreebarsBridge fetchConfig:^(BOOL arrived) {
+      TreebarsAnswer(reject, ^{
+        resolve(@(arrived));
+      });
+    }];
+  });
+}
+
+- (void)configReady:(double)timeoutMs
+            resolve:(RCTPromiseResolveBlock)resolve
+             reject:(RCTPromiseRejectBlock)reject
+{
+  TreebarsAnswer(reject, ^{
+    [TreebarsBridge configReady:timeoutMs
+                     completion:^(BOOL held) {
+                       TreebarsAnswer(reject, ^{
+                         resolve(@(held));
+                       });
+                     }];
+  });
+}
+
+- (void)setConfigAttributes:(NSString *)attributesJson
+                    resolve:(RCTPromiseResolveBlock)resolve
+                     reject:(RCTPromiseRejectBlock)reject
+{
+  TreebarsAnswer(reject, ^{
+    if (TreebarsRejected([TreebarsBridge setConfigAttributes:attributesJson], reject)) {
+      return;
+    }
+    resolve(nil);
+  });
+}
+
+- (void)setConfigOverride:(NSString *)key
+                valueJson:(NSString *_Nullable)valueJson
+                  resolve:(RCTPromiseResolveBlock)resolve
+                   reject:(RCTPromiseRejectBlock)reject
+{
+  TreebarsAnswer(reject, ^{
+    if (TreebarsRejected([TreebarsBridge setConfigOverride:key valueJson:valueJson], reject)) {
+      return;
+    }
+    resolve(nil);
+  });
 }
 
 // -----------------------------------------------------------------------------------------

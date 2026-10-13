@@ -12,6 +12,8 @@ struct UploadResponse {
     /// The spacing the server asks this device to keep between uploads, in milliseconds, as an
     /// accepted upload's answer carries it. Unparsed: `FlushPace.spacing(fromHeader:)` reads it.
     var flushSpacing: String? = nil
+    /// `X-Treebars-Config-Version`, which the server sets on an accepted upload once the environment has published a config.
+    var configVersion: String? = nil
 }
 
 /// What `/v1/context-token` answered, as far as anything acts on it.
@@ -107,8 +109,42 @@ final class BackendClient: EventTransport {
             status: http?.statusCode ?? 0,
             retryAfter: http?.value(forHTTPHeaderField: "Retry-After"),
             triggersVersion: http?.value(forHTTPHeaderField: TreebarsConstants.triggersVersionHeader),
-            flushSpacing: http?.value(forHTTPHeaderField: TreebarsConstants.flushSpacingHeader)
+            flushSpacing: http?.value(forHTTPHeaderField: TreebarsConstants.flushSpacingHeader),
+            configVersion: http?.value(forHTTPHeaderField: TreebarsConstants.configVersionHeader)
         )
+    }
+
+    /**
+     This install's remote config answers: the body, or how the ask failed.
+
+     The write key, and the signature when somebody is signed in — and no device secret, unlike every other
+     call here that names the device. The answer is this install's own experience and nothing of anybody's,
+     and a secret would lock a fresh install out of its flags until its first upload had registered it. On the
+     reading session, at normal priority: an app may be holding its first screen for this.
+     */
+    func postConfig(payload: [String: Any], signature: String?) async -> ConfigAnswer {
+        guard let json = try? JSONSerialization.data(withJSONObject: payload) else {
+            return .failed(status: nil, retryAfter: nil)
+        }
+        var request = URLRequest(url: backendURL.appendingPathComponent(TreebarsConstants.configPath))
+        request.httpMethod = "POST"
+        request.httpBody = json
+        request.timeoutInterval = 15
+        request.setValue(writeKey, forHTTPHeaderField: TreebarsConstants.writeKeyHeader)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let signature { request.setValue(signature, forHTTPHeaderField: TreebarsConstants.userSignatureHeader) }
+
+        guard let (data, response) = try? await readSession.data(for: request) else {
+            TreebarsLogger.log("config: no answer")
+            return .failed(status: nil, retryAfter: nil)
+        }
+        let http = response as? HTTPURLResponse
+        let status = http?.statusCode ?? 0
+        guard (200..<300).contains(status) else {
+            TreebarsLogger.log("config: refused \(status)")
+            return .failed(status: status, retryAfter: http?.value(forHTTPHeaderField: "Retry-After"))
+        }
+        return .answered(try? JSONSerialization.jsonObject(with: data))
     }
 
     /// A sign-in, and whether the server refused it for want of a signature (403 `signature_required`).

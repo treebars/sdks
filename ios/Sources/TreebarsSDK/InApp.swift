@@ -1312,7 +1312,7 @@ func inAppTriggerMatches(
  The trigger's filters against one event, as every SDK reads them on a device. `sdks/web/src/in-app.ts`
  is the same rule in TypeScript, and the easier one to read against this.
 
- All fourteen operators, from the generated `filterOperatorCodes`; one this build does not know fails
+ Every operator in the generated `filterOperatorCodes`; one this build does not know fails
  closed, because showing a message to people who do not qualify is worse than showing it to nobody.
 
  A malformed element fails the WHOLE trigger, not just its row: dropped, `[{plan eq pro}, "x"]` against
@@ -1327,9 +1327,11 @@ func matchesFilters(_ properties: [String: Any], _ filters: [InAppFilter]?, _ di
 
 private let knownCodes: Set<String> = Set(TreebarsConstants.filterOperatorCodes)
 /// The codes that match a value that is not set.
-private let negatedCodes: Set<String> = ["neq", "not_contains", "not_in", "not_exists"]
+private let negatedCodes: Set<String> = ["neq", "not_contains", "not_in", "not_exists", "has_none"]
 private let textCodes: Set<String> = ["contains", "not_contains", "starts_with", "ends_with"]
-private let filterTypes: Set<String> = ["string", "number", "boolean", "version"]
+/// The codes asked of a property that holds a LIST: which of the row's items it holds.
+private let listCodes: Set<String> = ["has_any", "has_all", "has_none"]
+private let filterTypes: Set<String> = ["string", "number", "boolean", "version", "array"]
 private let inAppDimensions: Set<String> = Set(TreebarsConstants.inAppDimensions)
 
 private func matchesFilter(_ properties: [String: Any], _ filter: InAppFilter, _ dimensions: [String: Any]?) -> Bool {
@@ -1351,8 +1353,139 @@ private func matchesFilter(_ properties: [String: Any], _ filter: InAppFilter, _
             : InAppFilter(key: filter.key, op: filter.op, value: filter.value, type: "string", source: filter.source)
         return compareValue(storedDimension(filter.key, dimensions[filter.key]), row)
     }
-    // By its literal key.
-    return compareValue(properties[filter.key], filter)
+    // By its key, read as Treebars stores the event: one value, or a list of items.
+    let found = propertyAt(properties, filter.key)
+    if let items = found.items { return listHolds(items, filter) }
+    return compareValue(found.value, filter)
+}
+
+/// What an event holds at a key: one value, or — never both — the items of a list, as text.
+private struct FoundProperty {
+    var value: Any?
+    var items: [String]?
+}
+
+/**
+ Text as Treebars stores it: cut at `max` UTF-16 code units, and never through a surrogate pair — a cut that
+ lands inside one keeps neither half. A `String` holds no lone surrogate to begin with.
+ */
+func storedText(_ text: String, _ max: Int) -> String {
+    let units = text.utf16
+    guard units.count > max else { return text }
+    var kept = Array(units.prefix(max))
+    if let last = kept.last, last >= 0xD800, last <= 0xDBFF { kept.removeLast() }
+    return String(decoding: kept, as: UTF16.self)
+}
+
+/// One value as stored: text cut at the value length, a finite number, a boolean. Anything else is nothing.
+private func storedValue(_ value: Any?) -> Any? {
+    if let text = value as? String { return storedText(text, TreebarsConstants.stringValueLength) }
+    guard let number = value as? NSNumber else { return nil }
+    if CFGetTypeID(number) == CFBooleanGetTypeID() { return number }
+    return number.doubleValue.isFinite ? number : nil
+}
+
+/// One item of a list as stored: text, a number as JavaScript prints it, `true` or `false`. Empty text is none.
+private func storedItem(_ value: Any?) -> String? {
+    if let text = value as? String {
+        return text.isEmpty ? nil : storedText(text, TreebarsConstants.listPropertyItemLength)
+    }
+    guard let number = value as? NSNumber else { return nil }
+    if CFGetTypeID(number) == CFBooleanGetTypeID() { return number.boolValue ? "true" : "false" }
+    return number.doubleValue.isFinite ? jsNumberText(number.doubleValue) : nil
+}
+
+/// Adds an item to a list being read: distinct by UTF-16 code unit, in the order first seen, up to the
+/// list's length. Two spellings of one letter are two items, as they are to the server.
+private func addItem(_ found: inout FoundProperty, _ value: Any?) {
+    guard let item = storedItem(value) else { return }
+    guard var items = found.items else {
+        found.items = [item]
+        return
+    }
+    if items.count < TreebarsConstants.listPropertyItems, !items.contains(where: { sameText($0, item) }) {
+        items.append(item)
+        found.items = items
+    }
+}
+
+/**
+ Walks `segments` from `index` into `value`. A dictionary is stepped into by its key; an array adds no
+ segment and makes everything under it a list — its values are items, and its dictionaries are walked for
+ the rest of the path. An array directly inside an array is not read. `element` says this value is an
+ entry of an array.
+ */
+private func seek(
+    _ found: inout FoundProperty, _ value: Any?, _ segments: [String], _ index: Int, listed: Bool, element: Bool
+) {
+    guard let value, !(value is NSNull) else { return }
+    if let array = value as? [Any] {
+        if element { return }
+        for entry in array { seek(&found, entry, segments, index, listed: true, element: true) }
+        return
+    }
+    if let object = value as? [String: Any] {
+        // A dictionary where the path ends holds nothing of its own: its fields are longer paths.
+        guard index < segments.count, object.count <= TreebarsConstants.propertyObjectKeys else { return }
+        seek(&found, object[segments[index]], segments, index + 1, listed: listed, element: false)
+        return
+    }
+    if index < segments.count { return }
+    if listed { addItem(&found, value) } else { found.value = storedValue(value) }
+}
+
+/**
+ What an event holds at `key`, read as Treebars stores the event.
+
+ A key is a path: `cart.total` is the `total` of the dictionary sent as `cart`. An array is a list — `tags`
+ holds each of its values as an item — and an array of dictionaries is one list per field, so
+ `line_items.category` holds the category of every line item. A key the app sent with a dot in it,
+ `["cart.total": 5]`, is read first, and wins over a nested path of the same name.
+
+ Treebars reads the first `propertyKeysMax` properties of an event in the order they were sent, and a
+ dictionary has no order, so which of more than that many would be kept cannot be known here: every key
+ is read.
+ */
+private func propertyAt(_ properties: [String: Any], _ key: String) -> FoundProperty {
+    var found = FoundProperty()
+    let units = key.utf16.count
+    guard units > 0, units <= TreebarsConstants.propertyPathLength else { return found }
+    if !key.contains(".") {
+        seek(&found, properties[key], [key], 1, listed: false, element: false)
+        return found
+    }
+    // The key as sent, dot and all: one value, or an array of values. A dictionary under it is not read.
+    if let literal = properties[key] {
+        if let array = literal as? [Any] {
+            for entry in array { addItem(&found, entry) }
+        } else {
+            found.value = storedValue(literal)
+        }
+        if found.items != nil || found.value != nil { return found }
+    }
+    let segments = key.components(separatedBy: ".")
+    if segments.count > TreebarsConstants.propertyPathDepth || segments.contains("") { return found }
+    seek(&found, properties[segments[0]], segments, 1, listed: false, element: false)
+    return found
+}
+
+/**
+ A list against a row. It is set, and it is not one value: "is set" is true, and every code that compares
+ one value is false, the negated ones included. The three list codes ask which of the row's items the
+ list holds, as text, whole and case-sensitively — by UTF-16 code unit, as text is compared everywhere here.
+ */
+private func listHolds(_ items: [String], _ filter: InAppFilter) -> Bool {
+    switch filter.op {
+    case "exists": return true
+    case "not_exists": return false
+    default: break
+    }
+    guard listCodes.contains(filter.op), !saysNothing(filter), let wanted = decodeList(filter.value)?.texts else {
+        return false
+    }
+    let holds: (String) -> Bool = { item in items.contains { sameText($0, item) } }
+    if filter.op == "has_all" { return wanted.allSatisfy(holds) }
+    return wanted.contains(where: holds) == (filter.op == "has_any")
 }
 
 /// One row's comparison, over a value already found by whichever side the row names.
@@ -1369,7 +1502,9 @@ private func compareValue(_ actual: Any?, _ filter: InAppFilter) -> Bool {
     // of []" must never read as "everyone without the property".
     if saysNothing(filter) { return false }
     if unset { return negatedCodes.contains(filter.op) }
-    // A property that is not a scalar — a list, a dictionary — fails closed, the negated codes included.
+    // A list code asked of one value: it is set, and it is not a list — false, "contains none of" included.
+    if listCodes.contains(filter.op) { return false }
+    // A value that is not a scalar fails closed, the negated codes included.
     guard let value = scalar(actual) else { return false }
 
     if filter.op == "in" || filter.op == "not_in" {
@@ -1448,6 +1583,14 @@ private func compareValue(_ actual: Any?, _ filter: InAppFilter) -> Bool {
  */
 private func saysNothing(_ filter: InAppFilter) -> Bool {
     if case .unsupported? = filter.value { return true }
+    // A list code is a list row: its type is `array` or absent, and its items are text.
+    if listCodes.contains(filter.op) {
+        if let type = filter.type, type != "array" { return true }
+        guard let items = decodeList(filter.value) else { return true }
+        return items.numbers != nil
+    }
+    // Every other code compares one value, which a list has no reading of.
+    if filter.type == "array" { return true }
     if filter.op == "in" || filter.op == "not_in" {
         guard let items = decodeList(filter.value) else { return true }
         let listType = filter.type ?? (items.numbers != nil ? "number" : "string")

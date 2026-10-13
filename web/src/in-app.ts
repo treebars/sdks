@@ -6,7 +6,13 @@ import {
   IN_APP_BUTTON_LABEL_KEY,
   IN_APP_DIMENSIONS,
   LIST_MAX,
+  LIST_PROPERTY_ITEMS,
+  LIST_PROPERTY_ITEM_LENGTH,
   NUMBER_GRAMMAR,
+  PROPERTY_KEYS_MAX,
+  PROPERTY_OBJECT_KEYS,
+  PROPERTY_PATH_DEPTH,
+  PROPERTY_PATH_LENGTH,
   STRING_VALUE_LENGTH,
 } from './generated/constants';
 import { BRIDGE_RESERVED_TRAITS } from './generated/bridge';
@@ -749,9 +755,11 @@ function matchesFilters(
 
 const KNOWN: ReadonlySet<string> = new Set(FILTER_OPERATOR_CODES);
 /** The codes that match a value that is not set. */
-const NEGATED: ReadonlySet<string> = new Set(['neq', 'not_contains', 'not_in', 'not_exists']);
+const NEGATED: ReadonlySet<string> = new Set(['neq', 'not_contains', 'not_in', 'not_exists', 'has_none']);
 const TEXT_CODES: ReadonlySet<string> = new Set(['contains', 'not_contains', 'starts_with', 'ends_with']);
-const TYPES: ReadonlySet<string> = new Set(['string', 'number', 'boolean', 'version']);
+/** The codes asked of a property that holds a LIST: which of the row's items it holds. */
+const LIST_CODES: ReadonlySet<string> = new Set(['has_any', 'has_all', 'has_none']);
+const TYPES: ReadonlySet<string> = new Set(['string', 'number', 'boolean', 'version', 'array']);
 const DIMENSIONS: ReadonlySet<string> = new Set(IN_APP_DIMENSIONS);
 const GRAMMAR = new RegExp(NUMBER_GRAMMAR);
 
@@ -779,9 +787,150 @@ function matchesFilter(
     return compareValue(storedDimension(filter.key, stamped), row);
   }
 
-  // By its literal, own key: `toString` finds nothing.
-  const actual = Object.prototype.hasOwnProperty.call(properties, filter.key) ? properties[filter.key] : undefined;
-  return compareValue(actual, filter);
+  // By its key, read as Treebars stores the event: one value, or a list of items.
+  const found = propertyAt(properties, filter.key);
+  if (found?.items) return listHolds(found.items, filter);
+  return compareValue(found?.value, filter);
+}
+
+/** What an event holds at a key: one value, or — never both — the items of a list, as text. */
+interface Found {
+  value?: string | number | boolean;
+  items?: string[];
+}
+
+const hasOwn = (value: object, key: string): boolean => Object.prototype.hasOwnProperty.call(value, key);
+
+/**
+ * Text as Treebars stores it: cut at `max` UTF-16 code units without splitting a surrogate pair, and with
+ * any lone surrogate replaced by U+FFFD.
+ */
+function storedText(value: string, max: number): string {
+  let text = value;
+  if (text.length > max) {
+    text = text.slice(0, max);
+    const last = text.charCodeAt(text.length - 1);
+    if (last >= 0xd800 && last <= 0xdbff) text = text.slice(0, -1);
+  }
+  let out = '';
+  let from = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const unit = text.charCodeAt(index);
+    if (unit < 0xd800 || unit > 0xdfff) continue;
+    const next = index + 1 < text.length ? text.charCodeAt(index + 1) : 0;
+    if (unit <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) {
+      index += 1;
+      continue;
+    }
+    out += `${text.slice(from, index)}\uFFFD`;
+    from = index + 1;
+  }
+  return from === 0 ? text : out + text.slice(from);
+}
+
+/** One value as stored: text cut at the value length, a finite number, a boolean. Anything else is nothing. */
+function storedValue(value: unknown): string | number | boolean | undefined {
+  if (typeof value === 'string') return storedText(value, STRING_VALUE_LENGTH);
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+/** One item of a list as stored: text, a number as JavaScript prints it, `true` or `false`. Empty text is none. */
+function storedItem(value: unknown): string | undefined {
+  if (typeof value === 'string') return value === '' ? undefined : storedText(value, LIST_PROPERTY_ITEM_LENGTH);
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : undefined;
+  return typeof value === 'boolean' ? String(value) : undefined;
+}
+
+/** Adds an item to a list being read: distinct, in the order first seen, up to the list's length. */
+function addItem(found: Found, value: unknown): void {
+  const item = storedItem(value);
+  if (item === undefined) return;
+  if (!found.items) found.items = [item];
+  else if (!found.items.includes(item) && found.items.length < LIST_PROPERTY_ITEMS) found.items.push(item);
+}
+
+/** A value of the event's map by its own key, if the key is among the entries Treebars reads. */
+function topLevel(properties: Record<string, unknown>, key: string): unknown {
+  if (!hasOwn(properties, key)) return undefined;
+  let index = 0;
+  for (const name in properties) {
+    if (!hasOwn(properties, name)) continue;
+    if (name === key) return properties[key];
+    index += 1;
+    if (index >= PROPERTY_KEYS_MAX) return undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Walks `segments` from `index` into `value`. An object is stepped into by its own key; an array adds no
+ * segment and makes everything under it a list — its values are items, and its objects are walked for the
+ * rest of the path. An array directly inside an array is not read. `element` says this value is an entry
+ * of an array.
+ */
+function seek(found: Found, value: unknown, segments: readonly string[], index: number, listed: boolean, element: boolean): void {
+  if (value === null || value === undefined) return;
+  if (Array.isArray(value)) {
+    if (element) return;
+    for (const entry of value) seek(found, entry, segments, index, true, true);
+    return;
+  }
+  if (typeof value === 'object') {
+    // An object where the path ends holds nothing of its own: its fields are longer paths.
+    if (index >= segments.length) return;
+    let keys = 0;
+    for (const name in value) if (hasOwn(value, name) && (keys += 1) > PROPERTY_OBJECT_KEYS) return;
+    const segment = segments[index]!;
+    if (!hasOwn(value, segment)) return;
+    seek(found, (value as Record<string, unknown>)[segment], segments, index + 1, listed, false);
+    return;
+  }
+  if (index < segments.length) return;
+  if (listed) addItem(found, value);
+  else found.value = storedValue(value);
+}
+
+/**
+ * What an event holds at `key`, read as Treebars stores the event.
+ *
+ * A key is a path: `cart.total` is the `total` of the object sent as `cart`. An array is a list — `tags`
+ * holds each of its values as an item — and an array of objects is one list per field, so
+ * `line_items.category` holds the category of every line item. A key the app sent with a dot in it,
+ * `{ 'cart.total': 5 }`, is read first, and wins over a nested path of the same name.
+ */
+function propertyAt(properties: Record<string, unknown>, key: string): Found | undefined {
+  if (key === '' || key.length > PROPERTY_PATH_LENGTH) return undefined;
+  const found: Found = {};
+  if (!key.includes('.')) {
+    seek(found, topLevel(properties, key), [key], 1, false, false);
+    return found;
+  }
+  // The key as sent, dot and all: one value, or an array of values. An object under it is not read.
+  const literal = topLevel(properties, key);
+  if (Array.isArray(literal)) for (const entry of literal) addItem(found, entry);
+  else found.value = storedValue(literal);
+  if (found.items || found.value !== undefined) return found;
+
+  const segments = key.split('.');
+  if (segments.length > PROPERTY_PATH_DEPTH || segments.includes('')) return undefined;
+  seek(found, topLevel(properties, segments[0]!), segments, 1, false, false);
+  return found;
+}
+
+/**
+ * A list against a row. It is set, and it is not one value: "is set" is true, and every code that compares
+ * one value is false, the negated ones included. The three list codes ask which of the row's items the
+ * list holds, as text, whole and case-sensitively.
+ */
+function listHolds(items: readonly string[], filter: InAppFilter): boolean {
+  const op = filter.op;
+  if (op === 'exists') return true;
+  if (op === 'not_exists') return false;
+  if (!LIST_CODES.has(op) || saysNothing(filter)) return false;
+  const wanted = decodeList(filter.value) as string[];
+  if (op === 'has_all') return wanted.every((item) => items.includes(item));
+  return wanted.some((item) => items.includes(item)) === (op === 'has_any');
 }
 
 /**
@@ -806,7 +955,9 @@ function compareValue(actual: unknown, filter: InAppFilter): boolean {
   // A row that cannot say anything matches nobody, before the not-set reading.
   if (saysNothing(filter)) return false;
   if (unset) return NEGATED.has(op);
-  // A property that is not a scalar — an array, an object — fails closed, the negated codes included.
+  // A list code asked of one value: it is set, and it is not a list — false, "contains none of" included.
+  if (LIST_CODES.has(op)) return false;
+  // A value that is not a scalar fails closed, the negated codes included.
   if (typeof actual !== 'string' && typeof actual !== 'number' && typeof actual !== 'boolean') return false;
 
   if (op === 'in' || op === 'not_in') {
@@ -891,6 +1042,14 @@ function compareValue(actual: unknown, filter: InAppFilter): boolean {
 function saysNothing(filter: InAppFilter): boolean {
   // A value that is not a scalar has no comparison; a list is always a JSON string.
   if (typeof filter.value === 'object' && filter.value !== null) return true;
+  // A list code is a list row: its type is `array` or absent, and its items are text.
+  if (LIST_CODES.has(filter.op)) {
+    if (filter.type !== undefined && filter.type !== 'array') return true;
+    const items = decodeList(filter.value);
+    return !items || typeof items[0] !== 'string';
+  }
+  // Every other code compares one value, which a list has no reading of.
+  if (filter.type === 'array') return true;
   if (filter.op === 'in' || filter.op === 'not_in') {
     const items = decodeList(filter.value);
     if (!items) return true;

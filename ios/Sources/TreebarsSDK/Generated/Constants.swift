@@ -15,10 +15,12 @@ enum TreebarsConstants {
     static let notificationsPath = "/v1/notifications"
     static let notificationStatePath = "/v1/notifications/state"
     static let handoffPath = "/v1/handoff"
+    static let configPath = "/v1/config"
 
     static let writeKeyHeader = "X-Treebars-Key"
     static let deviceAuthHeader = "X-Treebars-Device-Auth"
     static let triggersVersionHeader = "X-Treebars-Triggers-Version"
+    static let configVersionHeader = "X-Treebars-Config-Version"
     static let flushSpacingHeader = "X-Treebars-Flush-Ms"
     static let linkResolveHeader = "X-Treebars-Resolve"
     static let userSignatureHeader = "X-Treebars-User-Signature"
@@ -59,6 +61,12 @@ enum TreebarsConstants {
     /// A reward claim refused with a 429 or 503, or unanswered, is asked again this many times, all within the budget.
     static let rewardClaimRetries = 2
     static let rewardClaimBudget: TimeInterval = 8
+    /// How long a failed config request waits before the next, when the failure names no wait of its own.
+    static let configRetry: TimeInterval = 60
+    /// How long configReady() waits by default.
+    static let configReadyTimeout: TimeInterval = 2
+    /// The least time between two reports of the same variant of the same experiment.
+    static let configExposureFloor: TimeInterval = 86400
 
     static let fnvOffsetBasis: UInt32 = 0x811c9dc5
     static let fnvPrime: UInt32 = 0x01000193
@@ -96,7 +104,7 @@ enum TreebarsConstants {
     static let maxDeepLinkPathLength = 512
     static let deferredDeepLinkWindowMs: Int64 = 24 * 60 * 60 * 1000
 
-    static let sdkVersion = "0.5.0"
+    static let sdkVersion = "0.6.0"
     static let sdkName = "treebars-ios"
     static let deviceIdPrefix = "dev_"
 
@@ -131,6 +139,8 @@ enum TreebarsConstants {
         "whatsapp_opt_in",
         "install_referrer",
         "apple_ads_attribution",
+        "experiment_exposed",
+        "config_exposed",
         "install_attributed",
         "link_opened",
         "reengagement_attributed",
@@ -146,6 +156,9 @@ enum TreebarsConstants {
         "ends_with",
         "in",
         "not_in",
+        "has_any",
+        "has_all",
+        "has_none",
         "gt",
         "gte",
         "lt",
@@ -162,6 +175,15 @@ enum TreebarsConstants {
     // Ingest's caps, in UTF-16 code units: a trimmed device field, and a screen name.
     static let deviceFieldLength = 128
     static let stringValueLength = 1024
+    // The limits an event property is read within, by its key: the entries of the map that are read, a path's
+    // length in UTF-16 code units and its depth in segments, the widest nested object that is still read, and a
+    // list's distinct items and each item's length.
+    static let propertyKeysMax = 128
+    static let propertyPathLength = 128
+    static let propertyPathDepth = 5
+    static let propertyObjectKeys = 32
+    static let listPropertyItems = 100
+    static let listPropertyItemLength = 256
 
     // The dimension names an in-app trigger may read: an allowlist of keys, and nothing about what a row answers.
     static let inAppDimensions = [
@@ -190,6 +212,7 @@ enum TreebarsConstants {
     static let queueFile = "treebars-queue.json"
     static let uploaderFile = "treebars-uploader.json"
     static let triggersFile = "treebars-triggers.json"
+    static let configFile = "treebars-config.json"
     static let keyDeviceId = "treebars.device_id"
     static let keyDeviceContextHash = "treebars.device_context_hash"
     static let keyFetchSecret = "treebars.fetch_secret"

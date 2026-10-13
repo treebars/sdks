@@ -153,6 +153,7 @@ export const DEFAULT_EVENTS = {
   NOTIFICATION_READ: 'notification_read',
   NOTIFICATION_DISMISSED: 'notification_dismissed',
   DEVICE_CONTEXT: 'device_context',
+  EXPERIMENT_EXPOSED: 'experiment_exposed',
 } as const;
 
 export type DefaultEventName = (typeof DEFAULT_EVENTS)[keyof typeof DEFAULT_EVENTS];

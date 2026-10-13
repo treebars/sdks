@@ -90,6 +90,11 @@ internal class EventUploader(
     /** The trigger list. Null means no event flushes early and no version is acted on. */
     private val triggers: TriggerEvents? = null,
     /**
+     * Told, after a drain in which an upload was accepted, the config version its answers named — or null when
+     * none did. Remote config decides from it whether to ask for its answers again.
+     */
+    private val configSeen: ((String?) -> Unit)? = null,
+    /**
      * True while the person has opted out (`Treebars.optOut`). Nothing is sent then, whoever asks — the
      * pace, the lifecycle, a wake, a trigger, the flush on the way up, or the public `flush()`. Asked
      * before every batch, so a drain already running stops at the next one. It drops nothing itself;
@@ -239,15 +244,23 @@ internal class EventUploader(
             val seen = sendPending()
             // Still under the lock, so what is counted as waiting is what this drain left and no other has touched.
             if (requests != before && owed()) backlogLeft()
+            // Only after an accepted upload: a drain the endpoint refused, or never reached, says nothing about the config.
+            if (drainAccepted) configSeen?.invoke(drainConfigVersion)
             return seen
         } finally {
             flushLock.unlock()
         }
     }
 
+    /** Whether an upload was accepted in the drain that is running, and the config version its answers named. Under the flush lock. */
+    private var drainAccepted = false
+    private var drainConfigVersion: String? = null
+
     /** One drain's sends, under the flush lock. Returns the newest trigger version any answer carried. */
     private suspend fun sendPending(): String? {
         var seen: String? = null
+        drainAccepted = false
+        drainConfigVersion = null
         reconcile()
         var sends = 0
         while (sends < TreebarsConstants.DRAIN_MAX_BATCHES) {
@@ -269,6 +282,10 @@ internal class EventUploader(
                 null
             }
             if (response?.triggersVersion != null) seen = response.triggersVersion
+            if (response != null && response.status in 200..299) {
+                drainAccepted = true
+                response.configVersion?.let { drainConfigVersion = it }
+            }
             sends += 1
             if (!settle(batch, response)) return seen
         }

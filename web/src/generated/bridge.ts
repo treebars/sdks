@@ -65,7 +65,7 @@ export const IN_APP_FRAME_CSP = "default-src 'none'; script-src 'unsafe-inline';
 export const IN_APP_FRAME_SANDBOX = "allow-scripts";
 
 /** The base styles a fragment is framed with, the same in the dashboard's preview and in every app. */
-export const IN_APP_FRAME_RULES = "\n    html,body{margin:0;padding:0;background:transparent}\n    body{font:14px/1.5 -apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,sans-serif;color:#111827}\n    img{max-width:100%;display:block}\n    a{color:inherit}\n  ";
+export const IN_APP_FRAME_RULES = "\n    html,body{margin:0;padding:0;background:transparent}\n    body{font:14px/1.5 -apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,sans-serif;color:#111827}\n    img{max-width:100%;display:block}\n    a{color:inherit}\n    button{color:inherit}\n  ";
 
 /** How an HTML body is sized in each shape. */
 export const IN_APP_CONTAINER = {"modal":{"maxWidth":420,"gutter":16},"banner":{"maxHeightShare":0.3},"fullscreen":{},"nudge":{"maxHeightShare":0.2,"stackShare":0.3,"maxOnScreen":3},"placement":{"minWidth":240,"maxWidth":960,"cornerWidth":360}} as const;

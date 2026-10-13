@@ -1,0 +1,2898 @@
+{
+  "//": "Cases every Treebars SDK runs against its own implementation, shared so that the SDKs cannot disagree. Generated; do not edit.",
+  "epoch_ms": 1789473600000,
+  "write_key": "pk_test_fixture",
+  "policy": {
+    "config_retry_seconds": 60,
+    "retry_after_max_seconds": 3600,
+    "auth_cooldown_seconds": 3600,
+    "config_exposure_floor_seconds": 86400
+  },
+  "scenarios": [
+    {
+      "id": "RC-001",
+      "rule": "no news",
+      "name": "with nothing held and no version named, nothing is asked for and every read is the fallback",
+      "stored": {
+        "config": null,
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "read",
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": false
+          }
+        },
+        {
+          "do": "upload",
+          "config_version": null,
+          "expect": {
+            "fetches": [],
+            "held": null
+          }
+        },
+        {
+          "do": "upload",
+          "config_version": null,
+          "expect": {
+            "fetches": [],
+            "held": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-002",
+      "rule": "version fetch",
+      "name": "an upload's answer naming a version this install does not hold fetches once; the same version again does not",
+      "stored": {
+        "config": null,
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "upload",
+          "config_version": "3",
+          "responses": [
+            {
+              "version": "3",
+              "values": [
+                {
+                  "key": "new_checkout",
+                  "type": "boolean",
+                  "value": true
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "held": "3",
+            "changes": 1
+          }
+        },
+        {
+          "do": "read",
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": true
+          }
+        },
+        {
+          "do": "upload",
+          "config_version": "3",
+          "expect": {
+            "fetches": [],
+            "held": "3",
+            "changes": 0
+          }
+        },
+        {
+          "do": "upload",
+          "config_version": "4",
+          "responses": [
+            {
+              "version": "4",
+              "values": [
+                {
+                  "key": "new_checkout",
+                  "type": "boolean",
+                  "value": false
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "held": "4",
+            "changes": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-003",
+      "rule": "sticky read",
+      "name": "a key read in a session keeps that answer for the session; a key not yet read takes the newest",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "color",
+              "type": "string",
+              "value": "blue"
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "read",
+          "key": "color",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "blue"
+          }
+        },
+        {
+          "do": "upload",
+          "config_version": "4",
+          "responses": [
+            {
+              "version": "4",
+              "values": [
+                {
+                  "key": "color",
+                  "type": "string",
+                  "value": "green"
+                },
+                {
+                  "key": "size",
+                  "type": "number",
+                  "value": 2
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "held": "4"
+          }
+        },
+        {
+          "do": "read",
+          "key": "color",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "blue"
+          }
+        },
+        {
+          "do": "read",
+          "key": "size",
+          "as": "number",
+          "fallback": 0,
+          "expect": {
+            "value": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-004",
+      "rule": "sticky read",
+      "name": "a key read as not set stays not set for the session, and takes its value in the next",
+      "stored": {
+        "config": null,
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "read",
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": false
+          }
+        },
+        {
+          "do": "upload",
+          "config_version": "1",
+          "responses": [
+            {
+              "version": "1",
+              "values": [
+                {
+                  "key": "new_checkout",
+                  "type": "boolean",
+                  "value": true
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "held": "1"
+          }
+        },
+        {
+          "do": "read",
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": false
+          }
+        },
+        {
+          "do": "session",
+          "id": "s2",
+          "expect": {
+            "changes": 1
+          }
+        },
+        {
+          "do": "read",
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-005",
+      "rule": "session boundary",
+      "name": "a new session forgets what was read, and announces a change only when a read would now answer differently",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "color",
+              "type": "string",
+              "value": "blue"
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "read",
+          "key": "color",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "blue"
+          }
+        },
+        {
+          "do": "session",
+          "id": "s2",
+          "expect": {
+            "changes": 0
+          }
+        },
+        {
+          "do": "read",
+          "key": "color",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "blue"
+          }
+        },
+        {
+          "do": "upload",
+          "config_version": "4",
+          "responses": [
+            {
+              "version": "4",
+              "values": [
+                {
+                  "key": "color",
+                  "type": "string",
+                  "value": "green"
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "held": "4"
+          }
+        },
+        {
+          "do": "read",
+          "key": "color",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "blue"
+          }
+        },
+        {
+          "do": "session",
+          "id": "s3",
+          "expect": {
+            "changes": 1
+          }
+        },
+        {
+          "do": "read",
+          "key": "color",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "green"
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-006",
+      "rule": "activate",
+      "name": "activating applies the newest values to keys already read, and says whether anything changed",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "color",
+              "type": "string",
+              "value": "blue"
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "read",
+          "key": "color",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "blue"
+          }
+        },
+        {
+          "do": "upload",
+          "config_version": "4",
+          "responses": [
+            {
+              "version": "4",
+              "values": [
+                {
+                  "key": "color",
+                  "type": "string",
+                  "value": "green"
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ]
+          }
+        },
+        {
+          "do": "activate",
+          "expect": {
+            "result": true,
+            "changes": 1
+          }
+        },
+        {
+          "do": "read",
+          "key": "color",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "green"
+          }
+        },
+        {
+          "do": "activate",
+          "expect": {
+            "result": false,
+            "changes": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-007",
+      "rule": "sign-out",
+      "name": "at sign-out what depended on the account is dropped at once and asked for again as nobody",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "color",
+              "type": "string",
+              "value": "blue"
+            },
+            {
+              "key": "tier",
+              "type": "string",
+              "value": "gold",
+              "user_dependent": true
+            }
+          ],
+          "asked_as": {
+            "user": "u1",
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": "u1",
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "read",
+          "key": "tier",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "gold"
+          }
+        },
+        {
+          "do": "read",
+          "key": "color",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "blue"
+          }
+        },
+        {
+          "do": "reset",
+          "hold": true,
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "changes": 1
+          }
+        },
+        {
+          "do": "read",
+          "key": "tier",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "none"
+          }
+        },
+        {
+          "do": "read",
+          "key": "color",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "blue"
+          }
+        },
+        {
+          "do": "answer",
+          "responses": [
+            {
+              "version": "3",
+              "values": [
+                {
+                  "key": "color",
+                  "type": "string",
+                  "value": "blue"
+                },
+                {
+                  "key": "tier",
+                  "type": "string",
+                  "value": "free",
+                  "user_dependent": true
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [],
+            "held": "3"
+          }
+        },
+        {
+          "do": "read",
+          "key": "tier",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "free"
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-008",
+      "rule": "sign-in",
+      "name": "at sign-in from nobody the answers are kept until the account's own arrive, and then replace what was read",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "tier",
+              "type": "string",
+              "value": "free",
+              "user_dependent": true
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "read",
+          "key": "tier",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "free"
+          }
+        },
+        {
+          "do": "identify",
+          "user": "u1",
+          "hold": true,
+          "expect": {
+            "fetches": [
+              {
+                "user": "u1",
+                "attributes": {}
+              }
+            ]
+          }
+        },
+        {
+          "do": "read",
+          "key": "tier",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "free"
+          }
+        },
+        {
+          "do": "answer",
+          "responses": [
+            {
+              "version": "3",
+              "values": [
+                {
+                  "key": "tier",
+                  "type": "string",
+                  "value": "gold",
+                  "user_dependent": true
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [],
+            "changes": 1
+          }
+        },
+        {
+          "do": "read",
+          "key": "tier",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "gold"
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-009",
+      "rule": "sign-in",
+      "name": "signing in as somebody else drops the last account's answers at once",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "tier",
+              "type": "string",
+              "value": "gold",
+              "user_dependent": true
+            }
+          ],
+          "asked_as": {
+            "user": "u1",
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": "u1",
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "read",
+          "key": "tier",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "gold"
+          }
+        },
+        {
+          "do": "identify",
+          "user": "u2",
+          "hold": true,
+          "expect": {
+            "fetches": [
+              {
+                "user": "u2",
+                "attributes": {}
+              }
+            ],
+            "changes": 1
+          }
+        },
+        {
+          "do": "read",
+          "key": "tier",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "none"
+          }
+        },
+        {
+          "do": "answer",
+          "responses": [
+            {
+              "version": "3",
+              "values": [
+                {
+                  "key": "tier",
+                  "type": "string",
+                  "value": "silver",
+                  "user_dependent": true
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": []
+          }
+        },
+        {
+          "do": "read",
+          "key": "tier",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "silver"
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-010",
+      "rule": "sign-in, sign-out",
+      "name": "an account changes nothing when no answer depends on one: nothing is dropped and nothing is asked",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "color",
+              "type": "string",
+              "value": "blue"
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "read",
+          "key": "color",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "blue"
+          }
+        },
+        {
+          "do": "identify",
+          "user": "u1",
+          "expect": {
+            "fetches": [],
+            "changes": 0
+          }
+        },
+        {
+          "do": "identify",
+          "user": "u1",
+          "expect": {
+            "fetches": [],
+            "changes": 0
+          }
+        },
+        {
+          "do": "reset",
+          "expect": {
+            "fetches": [],
+            "changes": 0
+          }
+        },
+        {
+          "do": "reset",
+          "expect": {
+            "fetches": [],
+            "changes": 0
+          }
+        },
+        {
+          "do": "read",
+          "key": "color",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "blue"
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-011",
+      "rule": "attributes",
+      "name": "attributes the app sets are sent with the next ask, and setting the same ones again asks nothing",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "price",
+              "type": "number",
+              "value": 10
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "attributes",
+          "set": {
+            "plan": "pro",
+            "seats": 5
+          },
+          "responses": [
+            {
+              "version": "3",
+              "values": [
+                {
+                  "key": "price",
+                  "type": "number",
+                  "value": 8
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {
+                  "plan": "pro",
+                  "seats": 5
+                }
+              }
+            ],
+            "changes": 1
+          }
+        },
+        {
+          "do": "read",
+          "key": "price",
+          "as": "number",
+          "fallback": 0,
+          "expect": {
+            "value": 8
+          }
+        },
+        {
+          "do": "attributes",
+          "set": {
+            "seats": 5,
+            "plan": "pro"
+          },
+          "expect": {
+            "fetches": [],
+            "changes": 0
+          }
+        },
+        {
+          "do": "attributes",
+          "set": {},
+          "responses": [
+            {
+              "version": "3",
+              "values": [
+                {
+                  "key": "price",
+                  "type": "number",
+                  "value": 10
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ]
+          }
+        },
+        {
+          "do": "read",
+          "key": "price",
+          "as": "number",
+          "fallback": 0,
+          "expect": {
+            "value": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-012",
+      "rule": "attributes, no news",
+      "name": "with no variables held, attributes are kept for later and nothing is asked",
+      "stored": {
+        "config": null,
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "attributes",
+          "set": {
+            "plan": "pro"
+          },
+          "expect": {
+            "fetches": [],
+            "held": null
+          }
+        },
+        {
+          "do": "upload",
+          "config_version": "1",
+          "responses": [
+            {
+              "version": "1",
+              "values": [
+                {
+                  "key": "price",
+                  "type": "number",
+                  "value": 8
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {
+                  "plan": "pro"
+                }
+              }
+            ],
+            "held": "1"
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-013",
+      "rule": "single flight",
+      "name": "while an ask is out nothing else starts one; if who is asking changed meanwhile, one more follows it",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "a",
+              "type": "number",
+              "value": 1
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "upload",
+          "config_version": "4",
+          "hold": true,
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ]
+          }
+        },
+        {
+          "do": "upload",
+          "config_version": "4",
+          "expect": {
+            "fetches": []
+          }
+        },
+        {
+          "do": "attributes",
+          "set": {
+            "x": "1"
+          },
+          "expect": {
+            "fetches": []
+          }
+        },
+        {
+          "do": "answer",
+          "responses": [
+            {
+              "version": "4",
+              "values": [
+                {
+                  "key": "a",
+                  "type": "number",
+                  "value": 2
+                }
+              ]
+            },
+            {
+              "version": "4",
+              "values": [
+                {
+                  "key": "a",
+                  "type": "number",
+                  "value": 3
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {
+                  "x": "1"
+                }
+              }
+            ],
+            "held": "4"
+          }
+        },
+        {
+          "do": "read",
+          "key": "a",
+          "as": "number",
+          "fallback": 0,
+          "expect": {
+            "value": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-014",
+      "rule": "failure",
+      "name": "a refusal that names a wait keeps what is held and is not asked again before it",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "a",
+              "type": "number",
+              "value": 1
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "upload",
+          "at": 0,
+          "config_version": "4",
+          "responses": [
+            {
+              "status": 503,
+              "retry_after": "120"
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "held": "3",
+            "changes": 0
+          }
+        },
+        {
+          "do": "read",
+          "key": "a",
+          "as": "number",
+          "fallback": 0,
+          "expect": {
+            "value": 1
+          }
+        },
+        {
+          "do": "upload",
+          "at": 119999,
+          "config_version": "4",
+          "expect": {
+            "fetches": []
+          }
+        },
+        {
+          "do": "upload",
+          "at": 120000,
+          "config_version": "4",
+          "responses": [
+            {
+              "version": "4",
+              "values": [
+                {
+                  "key": "a",
+                  "type": "number",
+                  "value": 2
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "held": "4"
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-015",
+      "rule": "failure",
+      "name": "a failure that names no wait is asked again after the default one",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "a",
+              "type": "number",
+              "value": 1
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "upload",
+          "at": 0,
+          "config_version": "4",
+          "responses": [
+            {
+              "network_error": true
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "held": "3"
+          }
+        },
+        {
+          "do": "upload",
+          "at": 59999,
+          "config_version": "4",
+          "expect": {
+            "fetches": []
+          }
+        },
+        {
+          "do": "upload",
+          "at": 60000,
+          "config_version": "4",
+          "responses": [
+            {
+              "status": 500
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "held": "3"
+          }
+        },
+        {
+          "do": "upload",
+          "at": 119999,
+          "config_version": "4",
+          "expect": {
+            "fetches": []
+          }
+        },
+        {
+          "do": "upload",
+          "at": 120000,
+          "config_version": "4",
+          "responses": [
+            {
+              "version": "4",
+              "values": [
+                {
+                  "key": "a",
+                  "type": "number",
+                  "value": 2
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "held": "4"
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-016",
+      "rule": "failure, auth cooldown",
+      "name": "a refused write key waits out the cooldown an upload's would",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "a",
+              "type": "number",
+              "value": 1
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "upload",
+          "at": 0,
+          "config_version": "4",
+          "responses": [
+            {
+              "status": 401
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "held": "3"
+          }
+        },
+        {
+          "do": "upload",
+          "at": 3599999,
+          "config_version": "4",
+          "expect": {
+            "fetches": []
+          }
+        },
+        {
+          "do": "upload",
+          "at": 3600000,
+          "config_version": "4",
+          "responses": [
+            {
+              "version": "4",
+              "values": [
+                {
+                  "key": "a",
+                  "type": "number",
+                  "value": 2
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "held": "4"
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-017",
+      "rule": "failure, relaunch",
+      "name": "the wait survives a relaunch",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "a",
+              "type": "number",
+              "value": 1
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "upload",
+          "at": 0,
+          "config_version": "4",
+          "responses": [
+            {
+              "status": 429,
+              "retry_after": "300"
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ]
+          }
+        },
+        {
+          "do": "relaunch",
+          "at": 1000,
+          "session": "s1",
+          "user": null,
+          "context": "c1",
+          "expect": {
+            "fetches": []
+          }
+        },
+        {
+          "do": "upload",
+          "at": 2000,
+          "config_version": "4",
+          "expect": {
+            "fetches": []
+          }
+        },
+        {
+          "do": "upload",
+          "at": 300000,
+          "config_version": "4",
+          "responses": [
+            {
+              "version": "4",
+              "values": [
+                {
+                  "key": "a",
+                  "type": "number",
+                  "value": 2
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "held": "4"
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-018",
+      "rule": "persisted, relaunch",
+      "name": "what is held and what was read survive a relaunch inside the session, and a new session forgets the reads",
+      "stored": {
+        "config": {
+          "version": "4",
+          "values": [
+            {
+              "key": "color",
+              "type": "string",
+              "value": "green"
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": {
+          "id": "s1",
+          "seen": {
+            "color": {
+              "key": "color",
+              "type": "string",
+              "value": "blue"
+            }
+          }
+        },
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "read",
+          "key": "color",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "blue"
+          }
+        },
+        {
+          "do": "relaunch",
+          "session": "s1",
+          "user": null,
+          "context": "c1",
+          "expect": {
+            "fetches": []
+          }
+        },
+        {
+          "do": "read",
+          "key": "color",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "blue"
+          }
+        },
+        {
+          "do": "relaunch",
+          "session": "s2",
+          "user": null,
+          "context": "c1",
+          "expect": {
+            "fetches": []
+          }
+        },
+        {
+          "do": "read",
+          "key": "color",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "green"
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-019",
+      "rule": "relaunch",
+      "name": "a launch that describes the device differently from the last ask asks again; one that does not, does not",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "a",
+              "type": "number",
+              "value": 1
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c2",
+        "expect": {
+          "fetches": [
+            {
+              "user": null,
+              "attributes": {}
+            }
+          ]
+        },
+        "responses": [
+          {
+            "version": "3",
+            "values": [
+              {
+                "key": "a",
+                "type": "number",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "steps": [
+        {
+          "do": "read",
+          "key": "a",
+          "as": "number",
+          "fallback": 0,
+          "expect": {
+            "value": 2
+          }
+        },
+        {
+          "do": "relaunch",
+          "session": "s1",
+          "user": null,
+          "context": "c2",
+          "expect": {
+            "fetches": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-020",
+      "rule": "persisted, attributes",
+      "name": "attributes survive a relaunch, so setting them again on every launch asks nothing",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "price",
+              "type": "number",
+              "value": 8
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {
+              "plan": "pro"
+            },
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "attributes",
+          "set": {
+            "plan": "pro"
+          },
+          "expect": {
+            "fetches": []
+          }
+        },
+        {
+          "do": "upload",
+          "config_version": "4",
+          "responses": [
+            {
+              "version": "4",
+              "values": [
+                {
+                  "key": "price",
+                  "type": "number",
+                  "value": 7
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {
+                  "plan": "pro"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-021",
+      "rule": "types",
+      "name": "a read of the wrong kind answers the fallback, and never a value bent into shape",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "limit",
+              "type": "string",
+              "value": "ten"
+            },
+            {
+              "key": "ratio",
+              "type": "number",
+              "value": 0.5
+            },
+            {
+              "key": "on",
+              "type": "boolean",
+              "value": true
+            },
+            {
+              "key": "layout",
+              "type": "json",
+              "value": {
+                "columns": 2,
+                "cards": [
+                  "a",
+                  "b"
+                ]
+              }
+            },
+            {
+              "key": "empty",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "key": "zero",
+              "type": "number",
+              "value": 0
+            },
+            {
+              "key": "off",
+              "type": "boolean",
+              "value": false
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "read",
+          "key": "limit",
+          "as": "number",
+          "fallback": 5,
+          "expect": {
+            "value": 5
+          }
+        },
+        {
+          "do": "read",
+          "key": "limit",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "ten"
+          }
+        },
+        {
+          "do": "read",
+          "key": "ratio",
+          "as": "number",
+          "fallback": 1,
+          "expect": {
+            "value": 0.5
+          }
+        },
+        {
+          "do": "read",
+          "key": "ratio",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "none"
+          }
+        },
+        {
+          "do": "read",
+          "key": "on",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": true
+          }
+        },
+        {
+          "do": "read",
+          "key": "on",
+          "as": "number",
+          "fallback": 7,
+          "expect": {
+            "value": 7
+          }
+        },
+        {
+          "do": "read",
+          "key": "layout",
+          "as": "json",
+          "fallback": null,
+          "expect": {
+            "value": {
+              "columns": 2,
+              "cards": [
+                "a",
+                "b"
+              ]
+            }
+          }
+        },
+        {
+          "do": "read",
+          "key": "layout",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "none"
+          }
+        },
+        {
+          "do": "read",
+          "key": "empty",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": ""
+          }
+        },
+        {
+          "do": "read",
+          "key": "zero",
+          "as": "number",
+          "fallback": 9,
+          "expect": {
+            "value": 0
+          }
+        },
+        {
+          "do": "read",
+          "key": "off",
+          "as": "boolean",
+          "fallback": true,
+          "expect": {
+            "value": false
+          }
+        },
+        {
+          "do": "read",
+          "key": "missing",
+          "as": "json",
+          "fallback": {
+            "x": 1
+          },
+          "expect": {
+            "value": {
+              "x": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-022",
+      "rule": "override",
+      "name": "an override answers before anything held, is never kept, and never becomes what was read",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "a",
+              "type": "number",
+              "value": 1
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "override",
+          "key": "a",
+          "value": 9,
+          "expect": {
+            "changes": 1
+          }
+        },
+        {
+          "do": "read",
+          "key": "a",
+          "as": "number",
+          "fallback": 0,
+          "expect": {
+            "value": 9
+          }
+        },
+        {
+          "do": "override",
+          "key": "b",
+          "value": "x",
+          "expect": {
+            "changes": 1
+          }
+        },
+        {
+          "do": "read",
+          "key": "b",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "x"
+          }
+        },
+        {
+          "do": "read",
+          "key": "b",
+          "as": "number",
+          "fallback": 4,
+          "expect": {
+            "value": 4
+          }
+        },
+        {
+          "do": "override",
+          "key": "a",
+          "value": null,
+          "expect": {
+            "changes": 1
+          }
+        },
+        {
+          "do": "read",
+          "key": "a",
+          "as": "number",
+          "fallback": 0,
+          "expect": {
+            "value": 1
+          }
+        },
+        {
+          "do": "relaunch",
+          "session": "s1",
+          "user": null,
+          "context": "c1",
+          "expect": {
+            "fetches": []
+          }
+        },
+        {
+          "do": "read",
+          "key": "b",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "none"
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-023",
+      "rule": "explicit fetch",
+      "name": "the app can ask now: it answers whether a set arrived, joins an ask already out, and respects a wait",
+      "stored": {
+        "config": null,
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "fetch",
+          "at": 0,
+          "responses": [
+            {
+              "version": "2",
+              "values": [
+                {
+                  "key": "a",
+                  "type": "number",
+                  "value": 1
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "result": true,
+            "held": "2"
+          }
+        },
+        {
+          "do": "fetch",
+          "at": 1000,
+          "responses": [
+            {
+              "status": 429,
+              "retry_after": "30"
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "result": false,
+            "held": "2"
+          }
+        },
+        {
+          "do": "fetch",
+          "at": 10000,
+          "expect": {
+            "fetches": [],
+            "result": false
+          }
+        },
+        {
+          "do": "fetch",
+          "at": 31000,
+          "responses": [
+            {
+              "version": "2",
+              "values": [
+                {
+                  "key": "a",
+                  "type": "number",
+                  "value": 1
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "result": true,
+            "changes": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-024",
+      "rule": "version fetch, unreadable answer",
+      "name": "an answer that is not a config is a failure: what is held stays",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "a",
+              "type": "number",
+              "value": 1
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "upload",
+          "at": 0,
+          "config_version": "4",
+          "responses": [
+            {
+              "version": "",
+              "values": []
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "held": "3"
+          }
+        },
+        {
+          "do": "upload",
+          "at": 60000,
+          "config_version": "4",
+          "responses": [
+            {
+              "version": "4",
+              "values": "nope"
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "held": "3"
+          }
+        },
+        {
+          "do": "upload",
+          "at": 120000,
+          "config_version": "4",
+          "responses": [
+            {
+              "version": "4",
+              "values": [
+                {
+                  "key": "a",
+                  "type": "number",
+                  "value": 2
+                },
+                {
+                  "key": "",
+                  "type": "number",
+                  "value": 1
+                },
+                {
+                  "type": "number",
+                  "value": 1
+                },
+                {
+                  "key": "odd",
+                  "type": "vector",
+                  "value": 1
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [
+              {
+                "user": null,
+                "attributes": {}
+              }
+            ],
+            "held": "4"
+          }
+        },
+        {
+          "do": "read",
+          "key": "a",
+          "as": "number",
+          "fallback": 0,
+          "expect": {
+            "value": 2
+          }
+        },
+        {
+          "do": "read",
+          "key": "odd",
+          "as": "number",
+          "fallback": 0,
+          "expect": {
+            "value": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-025",
+      "rule": "exposure",
+      "name": "the first read that answers an experiment's variant reports it, once: not the read after, nor a read no experiment decides",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "new_checkout",
+              "type": "boolean",
+              "value": true,
+              "experiment": {
+                "id": "e-1",
+                "key": "checkout_test",
+                "variant": "one_tap",
+                "unit": "device"
+              }
+            },
+            {
+              "key": "greeting",
+              "type": "string",
+              "value": "hello"
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "read",
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "exposures": [
+              {
+                "experiment": "checkout_test",
+                "variant": "one_tap",
+                "variable": "new_checkout"
+              }
+            ]
+          }
+        },
+        {
+          "do": "read",
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "exposures": []
+          }
+        },
+        {
+          "do": "read",
+          "key": "greeting",
+          "as": "string",
+          "fallback": "none",
+          "expect": {
+            "value": "hello",
+            "exposures": []
+          }
+        },
+        {
+          "do": "read",
+          "key": "absent",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": false,
+            "exposures": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-026",
+      "rule": "exposure, session boundary",
+      "name": "a new session inside a day reports nothing more, and a read a day later reports the same variant again",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "new_checkout",
+              "type": "boolean",
+              "value": true,
+              "experiment": {
+                "id": "e-1",
+                "key": "checkout_test",
+                "variant": "one_tap",
+                "unit": "device"
+              }
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "read",
+          "at": 0,
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "exposures": [
+              {
+                "experiment": "checkout_test",
+                "variant": "one_tap",
+                "variable": "new_checkout"
+              }
+            ]
+          }
+        },
+        {
+          "do": "session",
+          "at": 3600000,
+          "id": "s2",
+          "expect": {
+            "changes": 0
+          }
+        },
+        {
+          "do": "read",
+          "at": 3600000,
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "exposures": []
+          }
+        },
+        {
+          "do": "read",
+          "at": 86399000,
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "exposures": []
+          }
+        },
+        {
+          "do": "read",
+          "at": 86400000,
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "exposures": [
+              {
+                "experiment": "checkout_test",
+                "variant": "one_tap",
+                "variable": "new_checkout"
+              }
+            ]
+          }
+        },
+        {
+          "do": "read",
+          "at": 86400001,
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "exposures": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-027",
+      "rule": "exposure, types, override",
+      "name": "a read that does not answer the variant reports nothing: asked as another kind, listed, or answered by an override",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "new_checkout",
+              "type": "boolean",
+              "value": true,
+              "experiment": {
+                "id": "e-1",
+                "key": "checkout_test",
+                "variant": "one_tap",
+                "unit": "device"
+              }
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "read",
+          "key": "new_checkout",
+          "as": "string",
+          "fallback": "x",
+          "expect": {
+            "value": "x",
+            "exposures": []
+          }
+        },
+        {
+          "do": "list",
+          "expect": {
+            "exposures": []
+          }
+        },
+        {
+          "do": "override",
+          "key": "new_checkout",
+          "value": false,
+          "expect": {
+            "changes": 1,
+            "exposures": []
+          }
+        },
+        {
+          "do": "read",
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": false,
+            "exposures": []
+          }
+        },
+        {
+          "do": "override",
+          "key": "new_checkout",
+          "value": null,
+          "expect": {
+            "changes": 1,
+            "exposures": []
+          }
+        },
+        {
+          "do": "read",
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "exposures": [
+              {
+                "experiment": "checkout_test",
+                "variant": "one_tap",
+                "variable": "new_checkout"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-028",
+      "rule": "exposure, persisted, relaunch",
+      "name": "what was reported is remembered across a launch: the same variant is not reported again inside the day",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "new_checkout",
+              "type": "boolean",
+              "value": true,
+              "experiment": {
+                "id": "e-1",
+                "key": "checkout_test",
+                "variant": "one_tap",
+                "unit": "device"
+              }
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "read",
+          "at": 0,
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "exposures": [
+              {
+                "experiment": "checkout_test",
+                "variant": "one_tap",
+                "variable": "new_checkout"
+              }
+            ]
+          }
+        },
+        {
+          "do": "relaunch",
+          "at": 60000,
+          "session": "s2",
+          "user": null,
+          "context": "c1",
+          "expect": {
+            "fetches": []
+          }
+        },
+        {
+          "do": "read",
+          "at": 60000,
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "exposures": []
+          }
+        },
+        {
+          "do": "relaunch",
+          "at": 86460000,
+          "session": "s3",
+          "user": null,
+          "context": "c1",
+          "expect": {
+            "fetches": []
+          }
+        },
+        {
+          "do": "read",
+          "at": 86460000,
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "exposures": [
+              {
+                "experiment": "checkout_test",
+                "variant": "one_tap",
+                "variable": "new_checkout"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "RC-029",
+      "rule": "exposure, sign-in",
+      "name": "a different variant is reported at once, whatever the clock says",
+      "stored": {
+        "config": {
+          "version": "3",
+          "values": [
+            {
+              "key": "new_checkout",
+              "type": "boolean",
+              "value": false,
+              "experiment": {
+                "id": "e-1",
+                "key": "checkout_test",
+                "variant": "control",
+                "unit": "device"
+              },
+              "user_dependent": true
+            }
+          ],
+          "asked_as": {
+            "user": null,
+            "attributes": {},
+            "context": "c1"
+          }
+        },
+        "session": null,
+        "attributes": null
+      },
+      "start": {
+        "session": "s1",
+        "user": null,
+        "context": "c1",
+        "expect": {
+          "fetches": []
+        }
+      },
+      "steps": [
+        {
+          "do": "read",
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": false,
+            "exposures": [
+              {
+                "experiment": "checkout_test",
+                "variant": "control",
+                "variable": "new_checkout"
+              }
+            ]
+          }
+        },
+        {
+          "do": "identify",
+          "user": "u1",
+          "hold": true,
+          "expect": {
+            "fetches": [
+              {
+                "user": "u1",
+                "attributes": {}
+              }
+            ],
+            "exposures": []
+          }
+        },
+        {
+          "do": "read",
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": false,
+            "exposures": []
+          }
+        },
+        {
+          "do": "answer",
+          "responses": [
+            {
+              "version": "3",
+              "values": [
+                {
+                  "key": "new_checkout",
+                  "type": "boolean",
+                  "value": true,
+                  "experiment": {
+                    "id": "e-1",
+                    "key": "checkout_test",
+                    "variant": "one_tap",
+                    "unit": "device"
+                  },
+                  "user_dependent": true
+                }
+              ]
+            }
+          ],
+          "expect": {
+            "fetches": [],
+            "changes": 1,
+            "exposures": []
+          }
+        },
+        {
+          "do": "read",
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "exposures": [
+              {
+                "experiment": "checkout_test",
+                "variant": "one_tap",
+                "variable": "new_checkout"
+              }
+            ]
+          }
+        },
+        {
+          "do": "read",
+          "key": "new_checkout",
+          "as": "boolean",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "exposures": []
+          }
+        }
+      ]
+    }
+  ]
+}

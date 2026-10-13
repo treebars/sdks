@@ -426,4 +426,51 @@ final class InAppFilterTests: XCTestCase {
         XCTAssertEqual(stamped["network_type"] as? String, "wifi")
         XCTAssertTrue(dim(InAppFilter(key: "network_type", op: "eq", value: .string("wifi"), source: "dimension"), stamped))
     }
+
+    /*
+     A list and a nested dictionary reach this SDK as Swift values from a host app and as Foundation ones
+     from parsed JSON, which is also what the React Native module hands over. The generated conformance
+     suite passes one shape, so both are asked here.
+     */
+    func testAListAndAPathAreReadWhicheverShapeTheyArriveIn() throws {
+        let any = [InAppFilter(key: "tags", op: "has_any", value: .string("[\"sale\"]"))]
+        let all = [InAppFilter(key: "tags", op: "has_all", value: .string("[\"new\",\"sale\"]"))]
+        let none = [InAppFilter(key: "tags", op: "has_none", value: .string("[\"clearance\"]"))]
+        let total = [InAppFilter(key: "cart.total", op: "gte", value: .number(100))]
+        let category = [InAppFilter(key: "line_items.category", op: "has_any", value: .string("[\"shoes\"]"))]
+
+        let swift: [String: Any] = [
+            "tags": ["new", "sale"],
+            "cart": ["total": 150],
+            "line_items": [["category": "shoes"], ["category": "bags"]],
+        ]
+        let json = """
+        {"tags":["new","sale"],"cart":{"total":150},"line_items":[{"category":"shoes"},{"category":"bags"}]}
+        """
+        let foundation = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+
+        for properties in [swift, foundation] {
+            XCTAssertTrue(matches(any, properties))
+            XCTAssertTrue(matches(all, properties))
+            XCTAssertTrue(matches(none, properties))
+            XCTAssertTrue(matches(total, properties))
+            XCTAssertTrue(matches(category, properties))
+            XCTAssertTrue(matches([InAppFilter(key: "tags", op: "exists")], properties))
+            XCTAssertFalse(matches([InAppFilter(key: "cart", op: "exists")], properties), "a dictionary holds nothing at its own key")
+            XCTAssertFalse(matches([InAppFilter(key: "tags", op: "neq", value: .string("clearance"))], properties), "a list is not one value")
+        }
+        // An item JSON calls null is no item, and a list of nothing else is not set.
+        XCTAssertFalse(matches([InAppFilter(key: "tags", op: "exists")], ["tags": [NSNull(), ""]]))
+        XCTAssertTrue(matches(none, ["tags": [String]()]))
+        // An Int, a Double and a Bool item are each the text JavaScript would print — and true is not 1.
+        let texts = [InAppFilter(key: "n", op: "has_all", value: .string("[\"1.5\",\"5\",\"true\"]"))]
+        XCTAssertTrue(matches(texts, ["n": [5, 1.5, true]]))
+        XCTAssertFalse(matches([InAppFilter(key: "n", op: "has_any", value: .string("[\"1\"]"))], ["n": [true]]))
+    }
+
+    func testStoredTextIsCutOnAPairBoundary() {
+        XCTAssertEqual(storedText(String(repeating: "a", count: 255) + "😀", 256), String(repeating: "a", count: 255))
+        XCTAssertEqual(storedText(String(repeating: "a", count: 254) + "😀", 256).utf16.count, 256)
+        XCTAssertEqual(storedText("a😀b", 10), "a😀b")
+    }
 }

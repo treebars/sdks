@@ -49,6 +49,8 @@ internal object WriteKeyStamp {
             EventQueue.forget(filesDir)
             UploaderStore(filesDir).save(UploaderState())
             File(filesDir, TreebarsConstants.TRIGGERS_FILE).delete()
+            // The other project's config answers, the reads they fixed and the attributes set for its rules.
+            File(filesDir, TreebarsConstants.CONFIG_FILE).delete()
             // The session record goes and `session_ever_started` stays: the install has been used.
             SessionManager(prefs).reset()
         }

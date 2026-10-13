@@ -204,6 +204,7 @@ export function inAppHtmlDocument(body: string, direction?: InAppContent['direct
     body{font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#111827}
     img{max-width:100%;display:block}
     a{color:inherit}
+    button{color:inherit}
   </style>${body}`;
 }
 
