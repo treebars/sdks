@@ -199,7 +199,7 @@ extension Treebars {
             share(text("text"))
         case "track_event":
             let properties = (action["properties"] as? [String: String]) ?? [:]
-            if !text("event_name").isEmpty { log(text("event_name"), properties: properties) }
+            if !text("event_name").isEmpty { track(text("event_name"), properties: properties) }
         case "set_attribute":
             setAttributeFromPush(key: text("key"), value: text("value"))
         case "navigate":

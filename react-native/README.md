@@ -15,7 +15,7 @@ import treebars from '@treebars/react-native-sdk';
 await treebars.init({ write_key: 'pk_live_…' });
 
 await treebars.track('signup_completed', { plan: 'pro' });
-await treebars.user({ id: 'user_123', email: 'ada@example.com' });
+await treebars.identify('user_123', { email: 'ada@example.com' });
 ```
 
 Your write key is on the dashboard's Data → Setup page, which shows this snippet with the key filled in.

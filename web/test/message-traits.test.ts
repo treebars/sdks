@@ -95,3 +95,73 @@ describe('traits a message sets', () => {
     expect(signIn?.body).toMatchObject({ user_id: 'user_42', attributes: { streak: 3 } });
   });
 });
+
+describe('identify() with no user id', () => {
+  let local: ReturnType<typeof webStorage>;
+  let posted: { path: string; body: Record<string, unknown> }[];
+  let sdk: TreebarsWeb | null;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ now: Date.parse('2026-10-14T12:00:00.000Z') });
+    local = webStorage();
+    posted = [];
+    sdk = null;
+    vi.stubGlobal('localStorage', local);
+    vi.stubGlobal('sessionStorage', webStorage());
+    vi.stubGlobal('navigator', { userAgent: 'vitest', language: 'en-GB', sendBeacon: () => true });
+    vi.stubGlobal('document', Object.assign(new EventTarget(), { visibilityState: 'visible', title: 'Shop', referrer: '', cookie: '' }));
+    vi.stubGlobal(
+      'window',
+      Object.assign(new EventTarget(), {
+        screen: { width: 1280, height: 800 },
+        devicePixelRatio: 1,
+        location: { href: 'https://shop.test/', pathname: '/', origin: 'https://shop.test', hostname: 'shop.test', protocol: 'https:' },
+      }),
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : {};
+        posted.push({ path: new URL(url).pathname, body });
+        return Response.json({ accepted: 1, messages: [], notifications: [], unread_count: 0, server_time: 'now' });
+      }),
+    );
+  });
+
+  afterEach(() => {
+    sdk?.shutdown();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  const queued = () => JSON.parse(local.getItem(STORAGE_KEYS.queue) ?? '[]') as { event_name: string; properties: Record<string, unknown> }[];
+
+  it('signs nobody in: the attributes go on the anonymous visitor, and no user_identified is recorded', async () => {
+    sdk = new TreebarsWeb();
+    sdk.init({ writeKey: 'pk_live_traits', backendUrl: 'https://ingest.test', autoPageViews: false, flushIntervalMs: 60 * 60 * 1000 });
+    await vi.runOnlyPendingTimersAsync();
+    posted = [];
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    sdk.identify(null, { plan: 'pro', email: 'sam@example.com' });
+    expect(queued().find((row) => row.event_name === 'traits_set')?.properties.traits).toEqual({ plan: 'pro', email: 'sam@example.com' });
+    expect(queued().some((row) => row.event_name === 'user_identified')).toBe(false);
+    await vi.runOnlyPendingTimersAsync();
+    expect(posted.filter((request) => request.path === '/v1/identify')).toEqual([]);
+    // The address is said not to be kept, once, rather than lost without a word.
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('updates whoever is signed in, keeping their sign-in', async () => {
+    sdk = new TreebarsWeb();
+    sdk.init({ writeKey: 'pk_live_traits', backendUrl: 'https://ingest.test', autoPageViews: false, flushIntervalMs: 60 * 60 * 1000 });
+    sdk.identify('user_42', {}, 'sig');
+    await vi.runOnlyPendingTimersAsync();
+    posted = [];
+
+    sdk.identify(null, { plan: 'pro' });
+    await vi.runOnlyPendingTimersAsync();
+    expect(posted.find((request) => request.path === '/v1/identify')?.body).toMatchObject({ user_id: 'user_42', attributes: { plan: 'pro' } });
+  });
+});

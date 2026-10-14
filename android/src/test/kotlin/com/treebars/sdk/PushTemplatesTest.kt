@@ -250,4 +250,16 @@ class PushTemplatesTest {
         assertEquals(mapOf("sync" to "orders", TreebarsConstants.DELIVERY_ID_KEY to "d1"), received)
         assertTrue(shadowOf(manager).allNotifications.isEmpty())
     }
+
+    @Test
+    fun `a sync push is the SDK's, draws nothing and reaches no listener`() {
+        var received: Map<String, String>? = null
+        TreebarsPush.setBackgroundUpdateListener { received = it }
+        // It asks for the in-app queue now; before initialize there is nothing to fetch, and it is still not the app's.
+        assertTrue(TreebarsPush.handle(context, mapOf(TreebarsConstants.RICH_PUSH_SYNC_KEY to "in_app")))
+        assertNull(received)
+        assertTrue(shadowOf(manager).allNotifications.isEmpty())
+        // Any other value is not a sync, and a data message with nothing of ours is left to the app.
+        assertFalse(TreebarsPush.handle(context, mapOf(TreebarsConstants.RICH_PUSH_SYNC_KEY to "other")))
+    }
 }

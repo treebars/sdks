@@ -87,6 +87,14 @@ object TreebarsPush {
     @JvmStatic
     fun handle(context: Context, data: Map<String, String>): Boolean {
         /*
+         * A silent push asking for the in-app queue now — sent beside an in-app test, so the message shows within seconds
+         * on an open app rather than at the next launch. Nothing is drawn for the push itself, and it is the SDK's whole.
+         */
+        if (data[TreebarsConstants.RICH_PUSH_SYNC_KEY] == "in_app") {
+            Treebars.syncInAppFromPush()
+            return true
+        }
+        /*
          * A background update shows nothing: its data goes to the app's listener, which is the whole point of sending
          * one. With no listener set it is not the SDK's — false, and the app's own messaging service does
          * with the data message what it always did. It never carries `render`, so an SDK older than this draws nothing.

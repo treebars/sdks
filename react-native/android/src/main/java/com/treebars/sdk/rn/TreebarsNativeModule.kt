@@ -291,7 +291,7 @@ class TreebarsNativeModule(reactContext: ReactApplicationContext) :
     promise.resolve(null)
   }
 
-  override fun identify(userId: String, attributesJson: String, signature: String?, promise: Promise) {
+  override fun identify(userId: String?, attributesJson: String, signature: String?, promise: Promise) {
     if (!ready(promise)) return
     val attributes = readObject(attributesJson, "the attributes of \"$userId\"", promise) ?: return
     Treebars.identify(userId, attributes.toValueMap(), signature)
@@ -453,6 +453,17 @@ class TreebarsNativeModule(reactContext: ReactApplicationContext) :
   override fun showInApp(promise: Promise) {
     if (!ready(promise)) return
     Treebars.showInApp(reactApplicationContext)
+    promise.resolve(null)
+  }
+
+  // No `ready` gate: an app holds its lock screen from launch, before `initialize` may have run.
+  override fun holdInApp(promise: Promise) {
+    Treebars.holdInApp()
+    promise.resolve(null)
+  }
+
+  override fun releaseInApp(promise: Promise) {
+    Treebars.releaseInApp()
     promise.resolve(null)
   }
 

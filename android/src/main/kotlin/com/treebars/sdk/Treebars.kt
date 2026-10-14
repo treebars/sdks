@@ -1101,6 +1101,9 @@ object Treebars {
     private var lastInAppRenderer: java.lang.ref.WeakReference<InAppRenderer>? = null
     @Volatile private var inAppEnabled = true
 
+    /** Held by the app ([holdInApp]): nothing draws until it is released. */
+    @Volatile private var inAppHeld = false
+
     /** The app's in-app contexts and listeners, and a message waiting out its delay. */
     @Volatile private var appContexts: Set<String> = emptySet()
     @Volatile private var selfHandledListener: SelfHandledListener? = null
@@ -1491,6 +1494,41 @@ object Treebars {
         scope.launch { syncInApp() }
     }
 
+    /**
+     * A silent push asked for the queue: fetch it now and offer what arrived — an in-app test is drawn as soon as it
+     * lands rather than at the next event. Before `initialize` there is nothing to fetch with, and the launch's own sync
+     * will find the message.
+     */
+    internal fun syncInAppFromPush() {
+        if (writeKey == null) return
+        scope.launch {
+            syncInApp()
+            replayUndrawnTriggers()
+        }
+    }
+
+    /**
+     * Draws no in-app message until [releaseInApp]: for a screen the app shows over everything — a lock screen, a
+     * passcode, a checkout it must not lose — that no message may cover. A trigger that fires while held is kept and
+     * answered on release, as one that fires with no screen is. A message already on screen stays.
+     */
+    @JvmStatic
+    fun holdInApp() {
+        inAppHeld = true
+    }
+
+    /** Lets in-app messages draw again after [holdInApp], and answers what was held meanwhile. */
+    @JvmStatic
+    fun releaseInApp() {
+        if (!inAppHeld) return
+        inAppHeld = false
+        if (writeKey == null) return
+        mainHandler.post {
+            replayUndrawnTriggers()
+            nudgesAfterAnswer()
+        }
+    }
+
     private suspend fun syncInApp() {
         if (optedOut) return
         val transport = client ?: return
@@ -1533,10 +1571,25 @@ object Treebars {
                 prefetchAssets(store)
                 // Nudges queued since the screen allowed them: asked for now, not at some later event.
                 nudgesAfterAnswer()
+                /*
+                 * A test that just arrived is offered now, on the screen in front, rather than at the next event: somebody
+                 * pressed Send test and is looking at the phone. Through the same draw as any event, so a screen
+                 * missing or a hold keeps it for later; a test already shown is "done" and is not drawn again.
+                 */
+                if (arrivedTest(response)) {
+                    val screen = currentScreen
+                    drawInApp(EVENT_SCREEN_VIEW, if (screen != null) mapOf("screen_name" to screen) else emptyMap(), null, store)
+                }
             }
         } finally {
             triggers.endSync(list)
         }
+    }
+
+    /** Whether a sync's answer carries a test send. */
+    private fun arrivedTest(response: JSONObject): Boolean {
+        val messages = response.optJSONArray("messages") ?: return false
+        return (0 until messages.length()).any { messages.optJSONObject(it)?.optBoolean("test", false) == true }
     }
 
     /**
@@ -1932,6 +1985,11 @@ object Treebars {
          * asks the caps, the trigger and the store again rather than trusting a message chosen minutes ago. Above the
          * clear below, or the trigger would be wiped before it was kept.
          */
+        // Held by the app over a screen nothing may cover: kept, as for a missing screen, and answered on release.
+        if (inAppHeld) {
+            holdTrigger(eventName, properties, dimensions, "held by the app")
+            return false
+        }
         if (if (renderer != null) !inAppSurfaceReady(renderer) else !TreebarsPush.hasResumedActivity()) {
             holdTrigger(eventName, properties, dimensions, "no screen to draw on")
             return false
@@ -2056,6 +2114,8 @@ object Treebars {
      * on-app moment (a delay) is not waited for: a nudge that has to wait is a modal.
      */
     private fun drawNudges(eventName: String, properties: Map<String, Any?>, dimensions: Map<String, Any?>?, store: InAppStore) {
+        // Nor a nudge while the app holds the screen ([holdInApp]); release asks again.
+        if (inAppHeld) return
         val place = nudgePlace ?: return
         if (place != currentNudgePlace()) return
         for (message in store.list().sortedByDescending { it.content?.display?.priority ?: 5 }) {
@@ -2146,11 +2206,22 @@ object Treebars {
         return null
     }
 
-    /** `in_app_failed`: once per message, reason and day, for the campaign's failure report. */
+    /**
+     * `in_app_failed`: once per message, reason and day — for the campaign's failure report, and for a test send, whose
+     * Send test dialog reads it back as "Failed" with the reason rather than waiting on a message that will never show.
+     */
     private fun reportInAppFailure(message: InAppMessage, reason: String, store: InAppStore) {
-        val campaignId = message.campaignId ?: return
+        val campaignId = message.campaignId
+        if (campaignId == null && !message.test) return
         if (!store.claimFailureReport(message.deliveryId, reason)) return
-        track("in_app_failed", mapOf(DELIVERY_ID_KEY to message.deliveryId, CAMPAIGN_ID_KEY to campaignId, "reason" to reason))
+        track(
+            "in_app_failed",
+            buildMap {
+                put(DELIVERY_ID_KEY, message.deliveryId)
+                if (campaignId != null) put(CAMPAIGN_ID_KEY, campaignId)
+                put("reason", reason)
+            },
+        )
     }
 
     /**
@@ -2902,6 +2973,12 @@ object Treebars {
      * their profile. Call it after [initialize], when somebody signs in, and again whenever their
      * attributes change; the sign-in is remembered across launches until [reset].
      *
+     * A null [userId] signs nobody in: [attributes] go on whoever this device is now — the person
+     * signed in, or the anonymous one Treebars knows it by, whose attributes travel into the account
+     * at a later sign-in. For an app that will not send its own user id. An email or a phone number
+     * is kept only for a signed-in person, and [signature] is not used. It is never a sign-out: a
+     * user id that is briefly null must not sign somebody out, so that is [reset] alone.
+     *
      * [attributes] are written to the person's profile. Underneath them the SDK adds what it
      * already knows — the platform, locale, timezone, app version and when this install was first
      * seen — and the app's values win. The `user_identified` event this records carries the
@@ -2923,13 +3000,26 @@ object Treebars {
      */
     @JvmStatic
     @JvmOverloads
-    fun identify(userId: String, attributes: Map<String, Any?> = emptyMap(), signature: String? = null) {
+    fun identify(userId: String?, attributes: Map<String, Any?> = emptyMap(), signature: String? = null) {
         // Before initialize there is no storage to write the person to, and throwing would crash the app.
         if (writeKey == null) {
             TreebarsLogger.log("Ignored identify; Treebars.initialize has not been called")
             return
         }
         if (optedOut) return
+        /*
+         * No user id: the attributes go on whoever this device is now — the signed-in person, or the anonymous one
+         * Treebars knows it by, which carries them into the account at a later sign-in. Nobody is signed in by it and
+         * `user_identified` is not recorded. An email or a phone number is kept only for a signed-in person: without a
+         * user id there is nothing to sign, and an address is a claim about somebody.
+         */
+        if (userId.isNullOrEmpty()) {
+            if (this.userId == null && attributes.keys.any { it in ADDRESS_KEYS }) {
+                TreebarsLogger.warn("identify: an email or phone number is kept only for a signed-in person; pass their user id")
+            }
+            setMessageTraits(attributes)
+            return
+        }
         userSignature = signature ?: userSignature.takeIf { userId == this.userId }
         /*
          * Somebody else, with no sign-out between. What this device holds is the last person's — the queued messages,
@@ -3404,6 +3494,9 @@ object Treebars {
      * its copy on disk across a kill. Which traits are allowed (declared, not reserved) is the caller's to decide; this
      * decides only where an allowed trait goes.
      */
+    /** Attribute names an anonymous person's attributes do not keep: an address needs a signed-in person. */
+    private val ADDRESS_KEYS = setOf("email", "email_address", "emailAddress", "phone", "phone_number", "phoneNumber", "mobile", "msisdn")
+
     internal fun setMessageTraits(traits: Map<String, Any?>) {
         if (traits.isEmpty()) return
         val user = userId

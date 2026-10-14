@@ -8,7 +8,7 @@ import Foundation
  leave it for the upload its own logging armed. Winning that race most of the time is not ordering, so `flush()` waits
  for what was logged before it. The Android SDK does the same.
 
- The snapshot is taken synchronously in `flush()`, after `log()` has returned and so after its Task is in here —
+ The snapshot is taken synchronously in `flush()`, after `track()` has returned and so after its Task is in here —
  that ordering is the happens-before, and the lock makes it hold across threads.
  */
 final class InFlight: @unchecked Sendable {

@@ -10,7 +10,6 @@ import type {
   TreebarsConfig,
   TreebarsEventName,
   TreebarsEvents,
-  TreebarsUser,
   UploadLog,
 } from './types';
 
@@ -279,20 +278,22 @@ export class TreebarsSDK {
   }
 
   /**
-   * Signs a known person in on this device: every event from here on carries `profile.id`, and
-   * the rest of `profile` updates their attributes. Records `user_identified`. Call `reset()`
-   * when the person signs out.
+   * Signs a known person in on this device: every event from here on carries `userId`, and `attributes` update their
+   * profile. The native SDK adds what it knows about the device beneath them, and the app's values win. Records
+   * `user_identified`. Call `reset()` when the person signs out. The same call, in the same order, as every Treebars SDK.
    *
-   * `options.signature` is the hex HMAC-SHA256 of `profile.id` under the environment's identity
-   * secret, computed by your backend — never in the app, because the secret must not ship in it.
-   * An environment that requires signed identities withholds a signed-in person's in-app
-   * messages and notifications without it. The native SDK keeps and sends it, as it does on a
-   * native integration.
+   * `signature` is the hex HMAC-SHA256 of `userId` under the environment's identity secret, computed by your backend —
+   * never in the app, because the secret must not ship in it. An environment that requires signed identities withholds
+   * a signed-in person's in-app messages and notifications without it.
+   *
+   * A null `userId` signs nobody in: `attributes` go on whoever this device is now — the person signed in, or the
+   * anonymous one Treebars knows it by, whose attributes travel into the account at a later sign-in. For an app that
+   * will not send its own user id. An email or a phone number is kept only for a signed-in person. It is never a
+   * sign-out: a user id that is briefly null must not sign somebody out, so that is `reset()` alone.
    */
-  async user(profile: TreebarsUser, options: { signature?: string } = {}): Promise<void> {
+  async identify(userId: string | null, attributes: EventProperties = {}, signature?: string): Promise<void> {
     await this.ready;
-    const { id, ...attributes } = profile;
-    await this.module().identify(id, json(attributes), options.signature ?? null);
+    await this.module().identify(userId || null, json(attributes), signature ?? null);
   }
 
   /**
@@ -304,15 +305,10 @@ export class TreebarsSDK {
     await this.module().screen(name, json(properties));
   }
 
-  /** Records an event, with `properties` sent as given. The name every Treebars SDK uses. */
+  /** Records an event, with `properties` sent as given. The same call as every Treebars SDK. */
   async track(eventName: string, properties: EventProperties = {}): Promise<void> {
     await this.ready;
     await this.module().track(eventName, json(properties));
-  }
-
-  /** @deprecated Renamed to `track`, so all four SDKs say the same word. */
-  async log(eventName: string, properties: EventProperties = {}): Promise<void> {
-    return this.track(eventName, properties);
   }
 
   /**
@@ -565,10 +561,10 @@ export class TreebarsSDK {
 
   /**
    * Hands a push's data from the app's messaging library — React Native Firebase's
-   * `setBackgroundMessageHandler` and `onMessage` — to the Android SDK, which draws it when the
-   * channel is set to have the SDK draw rich pushes. Resolves whether it drew it; any other push
-   * is left to the library. Needs no `init()`: a background handler runs headless. On iOS it
-   * always resolves false, since the Notification Service Extension draws a rich push there.
+   * `setBackgroundMessageHandler` and `onMessage` — to the native SDK. Resolves true when the push was the SDK's: on
+   * Android a rich push it drew, and on both the SDK's silent push asking for the in-app queue, which it then fetches
+   * so a message sent as a test shows within seconds. Any other push is left to the library, and on iOS a rich push
+   * is the Notification Service Extension's. Needs no `init()`: a background handler runs headless.
    */
   async handleRemotePush(data: Record<string, unknown> | null | undefined): Promise<boolean> {
     if (!data) return false;
@@ -608,6 +604,20 @@ export class TreebarsSDK {
   }
 
   /** Evaluate the messages for this screen now. Named as common engagement SDKs name it. */
+  /**
+   * Draws no in-app message until `releaseInApp()`: for a screen the app shows over everything — a lock screen, a
+   * passcode — that no message may cover. A trigger that fires while held is kept and answered on release; a message
+   * already on screen stays. Needs no `init()`, so a lock shown at launch can hold from the start.
+   */
+  async holdInApp(): Promise<void> {
+    await this.module().holdInApp();
+  }
+
+  /** Lets in-app messages draw again after `holdInApp()`, and answers what was held meanwhile. */
+  async releaseInApp(): Promise<void> {
+    await this.module().releaseInApp();
+  }
+
   async showInApp(): Promise<void> {
     await this.ready;
     await this.module().showInApp();

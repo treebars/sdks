@@ -111,4 +111,13 @@ class MessageTraitsTest {
         settle { queued("user_identified").isNotEmpty() }
         assertTrue(queued("traits_set").isEmpty())
     }
+
+    @Test
+    fun `identify with no user id signs nobody in and puts the attributes on the anonymous person`() {
+        start()
+        Treebars.identify(null, mapOf("plan" to "pro"))
+        settle { queued("traits_set").isNotEmpty() }
+        assertEquals("pro", queued("traits_set").single().getJSONObject("properties").getJSONObject("traits").getString("plan"))
+        assertTrue("nobody was identified", queued("user_identified").isEmpty())
+    }
 }

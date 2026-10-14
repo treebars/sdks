@@ -345,7 +345,7 @@ public final class TreebarsBridge: NSObject {
         guard let properties = dictionary(propertiesJson) else {
             return badProperties("track")
         }
-        Treebars.log(eventName, properties: properties)
+        Treebars.track(eventName, properties: properties)
         return nil
     }
 
@@ -359,7 +359,7 @@ public final class TreebarsBridge: NSObject {
     }
 
     @objc(identify:attributesJson:signature:)
-    public static func identify(_ userId: String, attributesJson: String, signature: String?) -> TreebarsBridgeFailure? {
+    public static func identify(_ userId: String?, attributesJson: String, signature: String?) -> TreebarsBridgeFailure? {
         guard let attributes = dictionary(attributesJson) else {
             return badProperties("identify")
         }
@@ -524,6 +524,25 @@ public final class TreebarsBridge: NSObject {
     @objc(showInApp)
     public static func showInApp() {
         Treebars.showInApp()
+    }
+
+    @objc(holdInApp)
+    public static func holdInApp() {
+        Treebars.holdInApp()
+    }
+
+    @objc(releaseInApp)
+    public static func releaseInApp() {
+        Treebars.releaseInApp()
+    }
+
+    /// A push's data from the app's messaging library, as JSON. True when it was the SDK's own silent push asking for the
+    /// in-app queue, which is then fetched; anything else is the app's.
+    @objc(handleRemotePush:)
+    public static func handleRemotePush(_ payloadJson: String) -> Bool {
+        guard let data = payloadJson.data(using: .utf8),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        return Treebars.handleRemoteNotification(userInfo: payload)
     }
 
     /// Nudges may appear on this screen: `top`, `bottom`, or anything else for any edge.
@@ -994,7 +1013,7 @@ extension Treebars {
             Treebars.registerPushToken(data, provider: .apns)
             return true
         case .fcm:
-            Treebars.log(
+            Treebars.track(
                 "push_token_registered",
                 properties: ["token": token, "provider": provider.rawValue]
             )

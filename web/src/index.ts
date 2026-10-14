@@ -91,6 +91,8 @@ const isInAppReport = (eventName: string): boolean => eventName.startsWith('in_a
  * name is reserved for the SDK.
  */
 const TRAITS_SET_EVENT = 'traits_set';
+/** Attribute names an anonymous person's attributes do not keep: an address needs a signed-in person. */
+const ADDRESS_KEYS: ReadonlySet<string> = new Set(['email', 'email_address', 'emailAddress', 'phone', 'phone_number', 'phoneNumber', 'mobile', 'msisdn']);
 /** A string's SHA-256 as lowercase hex: how a large in-app body is checked against its `html_ref`. */
 async function sha256Hex(text: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
@@ -117,6 +119,8 @@ export function frameUrlFor(backendUrl: string): string | null {
 
 /** `<delivery>:<reason>` → the local day it was last reported, so a held-back message is counted once a day. */
 const FAILED_KEY = 'treebars.in_app_failed.v1';
+/** How many held events a release offers again: one per name, the latest of each, never a backlog. */
+const HELD_EVENTS_MAX = 8;
 /** The id of this browser's first session, which is what a "new visitor" session rule asks about. */
 const FIRST_SESSION_KEY = 'treebars.first_session.v1';
 /** How often a previewed draft asks whether it was saved again: a save in the editor shows within this long. */
@@ -497,6 +501,10 @@ class TreebarsWeb {
   private frameModeSeen: FrameMode | null = null;
   private currentSessionId: string | null = null;
   private inAppEnabled = true;
+  /** Held by the page (`holdInApp`): nothing draws until it is released. */
+  private inAppHeld = false;
+  /** The events offered while held, kept to be offered again on release. */
+  private heldEvents: Array<{ eventName: string; properties: EventProperties; dimensions: Record<string, unknown>; sessionId: string }> = [];
   private userId: string | undefined;
   /**
    * The customer's backend's signature of `userId`, which an environment that requires signed
@@ -1190,10 +1198,27 @@ class TreebarsWeb {
    * in-app messages, the nudges on screen and the notification centre's history — before anything is drawn for the new
    * one. `reset()` is still the call for a sign-out: it also records it and starts a new session.
    *
+   * A null `userId` signs nobody in: `attributes` go on whoever this browser is now — the person signed in, or the
+   * anonymous one Treebars knows it by, whose attributes travel into the account at a later sign-in. For a site that
+   * will not send its own user id. An email or a phone number is kept only for a signed-in person, and `signature` is
+   * not used. It is never a sign-out: a user id that is briefly null must not sign somebody out, so that is `reset()`
+   * alone.
+   *
    * Does nothing before `init` or after `optOut()`.
    */
-  identify(userId: string, attributes: EventProperties = {}, signature?: string): void {
+  identify(userId: string | null, attributes: EventProperties = {}, signature?: string): void {
     if (!this.started || !this.config || this.optedOut) return;
+    /*
+     * No user id: nobody is signed in by it and `user_identified` is not recorded. An address is a claim about somebody,
+     * and without a user id there is nothing to sign, so the server keeps none from here — said once in the console.
+     */
+    if (!userId) {
+      if (!this.userId && Object.keys(attributes).some((key) => ADDRESS_KEYS.has(key))) {
+        console.warn('[treebars] identify: an email or phone number is kept only for a signed-in person; pass their user id');
+      }
+      this.setMessageTraits(attributes);
+      return;
+    }
     this.userSignature = signature ?? (userId === this.userId ? this.userSignature : undefined);
     /*
      * Only a different person, with no sign-out between. Not the same one identified again on every page load, and
@@ -1781,6 +1806,14 @@ class TreebarsWeb {
   private offerInApp(eventName: string, properties: EventProperties, dimensions: Record<string, unknown>, sessionId: string): boolean {
     if (!this.inApp) return false;
     /*
+     * Held by the page over something no message may cover (`holdInApp`): nothing is spent, and the event is kept —
+     * once per name, the latest — to be offered again on release, as the apps keep a trigger that fires with no screen.
+     */
+    if (this.inAppHeld) {
+      this.heldEvents = [...this.heldEvents.filter((held) => held.eventName !== eventName), { eventName, properties, dimensions, sessionId }].slice(-HELD_EVENTS_MAX);
+      return false;
+    }
+    /*
      * Not on a page nobody can see: a customer's own event sent from `pagehide`, or anything tracked while the tab is
      * in the background, would spend a message nobody can see. The queue waits, unspent, for the next event on a
      * visible page.
@@ -1951,7 +1984,8 @@ class TreebarsWeb {
    * report counts messages rather than every event that asked. Kept only when storage is, like the ledger.
    */
   private reportFailure(message: InAppMessage, reason: InAppFailureReason): void {
-    if (!message.campaign_id) return;
+    // A campaign's, for its failure report; or a test send's, which the dashboard's Send test reads back as failed.
+    if (!message.campaign_id && !message.test) return;
     const today = new Date().toDateString();
     let seen: Record<string, string> = {};
     try {
@@ -1966,7 +2000,7 @@ class TreebarsWeb {
     if (this.persist) safeSet(FAILED_KEY, JSON.stringify(kept));
     this.track('in_app_failed', {
       treebars_delivery_id: message.delivery_id,
-      treebars_campaign_id: message.campaign_id,
+      ...(message.campaign_id ? { treebars_campaign_id: message.campaign_id } : {}),
       reason,
     });
   }
@@ -2430,6 +2464,7 @@ class TreebarsWeb {
    * decide; this only decides where an allowed trait goes.
    */
   private setMessageTraits(traits: EventProperties): void {
+    if (Object.keys(traits).length === 0) return;
     if (this.userId) {
       this.identify(this.userId, traits);
       return;
@@ -2874,6 +2909,29 @@ class TreebarsWeb {
    * Where somebody is, in the site's own words: a message naming contexts shows only while one of them is set.
    * Replaces the set; `resetInAppContext()` clears it.
    */
+  /**
+   * Draws no in-app message until `releaseInApp()`: for something the page shows over everything — a passcode, a
+   * checkout it must not lose — that no message may cover. Nothing is spent while held; a message already on screen
+   * stays.
+   */
+  holdInApp(): void {
+    this.inAppHeld = true;
+  }
+
+  /** Lets in-app messages draw again after `holdInApp()`: what is waiting for this moment is offered now. */
+  releaseInApp(): void {
+    if (!this.inAppHeld) return;
+    this.inAppHeld = false;
+    const held = this.heldEvents;
+    this.heldEvents = [];
+    if (!this.config || !this.inApp) return;
+    // What fired meanwhile, oldest first, until one draws; then this moment itself, for a message that waits on none.
+    for (const event of held) {
+      if (this.offerInApp(event.eventName, event.properties, event.dimensions, this.currentSessionId ?? event.sessionId)) return;
+    }
+    this.offerInApp('screen_view', {}, {}, this.currentSessionId ?? '');
+  }
+
   setInAppContext(contexts: string[]): void {
     this.appContexts = new Set(contexts.filter((context) => context !== ''));
   }

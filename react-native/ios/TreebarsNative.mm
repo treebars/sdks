@@ -378,7 +378,7 @@ RCT_EXPORT_MODULE()
   });
 }
 
-- (void)identify:(NSString *)userId
+- (void)identify:(NSString * _Nullable)userId
     attributesJson:(NSString *)attributesJson
          signature:(NSString *_Nullable)signature
            resolve:(RCTPromiseResolveBlock)resolve
@@ -442,15 +442,16 @@ RCT_EXPORT_MODULE()
 }
 
 /**
- * Always false on iOS, and not for want of an implementation: a push's rich parts are attached by the app's
- * Notification Service Extension (`TreebarsNotificationService.enrich`), which runs in its own process before the
- * alert is shown. There is nothing for the app to draw. Android draws here.
+ * A push's rich parts are attached on iOS by the app's Notification Service Extension
+ * (`TreebarsNotificationService.enrich`), which runs in its own process before the alert is shown, so there is nothing
+ * for the app to draw here. What the core does take is its own silent push asking for the in-app queue: true for that,
+ * which it then fetches; false for every other push, which stays the app's.
  */
 - (void)handleRemotePush:(NSString *)payloadJson
                  resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject
 {
-  resolve(@NO);
+  resolve(@([TreebarsBridge handleRemotePush:payloadJson]));
 }
 
 /**
@@ -816,6 +817,25 @@ RCT_EXPORT_MODULE()
       return;
     }
     [TreebarsBridge showInApp];
+    resolve(nil);
+  });
+}
+
+/** No started gate: an app holds its lock screen from launch, before `initialize` may have run. */
+- (void)holdInApp:(RCTPromiseResolveBlock)resolve
+           reject:(RCTPromiseRejectBlock)reject
+{
+  TreebarsAnswer(reject, ^{
+    [TreebarsBridge holdInApp];
+    resolve(nil);
+  });
+}
+
+- (void)releaseInApp:(RCTPromiseResolveBlock)resolve
+              reject:(RCTPromiseRejectBlock)reject
+{
+  TreebarsAnswer(reject, ^{
+    [TreebarsBridge releaseInApp];
     resolve(nil);
   });
 }

@@ -177,11 +177,6 @@ export interface TreebarsEvents {
 
 export type TreebarsEventName = keyof TreebarsEvents;
 
-export interface TreebarsUser {
-  id: string;
-  [key: string]: unknown;
-}
-
 export interface EventProperties {
   [key: string]: unknown;
 }

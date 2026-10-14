@@ -90,6 +90,7 @@ internal object TreebarsConstants {
     const val RICH_PUSH_BUTTON_ID_KEY = "treebars_button_id"
     const val RICH_PUSH_TEMPLATE_KEY = "treebars_template"
     const val RICH_PUSH_BACKGROUND_KEY = "treebars_background"
+    const val RICH_PUSH_SYNC_KEY = "treebars_sync"
 
     /*
      * Deferred deep linking. The referrer is where a destination survives an install on Android;
@@ -105,7 +106,7 @@ internal object TreebarsConstants {
     /** Our click id's parameter, read out of the URL that opened the app. */
     const val ACQUISITION_CLICK_ID_PARAM = "tbrs_click_id"
 
-    const val SDK_VERSION = "0.6.0"
+    const val SDK_VERSION = "0.7.0"
     const val SDK_NAME = "treebars-android"
     const val DEVICE_ID_PREFIX = "dev_"
 

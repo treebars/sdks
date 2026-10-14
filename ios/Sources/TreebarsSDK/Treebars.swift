@@ -186,6 +186,8 @@ public final class Treebars {
     private var appContexts: Set<String> = []
     private weak var inAppDelegate: TreebarsInAppDelegate?
     private var blockedScreens: Set<String> = []
+    /// Held by the app (`holdInApp()`): nothing draws until it is released.
+    private var inAppHeld = false
     private var delayedDelivery: String?
     /// The nudges' slots, and where the app last allowed nudges (`showNudge`): the screen then, and the edge it asked for.
     private let nudgeSlots = NudgeSlots(capacity: InAppBridge.nudgeMaxOnScreen)
@@ -743,7 +745,7 @@ public final class Treebars {
      * means is one rule on the server, exactly as the referrer's encoding is.
      */
     private static func reportLinkOpened(_ clickId: String) {
-        log(
+        track(
             TreebarsConstants.linkOpenedEvent,
             properties: [
                 "click_id": clickId,
@@ -920,10 +922,29 @@ public final class Treebars {
      before anything is drawn for the new one. `reset()` is still the call for a sign-out: it also
      records it and starts a new session.
 
+     A nil `userId` signs nobody in: `attributes` go on whoever this device is now — the person signed in,
+     or the anonymous one Treebars knows it by, whose attributes travel into the account at a later sign-in.
+     For an app that will not send its own user id. An email or a phone number is kept only for a signed-in
+     person, and `signature` is not used. It is never a sign-out: a user id that is briefly nil must not
+     sign somebody out, so that is `reset()` alone.
+
      Does nothing while opted out.
      */
-    public static func identify(_ userId: String, attributes: [String: Any] = [:], signature: String? = nil) {
+    public static func identify(_ userId: String?, attributes: [String: Any] = [:], signature: String? = nil) {
         guard !shared.optedOut else { return }
+        /*
+         * No user id: the attributes go on whoever this device is now — the signed-in person, or the anonymous one
+         * Treebars knows it by, which carries them into the account at a later sign-in. Nobody is signed in by it and
+         * `user_identified` is not recorded. An email or a phone number is kept only for a signed-in person: without a
+         * user id there is nothing to sign, and an address is a claim about somebody.
+         */
+        guard let userId, !userId.isEmpty else {
+            if shared.userId == nil, attributes.keys.contains(where: { addressKeys.contains($0) }) {
+                TreebarsLogger.warn("identify: an email or phone number is kept only for a signed-in person; pass their user id")
+            }
+            setMessageTraits(attributes)
+            return
+        }
         shared.userSignature = signature ?? (userId == shared.userId ? shared.userSignature : nil)
         /*
          * Somebody else, with no sign-out between. What this device holds is the last person's — the queued messages,
@@ -1344,15 +1365,7 @@ public final class Treebars {
         if let previous { enriched["previous_screen"] = previous }
         for (key, value) in properties { enriched[key] = value }
 
-        log(DefaultEvent.screenView, properties: enriched)
-    }
-
-    /// Signs in the user named by `profile["id"]`, with the whole dictionary as their attributes; does
-    /// nothing without a string `id`. Kept for source compatibility: prefer
-    /// `identify(_:attributes:signature:)`, which can carry a signature.
-    public static func setUser(_ profile: [String: Any]) {
-        guard let id = profile["id"] as? String else { return }
-        identify(id, attributes: profile)
+        track(DefaultEvent.screenView, properties: enriched)
     }
 
     /// Records an event named `eventName` with `properties`, in the current session and under whoever
@@ -1360,7 +1373,7 @@ public final class Treebars {
     ///
     /// The event is written to the on-disk queue and uploaded with the next batch; `flush()` sends it
     /// now. An event logged before `initialize` is dropped, and nothing is recorded while opted out.
-    public static func log(_ eventName: String, properties: [String: Any] = [:]) {
+    public static func track(_ eventName: String, properties: [String: Any] = [:]) {
         guard !shared.optedOut else { return }
         // Remembered until it lands, so a flush() on the next line waits for it (`InFlight`).
         shared.recording.run { await shared.enqueue(eventName: eventName, properties: properties) }
@@ -1388,7 +1401,7 @@ public final class Treebars {
         if provider == .apns, let environment = DeviceInfo.apsEnvironment {
             properties["apns_environment"] = environment
         }
-        log("push_token_registered", properties: properties)
+        track("push_token_registered", properties: properties)
         flush()
     }
 
@@ -1424,7 +1437,7 @@ public final class Treebars {
             PendingPushReceipts.add(eventName: "notification_opened", properties: properties)
             return
         }
-        log("notification_opened", properties: properties)
+        track("notification_opened", properties: properties)
         // Flushed rather than batched: this runs as the app is being brought up, which
         // is exactly when it is most likely to be suspended again.
         flush()
@@ -1449,13 +1462,16 @@ public final class Treebars {
      across a kill, and the device proof every event carries. Which checks apply (declared, reserved) is the caller's;
      this decides only where an allowed trait goes.
      */
+    /// Attribute names an anonymous person's attributes do not keep: an address needs a signed-in person.
+    private static let addressKeys: Set<String> = ["email", "email_address", "emailAddress", "phone", "phone_number", "phoneNumber", "mobile", "msisdn"]
+
     static func setMessageTraits(_ traits: [String: Any]) {
         guard !traits.isEmpty else { return }
         if let user = shared.userId {
             identify(user, attributes: traits)
             return
         }
-        log(traitsSetEvent, properties: traitsSetProperties(traits))
+        track(traitsSetEvent, properties: traitsSetProperties(traits))
     }
 
     /// What `traits_set` carries: the values, which are kept out of analytics, and their names, which are not. Apart
@@ -1488,7 +1504,7 @@ public final class Treebars {
             PendingPushReceipts.add(eventName: "push_dismissed", properties: properties)
             return
         }
-        log("push_dismissed", properties: properties)
+        track("push_dismissed", properties: properties)
     }
 
     /**
@@ -1836,6 +1852,40 @@ public final class Treebars {
         shared.blockedScreens.insert(String(describing: type(of: viewController)))
     }
 
+    /// Draws no in-app message until `releaseInApp()`: for a screen the app shows over everything — a lock screen, a
+    /// passcode, a checkout it must not lose — that no message may cover, and which is not a view controller of its own.
+    /// A trigger that fires while held is kept and answered on release. A message already on screen stays.
+    public static func holdInApp() {
+        shared.inAppHeld = true
+    }
+
+    /// Lets in-app messages draw again after `holdInApp()`, and answers what was held meanwhile.
+    public static func releaseInApp() {
+        guard shared.inAppHeld else { return }
+        shared.inAppHeld = false
+        Task {
+            await shared.replayUndrawnTriggers()
+            if let place = shared.nudgePlace, place.screen == shared.currentScreen {
+                await shared.drawNudges(eventName: "screen_view", properties: shared.currentScreen.map { ["screen_name": $0] } ?? [:], dimensions: nil)
+            }
+        }
+    }
+
+    /// A push's `userInfo`, from `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)` or the app's
+    /// messaging library. True when it was the SDK's own silent push asking for the in-app queue — sent beside an in-app
+    /// test, so it shows within seconds on an open app — which is then fetched and what arrived offered at once. False
+    /// for anything else, which stays the app's.
+    @discardableResult
+    public static func handleRemoteNotification(userInfo: [AnyHashable: Any]) -> Bool {
+        guard userInfo[TreebarsConstants.richPushSyncKey] as? String == "in_app" else { return false }
+        guard shared.backendClient != nil else { return true }
+        Task {
+            await shared.syncInApp()
+            await shared.replayUndrawnTriggers()
+        }
+        return true
+    }
+
     /// Evaluate the messages for this screen now: an `immediate` message, or one triggered by the screen in front, is
     /// shown if the caps allow — as if the screen had just been reported.
     public static func showInApp() {
@@ -2010,6 +2060,7 @@ public final class Treebars {
             return
         }
 
+        var arrivedTest = false
         if !inApp.accept(response, askedAt: asked) {
             TreebarsLogger.log("in-app: dropped a sync asked for a previous sign-in")
         } else {
@@ -2018,8 +2069,17 @@ public final class Treebars {
                 // Nudges queued since the screen allowed them: asked for now, not at some later event.
                 await drawNudges(eventName: "screen_view", properties: currentScreen.map { ["screen_name": $0] } ?? [:], dimensions: nil)
             }
+            arrivedTest = response.messages.contains { $0.test == true }
         }
         await warmForQueuedHtml()
+        /*
+         A test that just arrived is offered now, on the screen in front, rather than at the next event: somebody pressed
+         Send test and is looking at the phone. Through the same draw as any event, so a missing screen or a hold keeps it
+         for later; a test already shown is done and is not drawn again.
+         */
+        if arrivedTest {
+            await drawInApp(eventName: "screen_view", properties: currentScreen.map { ["screen_name": $0] } ?? [:], dimensions: nil)
+        }
     }
 
     /**
@@ -2424,6 +2484,11 @@ public final class Treebars {
             }
         }
 
+        // Held by the app over a screen nothing may cover (`holdInApp()`): kept, and answered on release.
+        if inAppHeld {
+            holdTrigger(eventName, properties: properties, dimensions: dimensions, why: "held by the app")
+            return false
+        }
         // A screen the app blocked (`blockInApp(forViewController:)`): held, and answered on the next screen.
         if await frontScreenIsBlocked() {
             holdTrigger(eventName, properties: properties, dimensions: dimensions, why: "the screen in front blocks in-app messages")
@@ -2661,13 +2726,15 @@ public final class Treebars {
         return nil
     }
 
-    /// `in_app_failed`: once per message, reason and day, for the campaign's failure report.
+    /// `in_app_failed`: once per message, reason and day — for the campaign's failure report, and for a test send, which
+    /// the dashboard's Send test reads back as failed with the reason rather than waiting on a message that will not show.
     private func reportInAppFailure(_ message: InAppMessage, reason: String) async {
-        guard let campaign = message.campaign_id else { return }
+        let campaign = message.campaign_id
+        guard campaign != nil || message.test == true else { return }
         guard inApp.claimFailureReport(message.delivery_id, reason: reason) else { return }
-        await enqueue(eventName: "in_app_failed", properties: [
-            Self.deliveryIdKey: message.delivery_id, Self.campaignIdKey: campaign, "reason": reason,
-        ])
+        var properties: [String: Any] = [Self.deliveryIdKey: message.delivery_id, "reason": reason]
+        if let campaign { properties[Self.campaignIdKey] = campaign }
+        await enqueue(eventName: "in_app_failed", properties: properties)
     }
 
     /**
@@ -2944,7 +3011,8 @@ public final class Treebars {
      */
     private func drawNudges(eventName: String, properties: [String: Any], dimensions: [String: Any]?) async {
         #if canImport(UIKit)
-        guard inAppEnabled, let place = nudgePlace, place.screen == currentScreen else { return }
+        // Nor a nudge while the app holds the screen (`holdInApp()`); release asks again.
+        guard inAppEnabled, !inAppHeld, let place = nudgePlace, place.screen == currentScreen else { return }
         let session = await sessionManager.currentID()
         let ordered = inApp.list().enumerated().sorted { lhs, rhs in
             let left = lhs.element.content.in_app?.display?.priority ?? 5

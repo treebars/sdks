@@ -68,7 +68,8 @@ export interface Spec extends TurboModule {
   track(eventName: string, propertiesJson: string): Promise<void>;
   screen(name: string, propertiesJson: string): Promise<void>;
   /** `signature` is the app backend's, carried to the native SDK untouched; null when there is none. */
-  identify(userId: string, attributesJson: string, signature: string | null): Promise<void>;
+  /** A null `userId` signs nobody in: the attributes go on whoever the device is now. */
+  identify(userId: string | null, attributesJson: string, signature: string | null): Promise<void>;
 
   /**
    * `provider` is `fcm` or `apns`. Anything else is refused rather than defaulted, because a
@@ -167,6 +168,10 @@ export interface Spec extends TurboModule {
 
   /** Evaluate the messages for this screen now: the native SDK's `showInApp`. */
   showInApp(): Promise<void>;
+  /** Draw no in-app message until `releaseInApp`: the native SDK's `holdInApp`. Needs no `initialize`. */
+  holdInApp(): Promise<void>;
+  /** Let in-app messages draw again, answering what was held: the native SDK's `releaseInApp`. */
+  releaseInApp(): Promise<void>;
   /** Nudges may appear on this screen: `top`, `bottom` or `any`. The native SDK's `showNudge`. */
   showNudge(position: string): Promise<void>;
 

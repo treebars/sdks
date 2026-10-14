@@ -23,7 +23,7 @@ import TreebarsSDK
 // Once, as early as you can — in application(_:didFinishLaunchingWithOptions:).
 Treebars.initialize(writeKey: "pk_live_…", backendURL: URL(string: "https://ingest.treebars.com")!)
 
-Treebars.log("signup_completed", properties: ["plan": "pro"])
+Treebars.track("signup_completed", properties: ["plan": "pro"])
 Treebars.identify("user_123", attributes: ["email": "ada@example.com"])
 ```
 

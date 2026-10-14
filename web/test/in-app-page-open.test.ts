@@ -151,6 +151,18 @@ describe('in-app messages on a page that only calls init', () => {
     expect(failed()).toEqual([]);
   });
 
+  it('draws nothing while the page holds the screen, spends nothing, and draws on release', async () => {
+    queue = [message('welcome')];
+    const sdk = open({}, (page) => page.holdInApp());
+    await settle();
+    expect(shown()).toEqual([]);
+    expect(failed()).toEqual([]);
+    sdk.releaseInApp();
+    await settle();
+    expect(shown()).toEqual(['welcome']);
+    expect(displayed()).toEqual(['welcome']);
+  });
+
   it('draws nothing after setInAppRenderer(null), and reports the message as held back', async () => {
     queue = [message('welcome')];
     open({}, (sdk) => sdk.setInAppRenderer(null));
