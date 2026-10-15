@@ -58,19 +58,21 @@ final class BackendClient: EventTransport {
 
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 30
-        // Analytics must never block a user-visible request for bandwidth.
-        configuration.networkServiceType = .background
+        /*
+         * Default priority. `.background` tells the system the traffic may wait, and it did: an upload sat behind
+         * whatever else the device was doing, so the same tap reached the server in one second or in many. A batch is a
+         * few kilobytes compressed — it takes no bandwidth worth yielding — and somebody may be watching for it.
+         */
+        configuration.networkServiceType = .default
         if let protocolClasses {
             configuration.protocolClasses = protocolClasses + (configuration.protocolClasses ?? [])
         }
         self.session = URLSession(configuration: configuration)
 
         /*
-         * A second session, at normal priority, and the difference is the whole reason it
-         * exists. `.background` is right for a batch of events nobody is waiting on and
-         * wrong for a read: the in-app queue is fetched while an app is starting and the
-         * notification centre is fetched while somebody watches a spinner, so both would
-         * be deprioritised behind exactly the traffic they are racing.
+         * A second session for reads, with a shorter timeout: the in-app queue is fetched while an app is starting and
+         * the notification centre while somebody watches a spinner, so neither may wait thirty seconds on a stalled
+         * connection the way an upload, which retries, can.
          */
         let reading = URLSessionConfiguration.default
         reading.timeoutIntervalForRequest = 15
@@ -90,6 +92,8 @@ final class BackendClient: EventTransport {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if gzip { request.setValue(Compressor.contentEncoding, forHTTPHeaderField: "Content-Encoding") }
         if let deviceSecret { request.setValue(deviceSecret(), forHTTPHeaderField: TreebarsConstants.deviceAuthHeader) }
+        // When this attempt left, by this device's clock: the server puts the batch's times on its own clock by it.
+        request.setValue(String(Int64(Date().timeIntervalSince1970 * 1000)), forHTTPHeaderField: TreebarsConstants.sentAtHeader)
         return request
     }
 

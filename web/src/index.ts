@@ -260,7 +260,7 @@ import { TriggerEvents, readTriggerList, type TriggerList } from './triggers';
 import { RemoteConfig, type ConfigAnswer, type ConfigAsk, type ConfigAttributes } from './config';
 import { Uploader, UploaderStore, type PendingBatch, type UploadResponse } from './uploader';
 import { claimWithRetries, rewardRefusal, type RewardAttempt } from './reward-claim';
-import { BATCH_SIZE, CONFIG_READY_TIMEOUT_MS, CONTEXT_SETTLE_MS, DEFAULT_BACKEND_URL, ENDPOINTS, HEADERS, SDK_NAME, SDK_VERSION, ACQUISITION, IN_APP_PRESENTATION_HOLD_MS, PUSH_PERMISSION_LINK, WEB_EVENTS } from './generated/constants';
+import { BATCH_SIZE, CONFIG_READY_TIMEOUT_MS, CONTEXT_SETTLE_MS, DEFAULT_BACKEND_URL, ENDPOINTS, HEADERS, PARAMS, SDK_NAME, SDK_VERSION, ACQUISITION, IN_APP_PRESENTATION_HOLD_MS, PUSH_PERMISSION_LINK, WEB_EVENTS } from './generated/constants';
 
 /**
  * The SDK's own reports that the page is going away, which are never a moment to show anything.
@@ -423,6 +423,8 @@ class TreebarsWeb {
   private store: EventStore | null = null;
   private sessions: SessionManager | null = null;
   private deviceId = '';
+  /** The last time `stampNow` handed out, in epoch milliseconds. */
+  private lastStamped = 0;
   /*
    * Read once, beside the device id, and held. `getFetchSecret` mints a new one per call when storage
    * is off, and every request this page makes has to present the same secret.
@@ -2941,6 +2943,18 @@ class TreebarsWeb {
     this.appContexts = new Set();
   }
 
+  /**
+   * The time an event happened, as a time no earlier event from this page has: one millisecond after the last when the
+   * clock has not moved on. A page logs several events in one millisecond — a page view and the session it opens — and
+   * two events with one time have no order of their own, so wherever they are read back they could swap. Events the
+   * SDK dates into the past on purpose (a session's end) keep the time they were given.
+   */
+  private stampNow(): string {
+    const now = Date.now();
+    this.lastStamped = now > this.lastStamped ? now : this.lastStamped + 1;
+    return new Date(this.lastStamped).toISOString();
+  }
+
   private enqueue(
     eventName: string,
     properties: EventProperties,
@@ -2974,7 +2988,7 @@ class TreebarsWeb {
       user_id: this.userId,
       event_name: eventName,
       properties,
-      timestamp: timestamp ?? new Date().toISOString(),
+      timestamp: timestamp ?? this.stampNow(),
       env: this.config?.env ?? 'production',
       ...dimensions,
     };
@@ -3016,7 +3030,7 @@ class TreebarsWeb {
     if (this.optedOut) throw new Error('opted out');
 
     const size = gzipped ? gzipped.byteLength : new TextEncoder().encode(json).byteLength;
-    const response = await fetch(`${this.backendUrl}${ENDPOINTS.events}`, {
+    const response = await fetch(this.eventsUrl(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -3035,6 +3049,15 @@ class TreebarsWeb {
       configVersion: response.headers.get(HEADERS.configVersion),
       flushSpacing: response.headers.get(HEADERS.flushSpacing),
     };
+  }
+
+  /**
+   * Where an upload goes, with when this attempt left by this page's clock — the server puts the batch's times on its
+   * own clock by it. A query parameter rather than a header, because a header has to be allowed by the server before a
+   * browser will send it cross-origin, and a parameter does not.
+   */
+  private eventsUrl(): string {
+    return `${this.backendUrl}${ENDPOINTS.events}?${PARAMS.sentAt}=${Date.now()}`;
   }
 
   private post(path: string, body: unknown, headers: Record<string, string> = {}): Promise<Response> {
@@ -3087,7 +3110,7 @@ class TreebarsWeb {
     const body = compressed ?? wireBatch(batch);
     const size = compressed ? compressed.byteLength : new TextEncoder().encode(body as string).byteLength;
     try {
-      fetch(`${this.backendUrl}${ENDPOINTS.events}`, {
+      fetch(this.eventsUrl(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

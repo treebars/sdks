@@ -79,7 +79,7 @@ final class FlushPaceScenariosTests: XCTestCase {
         for scenario in scenarios {
             try await run(scenario, fixture: fixture)
         }
-        XCTAssertEqual(scenarios.count, 20, "the fixture changed size; check every scenario still runs here")
+        XCTAssertEqual(scenarios.count, 21, "the fixture changed size; check every scenario still runs here")
         XCTAssertTrue(problems.value.isEmpty, "\n" + problems.value.joined(separator: "\n"))
     }
 

@@ -26,9 +26,14 @@ export const HEADERS = {
   triggersVersion: 'X-Treebars-Triggers-Version',
   configVersion: 'X-Treebars-Config-Version',
   flushSpacing: 'X-Treebars-Flush-Ms',
+  sentAt: 'X-Treebars-Sent-At',
   linkResolve: 'X-Treebars-Resolve',
   userSignature: 'X-Treebars-User-Signature',
   userId: 'X-Treebars-User-Id',
+} as const;
+
+export const PARAMS = {
+  sentAt: 'sent_at',
 } as const;
 
 export const BATCH_SIZE = 50;
@@ -54,7 +59,7 @@ export const TRIGGER_FLUSH_DEBOUNCE_MS = 1000;
 export const FLUSH_DEBOUNCE_MS = 1000;
 /** The least time between two uploads while busy: the default, on a metered network, and under a test key. */
 export const FLUSH_SPACING_MS = 5000;
-export const FLUSH_SPACING_METERED_MS = 15000;
+export const FLUSH_SPACING_METERED_MS = 5000;
 export const FLUSH_SPACING_TEST_MS = 1000;
 /** The bounds on the spacing a response may name. */
 export const FLUSH_SPACING_MIN_MS = 1000;
@@ -113,7 +118,7 @@ export const ACQUISITION = {
 /** Play's cap on the referrer it hands back, so a page cannot build one the store will truncate. */
 export const MAX_REFERRER_LENGTH = 1000;
 
-export const SDK_VERSION = '0.7.0';
+export const SDK_VERSION = '0.8.0';
 export const SDK_NAME = 'treebars-react-native';
 export const DEVICE_ID_PREFIX = 'dev_';
 

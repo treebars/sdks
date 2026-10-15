@@ -188,14 +188,16 @@ final class FlushPace: UploadPacing, @unchecked Sendable {
      test key keeps almost none — somebody is watching a screen for the event they just caused.
      Otherwise it is what the last accepted upload named, or the default before any has, and never
      under the metered floor on a network paid for by use: each upload wakes the radio, and it stays
-     awake for seconds afterwards.
+     awake for seconds afterwards. Unless what the server named is a test key's pace, which it names for
+     a tester's devices: somebody is watching for those, on whatever network.
      */
     static func spacing(chosen: Int64?, testKey: Bool, named: Int64?, in conditions: FlushConditions) -> Int64 {
         if conditions.constrained { return Int64(TreebarsConstants.defaultFlushInterval * 1000) }
         if let chosen { return max(chosen, debounceMs) }
         if testKey { return Int64(TreebarsConstants.flushSpacingTest * 1000) }
         let asked = named ?? Int64(TreebarsConstants.flushSpacing * 1000)
-        return conditions.metered ? max(asked, Int64(TreebarsConstants.flushSpacingMetered * 1000)) : asked
+        let testPace = Int64(TreebarsConstants.flushSpacingTest * 1000)
+        return conditions.metered && asked > testPace ? max(asked, Int64(TreebarsConstants.flushSpacingMetered * 1000)) : asked
     }
 
     /// When an upload armed at `now` is due. `spacing` is asked only when there is an upload to space from.

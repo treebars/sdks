@@ -87,6 +87,8 @@ actor EventUploader {
     private var state: UploaderState
     private var reconciled = false
     private var isFlushing = false
+    /// Callers of `flushInTurn` waiting for the flush underway to end.
+    private var waitingForTurn: [CheckedContinuation<Void, Never>] = []
     /// Whether the flush now running has put a batch on the wire. An upload is the whole drain, so
     /// it begins once, however many batches it carries.
     private var uploading = false
@@ -171,9 +173,24 @@ actor EventUploader {
         await drain()
         if uploading { await reportBacklog() }
         isFlushing = false
+        let waiting = waitingForTurn
+        waitingForTurn = []
+        for turn in waiting { turn.resume() }
         // Only after an accepted upload: a flush the endpoint refused, or never reached, says nothing about the config.
         if accepted { configSeen?(seenConfigVersion) }
         await triggers?.observe(seenTriggersVersion)
+    }
+
+    /**
+     A flush that waits its turn where `flush` would return at once: for the app going to the background. A flush
+     already underway may have sealed its batches before the last events reached the queue, and returning would leave
+     them on the device until the app was next opened.
+     */
+    func flushInTurn() async {
+        while isFlushing {
+            await withCheckedContinuation { (turn: CheckedContinuation<Void, Never>) in waitingForTurn.append(turn) }
+        }
+        await flush()
     }
 
     /**

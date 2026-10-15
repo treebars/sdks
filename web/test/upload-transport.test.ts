@@ -203,7 +203,9 @@ describe('the browser transport under the upload policy', () => {
     hide();
 
     expect(sent).toHaveLength(3);
-    expect(sent[2]!.url).toBe('https://ingest.test/v1/events');
+    expect(sent[2]!.url.split('?')[0]).toBe('https://ingest.test/v1/events');
+    // When the attempt left, as a parameter: a header would need the server's CORS answer to allow it first.
+    expect(Number(new URL(sent[2]!.url).searchParams.get('sent_at'))).toBeGreaterThan(0);
     expect(headersOf(sent[2]!)['Content-Encoding']).toBe('gzip');
     expect(sent[2]!.body).toEqual(pending);
   });
@@ -230,7 +232,9 @@ describe('the browser transport under the upload policy', () => {
      */
     expect(beaconCalls).toBe(0);
     expect(sent).toHaveLength(2);
-    expect(sent[1]!.url).toBe('https://ingest.test/v1/events');
+    expect(sent[1]!.url.split('?')[0]).toBe('https://ingest.test/v1/events');
+    // When the attempt left, as a parameter: a header would need the server's CORS answer to allow it first.
+    expect(Number(new URL(sent[1]!.url).searchParams.get('sent_at'))).toBeGreaterThan(0);
     expect(sent[1]!.init).toMatchObject({ method: 'POST', credentials: 'omit', keepalive: true });
     expect(headersOf(sent[1]!)).toMatchObject({ 'Content-Type': 'application/json', 'X-Treebars-Key': 'pk_test_transport' });
     expect(headersOf(sent[1]!)['X-Treebars-Device-Auth']).toBeTruthy();

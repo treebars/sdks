@@ -21,6 +21,7 @@ internal object TreebarsConstants {
     const val TRIGGERS_VERSION_HEADER = "X-Treebars-Triggers-Version"
     const val CONFIG_VERSION_HEADER = "X-Treebars-Config-Version"
     const val FLUSH_SPACING_HEADER = "X-Treebars-Flush-Ms"
+    const val SENT_AT_HEADER = "X-Treebars-Sent-At"
     const val LINK_RESOLVE_HEADER = "X-Treebars-Resolve"
     const val USER_SIGNATURE_HEADER = "X-Treebars-User-Signature"
     const val USER_ID_HEADER = "X-Treebars-User-Id"
@@ -48,7 +49,7 @@ internal object TreebarsConstants {
     const val FLUSH_DEBOUNCE_MS = 1000L
     /** The least time between two uploads while busy: the default, on a metered network, and under a test key. */
     const val FLUSH_SPACING_MS = 5000L
-    const val FLUSH_SPACING_METERED_MS = 15000L
+    const val FLUSH_SPACING_METERED_MS = 5000L
     const val FLUSH_SPACING_TEST_MS = 1000L
     /** The bounds on the spacing a response may name. */
     const val FLUSH_SPACING_MIN_MS = 1000L
@@ -106,7 +107,7 @@ internal object TreebarsConstants {
     /** Our click id's parameter, read out of the URL that opened the app. */
     const val ACQUISITION_CLICK_ID_PARAM = "tbrs_click_id"
 
-    const val SDK_VERSION = "0.7.0"
+    const val SDK_VERSION = "0.8.0"
     const val SDK_NAME = "treebars-android"
     const val DEVICE_ID_PREFIX = "dev_"
 

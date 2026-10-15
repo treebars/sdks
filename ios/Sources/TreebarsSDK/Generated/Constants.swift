@@ -22,6 +22,7 @@ enum TreebarsConstants {
     static let triggersVersionHeader = "X-Treebars-Triggers-Version"
     static let configVersionHeader = "X-Treebars-Config-Version"
     static let flushSpacingHeader = "X-Treebars-Flush-Ms"
+    static let sentAtHeader = "X-Treebars-Sent-At"
     static let linkResolveHeader = "X-Treebars-Resolve"
     static let userSignatureHeader = "X-Treebars-User-Signature"
     static let userIdHeader = "X-Treebars-User-Id"
@@ -48,7 +49,7 @@ enum TreebarsConstants {
     static let flushDebounce: TimeInterval = 1
     /// The least time between two uploads while busy: the default, on a metered network, and under a test key.
     static let flushSpacing: TimeInterval = 5
-    static let flushSpacingMetered: TimeInterval = 15
+    static let flushSpacingMetered: TimeInterval = 5
     static let flushSpacingTest: TimeInterval = 1
     /// The bounds on the spacing a response may name.
     static let flushSpacingMin: TimeInterval = 1
@@ -105,7 +106,7 @@ enum TreebarsConstants {
     static let maxDeepLinkPathLength = 512
     static let deferredDeepLinkWindowMs: Int64 = 24 * 60 * 60 * 1000
 
-    static let sdkVersion = "0.7.0"
+    static let sdkVersion = "0.8.0"
     static let sdkName = "treebars-ios"
     static let deviceIdPrefix = "dev_"
 

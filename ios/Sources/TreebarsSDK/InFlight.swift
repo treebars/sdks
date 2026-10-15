@@ -14,6 +14,8 @@ import Foundation
 final class InFlight: @unchecked Sendable {
     private let lock = NSLock()
     private var tasks: [UUID: Task<Void, Never>] = [:]
+    /// The newest Task `runInOrder` started, which the next one waits for.
+    private var lastInOrder: Task<Void, Never>?
 
     /// Starts `work` and remembers it until it finishes. Inserted under the lock its own removal takes, so a Task that
     /// finishes at once is still removed rather than kept.
@@ -32,6 +34,21 @@ final class InFlight: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return Array(tasks.values)
+    }
+
+    /// `run`, after every Task this started with `runInOrder` before it has finished: what keeps `track` calls in order.
+    func runInOrder(_ work: @escaping () async -> Void) {
+        let id = UUID()
+        lock.lock()
+        defer { lock.unlock() }
+        let previous = lastInOrder
+        let task = Task { [weak self] in
+            await previous?.value
+            await work()
+            self?.finish(id)
+        }
+        tasks[id] = task
+        lastInOrder = task
     }
 
     private func finish(_ id: UUID) {

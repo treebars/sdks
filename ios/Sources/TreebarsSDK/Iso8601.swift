@@ -22,6 +22,26 @@ enum Iso8601 {
 
     static func now() -> String { string(from: Date()) }
 
+    /**
+     The time an event happened, as a time no earlier event from this process has: one millisecond after the last when
+     the clock has not moved on, or has stepped back. An app logs several events in one millisecond — a launch opens a
+     session beside it — and two events with one time have no order of their own, so wherever they are read back they
+     could swap. A session's start, stamped first, is always before the event that opened it.
+
+     A quarter of a millisecond past the millisecond meant, so the formatter writes that millisecond whether it
+     truncates or rounds.
+     */
+    static func nextEvent() -> Date {
+        eventLock.lock()
+        defer { eventLock.unlock() }
+        let now = Int64((Date().timeIntervalSince1970 * 1000).rounded(.down))
+        lastEventMillis = now > lastEventMillis ? now : lastEventMillis + 1
+        return Date(timeIntervalSince1970: (Double(lastEventMillis) + 0.25) / 1000)
+    }
+
+    private static let eventLock = NSLock()
+    nonisolated(unsafe) private static var lastEventMillis: Int64 = 0
+
     /// For an event stamped into a moment that has already passed; see `session_end`.
     static func string(from date: Date) -> String { formatter.string(from: date) }
 

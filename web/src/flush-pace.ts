@@ -66,7 +66,8 @@ export const isTestKey = (writeKey: string): boolean => writeKey.startsWith('pk_
  * the app's own interval is the spacing, never tighter than the debounce. Otherwise a test key
  * keeps almost none — somebody is watching a screen for the event they just caused. Otherwise it is
  * what the last accepted upload named, or the default before any has, and never under the metered
- * floor on a network paid for by use.
+ * floor on a network paid for by use — unless what the server named is a test key's pace, which it
+ * names for a tester's devices: somebody is watching for those too, on whatever network.
  */
 export function flushSpacingMs(rule: FlushSpacingRule, conditions: FlushConditions): number {
   if (conditions.constrained) return DEFAULT_FLUSH_INTERVAL_MS;
@@ -74,7 +75,7 @@ export function flushSpacingMs(rule: FlushSpacingRule, conditions: FlushConditio
   if (typeof rule.chosen === 'number' && !Number.isNaN(rule.chosen)) return Math.max(rule.chosen, FLUSH_DEBOUNCE_MS);
   if (rule.testKey) return FLUSH_SPACING_TEST_MS;
   const asked = rule.named ?? FLUSH_SPACING_MS;
-  return conditions.metered ? Math.max(asked, FLUSH_SPACING_METERED_MS) : asked;
+  return conditions.metered && asked > FLUSH_SPACING_TEST_MS ? Math.max(asked, FLUSH_SPACING_METERED_MS) : asked;
 }
 
 /**

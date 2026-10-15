@@ -10,6 +10,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -51,6 +52,23 @@ internal object Iso8601 {
     }
 
     fun now(): String = synchronized(format) { format.format(System.currentTimeMillis()) }
+
+    /**
+     * The time an event happened, as a time no earlier event from this process has: one millisecond after the last when
+     * the clock has not moved on, or has stepped back. An app logs several events in one millisecond — a launch opens a
+     * session beside it — and two events with one time have no order of their own, so wherever they are read back they
+     * could swap. A session's start, stamped first, is always before the event that opened it.
+     */
+    fun nextEventMillis(): Long {
+        while (true) {
+            val now = System.currentTimeMillis()
+            val previous = lastEvent.get()
+            val next = if (now > previous) now else previous + 1
+            if (lastEvent.compareAndSet(previous, next)) return next
+        }
+    }
+
+    private val lastEvent = java.util.concurrent.atomic.AtomicLong(0)
 
     /** For an event stamped into a moment that has already passed; see `session_end`. */
     fun at(millis: Long): String = synchronized(format) { format.format(millis) }
@@ -239,6 +257,10 @@ object Treebars {
     private const val KEY_OPTED_OUT = "opted_out"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** One at a time, first come first served: what keeps `track` calls in the order the app made them. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val inCallOrder = Dispatchers.Default.limitedParallelism(1)
 
     /**
      * The one hop to the main thread this SDK makes, and the only place it should.
@@ -2799,8 +2821,12 @@ object Treebars {
          * dimension row reads exactly what the event is stamped with.
          */
         val snapshot = deviceSnapshot()
-        // Remembered until it lands, so a flush() on the next line waits for it (`InFlight`).
-        recording.add(scope.launch { record(eventName, properties, snapshot = snapshot) })
+        /*
+         * Remembered until it lands, so a flush() on the next line waits for it (`InFlight`). On [inCallOrder], so two
+         * calls are recorded — and stamped — in the order the app made them: coroutines on a pool of threads are not
+         * obliged to reach the queue in the order they were started, and two events a moment apart could swap.
+         */
+        recording.add(scope.launch(inCallOrder) { record(eventName, properties, snapshot = snapshot) })
 
         // The one hook in-app needs, where every event already passes through. Not inside
         // record(): drawing a message must never sit between an event and its queue.
@@ -3806,7 +3832,7 @@ object Treebars {
         eventName: String,
         properties: Map<String, Any?>,
         sessionId: String,
-        timestamp: String = Iso8601.now(),
+        timestamp: String = Iso8601.at(Iso8601.nextEventMillis()),
         detached: Boolean = false,
         /**
          * Stamps an event with a user id the SDK no longer holds.
@@ -3924,14 +3950,21 @@ object Treebars {
                     val foregroundMs = now - foregroundedAt
                     backgroundedAt = now
 
-                    // One coroutine, not a track() followed by a flush(): those are two
-                    // independent launches, and the flush could win the race and upload a
-                    // batch that did not yet contain the event.
-                    scope.launch {
+                    /*
+                     * One coroutine, not a track() followed by a flush(): those are two
+                     * independent launches, and the flush could win the race and upload a
+                     * batch that did not yet contain the event. In call order, behind the
+                     * app's last events, so the background is after them and they ride it.
+                     *
+                     * A flush that waits its turn: one already running when the app went to the
+                     * background may have sealed its batch before these events were queued, and
+                     * collapsing into it left them on the device until the app came back.
+                     */
+                    scope.launch(inCallOrder) {
                         if (foregroundedAt > 0) {
                             record(EVENT_APP_BACKGROUND, lifecycleProperties("foreground_ms" to foregroundMs))
                         }
-                        uploader.flush()
+                        uploader.flushInTurn()
                     }
                 }
             })

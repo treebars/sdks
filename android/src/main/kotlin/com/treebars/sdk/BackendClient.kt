@@ -95,6 +95,8 @@ internal class BackendClient(
             connection.setRequestProperty(TreebarsConstants.WRITE_KEY_HEADER, writeKey)
             deviceSecret?.let { connection.setRequestProperty(TreebarsConstants.DEVICE_AUTH_HEADER, it()) }
             if (compressed) connection.setRequestProperty("Content-Encoding", "gzip")
+            // When this attempt left, by this device's clock: the server puts the batch's times on its own clock by it.
+            connection.setRequestProperty(TreebarsConstants.SENT_AT_HEADER, System.currentTimeMillis().toString())
 
             connection.outputStream.use { it.write(body) }
             // Read before disconnecting: the headers live on the connection, and a 429 without its

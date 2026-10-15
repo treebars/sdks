@@ -29,7 +29,9 @@ internal fun isTestWriteKey(writeKey: String): Boolean = writeKey.startsWith("pk
  * interval the app chose is the spacing, never tighter than the debounce. A test key keeps almost
  * none, because somebody is watching a screen for the event they just caused. Everything else
  * keeps what the last accepted upload named, or the default before one has — and on a metered
- * network never less than the metered floor, since every upload there wakes a radio.
+ * network never less than the metered floor, since every upload there wakes a radio. Unless what
+ * the server named is a test key's pace, which it names for a tester's devices: somebody is
+ * watching for those, on whatever network.
  *
  * @param chosenMs the interval the app chose at `initialize`; zero or less when it chose none.
  * @param namedMs what the last accepted upload named, already held to the bounds a device accepts.
@@ -39,7 +41,11 @@ internal fun uploadSpacingMs(conditions: UploadConditions, chosenMs: Long, testK
     if (chosenMs > 0) return maxOf(chosenMs, TreebarsConstants.FLUSH_DEBOUNCE_MS)
     if (testKey) return TreebarsConstants.FLUSH_SPACING_TEST_MS
     val spacing = namedMs ?: TreebarsConstants.FLUSH_SPACING_MS
-    return if (conditions.metered) maxOf(spacing, TreebarsConstants.FLUSH_SPACING_METERED_MS) else spacing
+    return if (conditions.metered && spacing > TreebarsConstants.FLUSH_SPACING_TEST_MS) {
+        maxOf(spacing, TreebarsConstants.FLUSH_SPACING_METERED_MS)
+    } else {
+        spacing
+    }
 }
 
 /**

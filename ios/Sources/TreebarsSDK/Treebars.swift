@@ -1375,8 +1375,12 @@ public final class Treebars {
     /// now. An event logged before `initialize` is dropped, and nothing is recorded while opted out.
     public static func track(_ eventName: String, properties: [String: Any] = [:]) {
         guard !shared.optedOut else { return }
-        // Remembered until it lands, so a flush() on the next line waits for it (`InFlight`).
-        shared.recording.run { await shared.enqueue(eventName: eventName, properties: properties) }
+        /*
+         * Remembered until it lands, so a flush() on the next line waits for it (`InFlight`). In order: each call's work
+         * starts after the last call's has finished, so events are recorded — and stamped — in the order the app made
+         * them. Two Tasks started a moment apart are not obliged to run in that order, and two events could swap.
+         */
+        shared.recording.runInOrder { await shared.enqueue(eventName: eventName, properties: properties) }
     }
 
     /// Registers a push token so campaigns and journeys can reach this device.
@@ -3690,7 +3694,7 @@ public final class Treebars {
         eventName: String,
         properties: [String: Any],
         sessionId: String,
-        timestamp: Date = Date(),
+        timestamp: Date = Iso8601.nextEvent(),
         detached: Bool = false,
         userIdOverride: String? = nil
     ) -> [String: Any] {
@@ -3850,7 +3854,8 @@ public final class Treebars {
                         properties: Self.lifecycleProperties(["foreground_ms": foregroundMs])
                     )
                 }
-                await self.uploader?.flush()
+                // In turn: a flush already underway may have sealed its batches before these events were queued.
+                await self.uploader?.flushInTurn()
                 if taskId != .invalid {
                     // On the main actor, which `UIApplication.shared` is isolated to.
                     await UIApplication.shared.endBackgroundTask(taskId)

@@ -76,7 +76,9 @@ describe('the automation flag', () => {
       flushIntervalMs: 60 * 60 * 1000,
     });
 
-  const sentTo = (path: string) => bodies.filter((sent) => sent.url === `https://ingest.test${path}`).map((sent) => sent.body);
+  // By path: an upload's URL also carries when it was sent (`sent_at`).
+  const sentTo = (path: string) =>
+    bodies.filter((sent) => new URL(sent.url).href.split('?')[0] === `https://ingest.test${path}`).map((sent) => sent.body);
 
   it('is on an automated browser’s uploads and sign-ins, and the SDK works as it always does', async () => {
     page(true);
