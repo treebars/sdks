@@ -56,6 +56,8 @@ interface Step {
   events?: string[];
   /** The events of this step are on the stored trigger list. */
   trigger?: boolean;
+  /** The events of this step are what opened the app — the link, or the notification — and end an open's hold. */
+  cause?: boolean;
   responses?: ScriptedResponse[];
   expect?: { sent: Array<{ events: string[] }> };
 }
@@ -192,6 +194,7 @@ describe('the pace agrees with the shared scenarios', () => {
       }),
       spacingNamed: (milliseconds) => pace.spacingNamed(milliseconds),
       backlogLeft: () => pace.backlogLeft(),
+      heldUntil: () => pace.heldUntil,
     });
     const pace: FlushPace = new FlushPace({
       writeKey: scenario.key === 'test' ? 'pk_test_fixture' : 'pk_live_fixture',
@@ -245,6 +248,8 @@ describe('the pace agrees with the shared scenarios', () => {
           queue.add(event(id, name));
           uploader.eventLogged(name);
           pace.eventLogged();
+          // The core's own: `link_opened` and `notification_opened` end an open's hold.
+          if (step.cause) pace.openCaused();
           // `TreebarsWeb.track`: a full batch goes at once.
           if (queue.size >= batchSize) await uploader.flush();
         }

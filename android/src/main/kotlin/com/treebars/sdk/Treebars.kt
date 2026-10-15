@@ -686,6 +686,7 @@ object Treebars {
             paused = { optedOut },
             uploadBegan = paced::uploadBegan,
             backlogLeft = paced::backlogLeft,
+            heldUntil = paced::holdingUntil,
         )
         uploader = core
         pace = paced
@@ -711,12 +712,12 @@ object Treebars {
         // Anything left over from the previous process goes out immediately.
         scope.launch {
             /*
-             * Asked before the open is queued: whether this process found anything of the last one's still to send.
-             * Then it goes at once, as it always did; so does a device's first launch, which is how it registers.
-             * Otherwise the open holds the first upload a moment (`openSettling`), so the link or notification that
-             * launched the app — handed over by the app's own code just after this — rides with it.
+             * A device's first launch goes at once, which is how it registers. Otherwise the open holds the first upload
+             * a moment (`openSettling`), so the link or notification that launched the app — handed over by the app's own
+             * code just after this — rides with it. Anything the last process left waits for it too: sent at once, it
+             * carried the open away from the link that caused it, and the open said nothing about why it happened.
              */
-            val leftOver = queued.size() + core.pendingEvents() > 0
+            val goesAtOnce = firstLaunch || !autoTrackLifecycle
             if (autoTrackLifecycle) {
                 foregroundedAt = System.currentTimeMillis()
                 val opened = lifecycleProperties("is_first_launch" to firstLaunch)
@@ -731,8 +732,9 @@ object Treebars {
                  */
                 considerInApp(EVENT_APP_OPEN, opened, eventDimensions(snapshot.device, snapshot.screen, sdkName()))
             }
+            if (!goesAtOnce) paced.openSettling()
             reportDeviceContext()
-            if (firstLaunch || leftOver || !autoTrackLifecycle) uploader.flush() else paced.openSettling()
+            if (goesAtOnce) uploader.flush()
             // So a message queued while the app was closed is in hand before the first
             // screen finishes drawing.
             syncInApp()
@@ -806,6 +808,8 @@ object Treebars {
             if (linkHosts.isEmpty()) TreebarsLogger.log("handleLink: initialize was given no linkHosts, so no App Link is asked about")
             return answer(null)
         }
+        // Held while the link is asked about: the open it caused waits for the answer, and rides with it.
+        pace?.openSettling()
         scope.launch {
             val resolved = kotlinx.coroutines.withContext(Dispatchers.IO) { LinkResolve.ask(address) }
             resolved?.let { reportLinkOpened(it.clickId, url) }
@@ -2993,6 +2997,8 @@ object Treebars {
         eventName?.let { uploader.eventLogged(it) }
         // And every one of them, listed or not, arms the pace's upload — a token queued nothing, and arms nothing.
         if (eventName != null || step.boundaries.isNotEmpty()) pace?.eventQueued()
+        // What opened the app — the link, or the notification — ends an open's hold: the open rides in the next upload.
+        if (eventName == TreebarsConstants.LINK_OPENED_EVENT || eventName == "notification_opened") pace?.openCaused()
 
         /*
          * Show the in-app layer the session it would not otherwise see.
@@ -3983,7 +3989,7 @@ object Treebars {
                         if (foregroundedAt > 0) {
                             record(EVENT_APP_BACKGROUND, lifecycleProperties("foreground_ms" to foregroundMs))
                         }
-                        uploader.flushInTurn()
+                        uploader.flushLeaving()
                     }
                 }
             })

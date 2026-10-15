@@ -30,8 +30,8 @@ internal fun isTestWriteKey(writeKey: String): Boolean = writeKey.startsWith("pk
  * none, because somebody is watching a screen for the event they just caused. Everything else
  * keeps what the last accepted upload named, or the default before one has — and on a metered
  * network never less than the metered floor, since every upload there wakes a radio. Unless what
- * the server named is a test key's pace, which it names for a tester's devices: somebody is
- * watching for those, on whatever network.
+ * the server named is a test key's pace: somebody is watching for those events, on whatever
+ * network.
  *
  * @param chosenMs the interval the app chose at `initialize`; zero or less when it chose none.
  * @param namedMs what the last accepted upload named, already held to the bounds a device accepts.
@@ -105,6 +105,12 @@ internal class FlushPace(
     private var settleUntil: Long = 0L
 
     /**
+     * Which arming the live wake belongs to. A wake re-arms itself by sleeping on, so only [openCaused] — which moves an
+     * upload EARLIER — replaces one, and the wake it replaced must then do nothing when it wakes.
+     */
+    private var armings = 0
+
+    /**
      * Milliseconds until the armed upload, or null when none is armed. Clamped at zero: the wake
      * sleeps on a monotonic clock and this reads the wall clock, so the two can disagree by a moment.
      */
@@ -130,16 +136,35 @@ internal class FlushPace(
      * Nothing to do when an upload is armed already — it is held to the same spacing when it wakes.
      */
     /**
-     * The app opened: the next upload waits until [TreebarsConstants.OPEN_SETTLE_MS] from now, so the link or
-     * notification that opened it — reported a moment after the open, by the code that receives it — rides in the same
-     * upload, and the server can put the reason on the open. An upload already armed sooner wakes, finds the hold and
-     * sleeps on to it; a trigger and a full batch, which do not go through the pace, are not held.
+     * The app opened: uploads wait until [TreebarsConstants.OPEN_SETTLE_MS] from now, so the link or notification that
+     * opened it — reported a moment after the open, by the code that receives it — rides in the same upload, and the
+     * server can put the reason on the open. An upload already armed sooner wakes, finds the hold and sleeps on to it, and
+     * every other upload asked for meanwhile waits for it too — a trigger's, a full batch, the network coming back
+     * ([holdingUntil]) — all but the one sent as the app goes to the background.
      */
     @Synchronized
     fun openSettling() {
         settleUntil = clock() + TreebarsConstants.OPEN_SETTLE_MS
         val due = dueAt ?: return
         if (due < settleUntil) dueAt = settleUntil
+    }
+
+    /** Until when an open holds uploads ([openSettling]), as epoch millis; 0, or a moment already past, when none does. */
+    fun holdingUntil(): Long = settleUntil
+
+    /**
+     * What opened the app has been reported — the link, or the notification — so the hold has done its work. It ends now,
+     * and the upload it had put off is due as it would have been without it: normally a debounce from now, so an app
+     * opened from a link reports both a second after the link arrives rather than at the end of the hold. The wake still
+     * sleeping to the hold's end finds the spacing of the upload this one starts, and waits for that.
+     */
+    @Synchronized
+    fun openCaused() {
+        val now = clock()
+        if (settleUntil <= now) return
+        settleUntil = 0L
+        val due = dueAt ?: return
+        arm(minOf(due, now + TreebarsConstants.FLUSH_DEBOUNCE_MS))
     }
 
     @Synchronized
@@ -181,11 +206,13 @@ internal class FlushPace(
         val spaced = spacedUntil(clock())
         val at = maxOf(if (spaced != null && spaced > soonest) spaced else soonest, settleUntil)
         dueAt = at
+        val arming = ++armings
         scope.launch {
             var target = at
             while (true) {
                 delay(maxOf(0L, target - clock()))
-                target = heldUntil(target) ?: break
+                target = heldUntil(target, arming) ?: break
+                if (target == REPLACED) return@launch
             }
             upload()
         }
@@ -201,7 +228,9 @@ internal class FlushPace(
      * reaches its time, and one that then slept that moment again would send a millisecond late.
      */
     @Synchronized
-    private fun heldUntil(woke: Long): Long? {
+    private fun heldUntil(woke: Long, arming: Int): Long? {
+        // A wake another arming replaced: that one carries the upload.
+        if (arming != armings) return REPLACED
         // The spacing since the last upload, or an open's hold, whichever ends later.
         val held = maxOf(spacedUntil(clock()) ?: 0L, settleUntil)
         if (held > woke) {
@@ -210,5 +239,10 @@ internal class FlushPace(
         }
         dueAt = null
         return null
+    }
+
+    private companion object {
+        /** What [heldUntil] answers a wake that was replaced. */
+        const val REPLACED = Long.MIN_VALUE
     }
 }

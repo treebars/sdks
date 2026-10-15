@@ -23,6 +23,9 @@ protocol UploadPacing: AnyObject, Sendable {
     func spacingNamed(_ milliseconds: Int64)
     /// The upload that just ended left events waiting, with no gate closed in front of them.
     func uploadLeftBacklog()
+    /// Until when an open holds every upload but the one sent as the app goes to the background, in epoch
+    /// milliseconds (`openSettling`); 0, or a moment already past, when nothing is held.
+    var heldUntil: Int64 { get }
 }
 
 /**
@@ -133,16 +136,34 @@ final class FlushPace: UploadPacing, @unchecked Sendable {
     /// Arms the next upload a spacing after the one that left the backlog began. One already armed
     /// is left where it is: `uploadBegan` has put it no earlier than that.
     /**
-     The app opened: the next upload waits until `openSettle` from now, so the link or notification that opened it —
-     reported a moment after the open, by the code that receives it — rides in the same upload, and the server can put
-     the reason on the open. An upload already armed sooner is moved back to then; a trigger and a full batch, which do
-     not go through the pace, are not held.
+     The app opened: uploads wait until `openSettle` from now, so the link or notification that opened it — reported a
+     moment after the open, by the code that receives it — rides in the same upload, and the server can put the reason
+     on the open. An upload already armed sooner is moved back to then, and so is every other upload asked for meanwhile
+     — a trigger's, a full batch, the network coming back (`heldUntil`) — all but the one sent as the app goes to the
+     background.
      */
     func openSettling() {
         locked {
             let now = now()
             settleUntil = now + Int64(TreebarsConstants.openSettle * 1000)
             if let armed, armed < settleUntil { arm(at: settleUntil, now: now) }
+        }
+    }
+
+    var heldUntil: Int64 { locked { settleUntil } }
+
+    /**
+     What opened the app has been reported — the link, or the notification — so the hold has done its work. It ends now,
+     and the upload it had put off is due as it would have been without it: normally a debounce from now, so an app
+     opened from a link reports both a second after the link arrives rather than at the end of the hold.
+     */
+    func openCaused() {
+        locked {
+            let now = now()
+            guard settleUntil > now else { return }
+            settleUntil = 0
+            guard let armed else { return }
+            arm(at: min(armed, Self.due(now: now, lastBegan: lastBegan) { spacingNow() }), now: now)
         }
     }
 
@@ -205,8 +226,8 @@ final class FlushPace: UploadPacing, @unchecked Sendable {
      test key keeps almost none — somebody is watching a screen for the event they just caused.
      Otherwise it is what the last accepted upload named, or the default before any has, and never
      under the metered floor on a network paid for by use: each upload wakes the radio, and it stays
-     awake for seconds afterwards. Unless what the server named is a test key's pace, which it names for
-     a tester's devices: somebody is watching for those, on whatever network.
+     awake for seconds afterwards. Unless what the server named is a test key's pace: somebody is
+     watching for those events, on whatever network.
      */
     static func spacing(chosen: Int64?, testKey: Bool, named: Int64?, in conditions: FlushConditions) -> Int64 {
         if conditions.constrained { return Int64(TreebarsConstants.defaultFlushInterval * 1000) }

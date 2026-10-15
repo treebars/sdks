@@ -114,6 +114,12 @@ internal class EventUploader(
      * is not this — a retry's wake comes back by itself, and a refused key waits out its cooldown.
      */
     private val backlogLeft: () -> Unit = {},
+    /**
+     * Until when uploads are held, as epoch millis — an app open waiting for the link or notification that opened it
+     * ([FlushPace.holdingUntil]). A drain asked for before then is put off to then: a trigger's, a full batch, the
+     * network coming back. Only the one on the way to the background ([flushLeaving]) does not wait.
+     */
+    private val heldUntil: () -> Long = { 0L },
 ) {
 
     /**
@@ -214,6 +220,15 @@ internal class EventUploader(
     }
 
     /**
+     * The app is going to the background: [flushInTurn], and not held for an open — what is queued goes now, while the
+     * process still may.
+     */
+    suspend fun flushLeaving() {
+        val seen = drain(waitForLock = true, heedHold = false)
+        triggers?.observe(seen)
+    }
+
+    /**
      * A logged event, told to the uploader once it is on the queue. A listed one asks for a flush
      * `TRIGGER_FLUSH_DEBOUNCE_MS` from now.
      *
@@ -234,9 +249,18 @@ internal class EventUploader(
      *   before that flush has let go — collapsing into it would lose the retry it exists for until
      *   something else asked for a flush. A listed event's wake waits too, and the pace's: the drain
      *   either would collapse into may have sealed its last batch before the event reached the queue.
+     * @param heedHold false only for the app going to the background ([flushLeaving]).
      * @return the newest trigger version any answer in this drain carried.
      */
-    private suspend fun drain(waitForLock: Boolean): String? {
+    private suspend fun drain(waitForLock: Boolean, heedHold: Boolean = true): String? {
+        // Held for what opened the app: asked again when the hold ends, and nothing sent before it.
+        if (heedHold) {
+            val held = heldUntil()
+            if (held > clock()) {
+                scheduleWake(held)
+                return null
+            }
+        }
         if (waitForLock) flushLock.lock() else if (!flushLock.tryLock()) return null
 
         try {

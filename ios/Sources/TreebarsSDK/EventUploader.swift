@@ -164,7 +164,17 @@ actor EventUploader {
      the list once.
      */
     func flush() async {
+        await flush(heedingHold: true)
+    }
+
+    /// `heedingHold` false is the app going to the background: what is queued goes now, whatever an open was holding.
+    private func flush(heedingHold: Bool) async {
         guard !isFlushing else { return }
+        // Held for what opened the app: asked again when the hold ends, and nothing sent before it.
+        if heedingHold, let held = pace?.heldUntil, held > now() {
+            scheduleWake(at: held)
+            return
+        }
         isFlushing = true
         seenTriggersVersion = nil
         seenConfigVersion = nil
@@ -190,7 +200,7 @@ actor EventUploader {
         while isFlushing {
             await withCheckedContinuation { (turn: CheckedContinuation<Void, Never>) in waitingForTurn.append(turn) }
         }
-        await flush()
+        await flush(heedingHold: false)
     }
 
     /**

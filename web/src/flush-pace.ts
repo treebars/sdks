@@ -67,8 +67,8 @@ export const isTestKey = (writeKey: string): boolean => writeKey.startsWith('pk_
  * the app's own interval is the spacing, never tighter than the debounce. Otherwise a test key
  * keeps almost none — somebody is watching a screen for the event they just caused. Otherwise it is
  * what the last accepted upload named, or the default before any has, and never under the metered
- * floor on a network paid for by use — unless what the server named is a test key's pace, which it
- * names for a tester's devices: somebody is watching for those too, on whatever network.
+ * floor on a network paid for by use — unless what the server named is a test key's pace: somebody
+ * is watching for those events too, on whatever network.
  */
 export function flushSpacingMs(rule: FlushSpacingRule, conditions: FlushConditions): number {
   if (conditions.constrained) return DEFAULT_FLUSH_INTERVAL_MS;
@@ -201,14 +201,31 @@ export class FlushPace {
   }
 
   /**
-   * The app opened: the next upload waits until `OPEN_SETTLE_MS` from now, so the link or notification that opened it —
-   * reported a moment after the open, by the code that receives it — rides in the same upload, and the server can put
-   * the reason on the open. An upload already due sooner is moved back to then; a trigger and a full batch, which do not
-   * go through the pace, are not held.
+   * The app opened: uploads wait until `OPEN_SETTLE_MS` from now, so the link or notification that opened it — reported
+   * a moment after the open, by the code that receives it — rides in the same upload, and the server can put the reason
+   * on the open. An upload already due sooner is moved back to then, and so is every other upload asked for meanwhile —
+   * a trigger's, a full batch, the network coming back (`heldUntil`) — all but the one sent as the app leaves.
    */
   openSettling(): void {
     this.settleUntil = this.now() + OPEN_SETTLE_MS;
     if (this.due !== null && this.due < this.settleUntil) this.arm(this.settleUntil);
+  }
+
+  /** Until when an open holds uploads (`openSettling`), in epoch milliseconds; 0 or a moment past when none does. */
+  get heldUntil(): number {
+    return this.settleUntil;
+  }
+
+  /**
+   * What opened the app has been reported — the link, or the notification — so the hold has done its work. It ends
+   * now, and the upload it had put off is due as it would have been without it: normally a debounce from now, so an app
+   * opened from a link reports both a second after the link arrives rather than at the end of the hold.
+   */
+  openCaused(): void {
+    const now = this.now();
+    if (this.settleUntil <= now) return;
+    this.settleUntil = 0;
+    if (this.due !== null) this.arm(Math.min(this.due, flushDueAt(now, this.lastBegan, () => this.spacing())));
   }
 
   /**

@@ -174,6 +174,12 @@ export interface UploaderOptions {
    * running: that one says so itself when it ends.
    */
   backlogLeft?: () => void;
+  /**
+   * Until when uploads are held, in epoch milliseconds — an app open waiting for the link or notification that opened
+   * it (`FlushPace.heldUntil`). A flush asked for before then is put off to then: a trigger's, a full batch, the
+   * network coming back. Absent holds nothing.
+   */
+  heldUntil?: () => number;
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -254,6 +260,7 @@ export class Uploader {
   private accepted = false;
   private readonly spacingNamed: ((milliseconds: number) => void) | null;
   private readonly backlogLeft: (() => void) | null;
+  private readonly heldUntil: (() => number) | null;
   private state: UploaderState;
   private flushing = false;
   /** When the one wake is due, or zero when none is armed. */
@@ -276,6 +283,7 @@ export class Uploader {
     this.configSeen = options.configSeen ?? null;
     this.spacingNamed = options.spacingNamed ?? null;
     this.backlogLeft = options.backlogLeft ?? null;
+    this.heldUntil = options.heldUntil ?? null;
 
     this.state = this.store.load();
     /*
@@ -325,6 +333,12 @@ export class Uploader {
    */
   async flush(): Promise<void> {
     if (this.flushing) return;
+    // Held for what opened the app: asked again when the hold ends, and nothing sent before it.
+    const held = this.heldUntil?.() ?? 0;
+    if (held > this.now()) {
+      this.requestWake(held);
+      return;
+    }
     this.flushing = true;
     this.seenTriggersVersion = null;
     this.seenConfigVersion = null;

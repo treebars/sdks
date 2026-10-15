@@ -608,12 +608,12 @@ public final class Treebars {
         // Anything left over from the previous run goes out immediately.
         Task {
             /*
-             * Asked before the open is queued: whether this run found anything of the last one's still to send. Then it
-             * goes at once, as it always did; so does a device's first launch, which is how it registers. Otherwise the
-             * open holds the first upload a moment (`openSettling`), so the link or notification that launched the app —
-             * handed over by the app's own code just after this — rides with it.
+             * A device's first launch goes at once, which is how it registers. Otherwise the open holds the first upload a
+             * moment (`openSettling`), so the link or notification that launched the app — handed over by the app's own
+             * code just after this — rides with it. Anything the last run left waits for it too: sent at once, it carried
+             * the open away from the link that caused it, and the open said nothing about why it happened.
              */
-            let leftOver = await (instance.uploader?.pending() ?? 0) > 0
+            let goesAtOnce = instance.firstLaunch || !autoTrackLifecycle
             if autoTrackLifecycle {
                 instance.foregroundedAt = Date().timeIntervalSince1970
                 await instance.enqueue(
@@ -621,16 +621,14 @@ public final class Treebars {
                     properties: Self.lifecycleProperties(["is_first_launch": instance.firstLaunch])
                 )
             }
+            // Before the push receipts below, so a notification that launched the app ends the hold it is the reason for.
+            if !goesAtOnce { instance.pace?.openSettling() }
             // A push tapped or swiped while the app was not running, before this call (`PendingPushReceipts`).
             for receipt in PendingPushReceipts.drain() {
                 await instance.enqueue(eventName: receipt.eventName, properties: receipt.properties)
             }
             await instance.reportDeviceContext()
-            if instance.firstLaunch || leftOver || !autoTrackLifecycle {
-                await instance.uploader?.flush()
-            } else {
-                instance.pace?.openSettling()
-            }
+            if goesAtOnce { await instance.uploader?.flush() }
             /*
              * One sync on the way up, so a message queued while the app was closed is in
              * hand before the first screen finishes drawing. Not awaited by `initialize`,
@@ -744,6 +742,8 @@ public final class Treebars {
             answer(nil)
             return
         }
+        // Held while the link is asked about: the open it caused waits for the answer, and rides with it.
+        shared.pace?.openSettling()
         Task {
             let resolved = await LinkResolve.ask(address)
             if let resolved { reportLinkOpened(resolved.clickId, url: url) }
@@ -3674,15 +3674,25 @@ public final class Treebars {
      the flush a listed one asks for finds it there.
 
      Then the pace, which arms one upload for whatever was queued: a listed event goes by the
-     uploader's own wake and the rest by this one. And a full batch waits for neither.
+     uploader's own wake and the rest by this one. And a full batch waits for neither — only for an
+     open's hold, like every upload.
+
+     What opened the app — the link, or the notification — ends that hold: the open it was waiting
+     for rides in the next upload, and that upload need not wait any longer.
      */
     private func announceQueued(_ names: [String]) async {
         for name in names { await uploader?.eventLogged(name) }
         if !names.isEmpty { pace?.eventLogged() }
+        if names.contains(where: Self.opensTheApp) { pace?.openCaused() }
 
         if await queue.count >= Self.batchSize {
             await uploader?.flush()
         }
+    }
+
+    /// The events that say why the app opened, which an open's hold waits for (`FlushPace.openCaused`).
+    private static func opensTheApp(_ name: String) -> Bool {
+        name == TreebarsConstants.linkOpenedEvent || name == "notification_opened"
     }
 
     /**

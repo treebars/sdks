@@ -80,14 +80,14 @@ final class FlushPaceScenariosTests: XCTestCase {
         for scenario in scenarios {
             try await run(scenario, fixture: fixture)
         }
-        XCTAssertEqual(scenarios.count, 22, "the fixture changed size; check every scenario still runs here")
+        XCTAssertEqual(scenarios.count, 24, "the fixture changed size; check every scenario still runs here")
         XCTAssertTrue(problems.value.isEmpty, "\n" + problems.value.joined(separator: "\n"))
     }
 
     /// What a scenario or a step may say. Anything else is something this harness would otherwise
     /// ignore and pass — a new condition, a new kind of answer — so it is a failure instead.
     private static let scenarioKeys: Set<String> = ["id", "rule", "name", "key", "network", "flush_interval_ms", "batch_size", "queue", "steps"]
-    private static let stepKeys: Set<String> = ["do", "at", "events", "trigger", "responses", "expect"]
+    private static let stepKeys: Set<String> = ["do", "at", "events", "trigger", "cause", "responses", "expect"]
     private static let responseKeys: Set<String> = ["status", "flush_ms"]
 
     private static func event(_ id: String) -> [String: Any] {
@@ -222,6 +222,8 @@ final class FlushPaceScenariosTests: XCTestCase {
                     await queue.append(Self.event(event))
                     await uploader.eventLogged(event)
                     pace.eventLogged()
+                    // What opened the app — `link_opened`, `notification_opened` — ends an open's hold.
+                    if (step["cause"] as? Bool) == true { pace.openCaused() }
                     if await queue.count >= batchSize { await uploader.flush() }
                 }
             case "open":

@@ -1426,7 +1426,7 @@
     {
       "id": "FP-021",
       "rule": "metered",
-      "name": "a test key's second named by the server (a tester's devices) is kept on a metered network: somebody is watching",
+      "name": "a test key's second named by the server is kept on a metered network: somebody is watching",
       "network": "metered",
       "steps": [
         {
@@ -1540,6 +1540,110 @@
                 "events": [
                   "e1",
                   "e2"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-023",
+      "rule": "open",
+      "name": "a trigger logged during an open's hold waits for it, so it cannot carry the open away from its link",
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "open",
+          "at": 0
+        },
+        {
+          "do": "track",
+          "at": 500,
+          "events": [
+            "t1"
+          ],
+          "trigger": true
+        },
+        {
+          "do": "advance",
+          "at": 2499,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 2500,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1",
+                  "t1"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "FP-024",
+      "rule": "open",
+      "name": "the link that opened the app ends the hold: the open and the link go a second after the link",
+      "steps": [
+        {
+          "do": "track",
+          "at": 0,
+          "events": [
+            "e1"
+          ]
+        },
+        {
+          "do": "open",
+          "at": 0
+        },
+        {
+          "do": "track",
+          "at": 300,
+          "events": [
+            "c1"
+          ],
+          "cause": true
+        },
+        {
+          "do": "advance",
+          "at": 1299,
+          "expect": {
+            "sent": []
+          }
+        },
+        {
+          "do": "advance",
+          "at": 1300,
+          "responses": [
+            {
+              "status": 200
+            }
+          ],
+          "expect": {
+            "sent": [
+              {
+                "events": [
+                  "e1",
+                  "c1"
                 ]
               }
             ]

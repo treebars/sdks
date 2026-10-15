@@ -206,6 +206,7 @@ class FlushPaceScenariosTest(private val id: String) {
             triggers = triggers,
             uploadBegan = pace::uploadBegan,
             backlogLeft = pace::backlogLeft,
+            heldUntil = pace::holdingUntil,
         )
 
         /* Moves virtual time to `at`, running every wake that falls due on the way, in order. */
@@ -237,6 +238,8 @@ class FlushPaceScenariosTest(private val id: String) {
                         // What the host does once an event is on the queue, in its order (`announceQueued`).
                         uploader.eventLogged(name)
                         pace.eventQueued()
+                        // What opened the app — `link_opened`, `notification_opened` — ends an open's hold.
+                        if (step.optBoolean("cause", false)) pace.openCaused()
                         if (runBlocking { queue.size() } >= batchSize) {
                             val job = CoroutineScope(dispatcher + handler).launch { uploader.flush() }
                             scheduler.runCurrent()
