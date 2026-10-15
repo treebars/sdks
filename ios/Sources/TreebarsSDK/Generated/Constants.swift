@@ -51,6 +51,7 @@ enum TreebarsConstants {
     static let flushSpacing: TimeInterval = 5
     static let flushSpacingMetered: TimeInterval = 5
     static let flushSpacingTest: TimeInterval = 1
+    static let openSettle: TimeInterval = 2.5
     /// The bounds on the spacing a response may name.
     static let flushSpacingMin: TimeInterval = 1
     static let flushSpacingMax: TimeInterval = 60
@@ -106,7 +107,7 @@ enum TreebarsConstants {
     static let maxDeepLinkPathLength = 512
     static let deferredDeepLinkWindowMs: Int64 = 24 * 60 * 60 * 1000
 
-    static let sdkVersion = "0.8.0"
+    static let sdkVersion = "0.8.1"
     static let sdkName = "treebars-ios"
     static let deviceIdPrefix = "dev_"
 

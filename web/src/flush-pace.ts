@@ -6,6 +6,7 @@ import {
   FLUSH_SPACING_MIN_MS,
   FLUSH_SPACING_MS,
   FLUSH_SPACING_TEST_MS,
+  OPEN_SETTLE_MS,
 } from './generated/constants';
 
 /**
@@ -144,6 +145,8 @@ export class FlushPace {
   private lastBegan: number | null = null;
   /** When the armed upload is due. Null when none is armed. */
   private due: number | null = null;
+  /** Until when an open holds the next upload (`openSettling`); 0 when nothing is held. */
+  private settleUntil = 0;
 
   constructor(options: FlushPaceOptions) {
     this.rule = {
@@ -198,6 +201,17 @@ export class FlushPace {
   }
 
   /**
+   * The app opened: the next upload waits until `OPEN_SETTLE_MS` from now, so the link or notification that opened it —
+   * reported a moment after the open, by the code that receives it — rides in the same upload, and the server can put
+   * the reason on the open. An upload already due sooner is moved back to then; a trigger and a full batch, which do not
+   * go through the pace, are not held.
+   */
+  openSettling(): void {
+    this.settleUntil = this.now() + OPEN_SETTLE_MS;
+    if (this.due !== null && this.due < this.settleUntil) this.arm(this.settleUntil);
+  }
+
+  /**
    * What the host calls when the wake it was asked for fires. Spent before it flushes, so the
    * upload it starts finds nothing armed to push out.
    */
@@ -212,7 +226,8 @@ export class FlushPace {
   }
 
   private arm(at: number): void {
-    this.due = at;
-    this.wake(at);
+    const held = Math.max(at, this.settleUntil);
+    this.due = held;
+    this.wake(held);
   }
 }

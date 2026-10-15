@@ -100,6 +100,10 @@ internal class FlushPace(
     @Volatile
     private var dueAt: Long? = null
 
+    /** Until when an open holds the next upload ([openSettling]); 0 when nothing is held. */
+    @Volatile
+    private var settleUntil: Long = 0L
+
     /**
      * Milliseconds until the armed upload, or null when none is armed. Clamped at zero: the wake
      * sleeps on a monotonic clock and this reads the wall clock, so the two can disagree by a moment.
@@ -125,6 +129,19 @@ internal class FlushPace(
      *
      * Nothing to do when an upload is armed already — it is held to the same spacing when it wakes.
      */
+    /**
+     * The app opened: the next upload waits until [TreebarsConstants.OPEN_SETTLE_MS] from now, so the link or
+     * notification that opened it — reported a moment after the open, by the code that receives it — rides in the same
+     * upload, and the server can put the reason on the open. An upload already armed sooner wakes, finds the hold and
+     * sleeps on to it; a trigger and a full batch, which do not go through the pace, are not held.
+     */
+    @Synchronized
+    fun openSettling() {
+        settleUntil = clock() + TreebarsConstants.OPEN_SETTLE_MS
+        val due = dueAt ?: return
+        if (due < settleUntil) dueAt = settleUntil
+    }
+
     @Synchronized
     fun backlogLeft() {
         if (dueAt != null) return
@@ -162,7 +179,7 @@ internal class FlushPace(
     private fun arm(soonest: Long) {
         armedUnder = conditions()
         val spaced = spacedUntil(clock())
-        val at = if (spaced != null && spaced > soonest) spaced else soonest
+        val at = maxOf(if (spaced != null && spaced > soonest) spaced else soonest, settleUntil)
         dueAt = at
         scope.launch {
             var target = at
@@ -185,10 +202,11 @@ internal class FlushPace(
      */
     @Synchronized
     private fun heldUntil(woke: Long): Long? {
-        val spaced = spacedUntil(clock())
-        if (spaced != null && spaced > woke) {
-            dueAt = spaced
-            return spaced
+        // The spacing since the last upload, or an open's hold, whichever ends later.
+        val held = maxOf(spacedUntil(clock()) ?: 0L, settleUntil)
+        if (held > woke) {
+            dueAt = held
+            return held
         }
         dueAt = null
         return null

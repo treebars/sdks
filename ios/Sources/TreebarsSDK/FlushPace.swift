@@ -69,6 +69,8 @@ final class FlushPace: UploadPacing, @unchecked Sendable {
     private var lastBegan: Int64?
     /// When the armed upload is due. Nil when none is armed.
     private var armed: Int64?
+    /// Until when an open holds the next upload (`openSettling`); 0 when nothing is held.
+    private var settleUntil: Int64 = 0
     private var wake: (any UploadWake)?
     /// Which arming the live wake belongs to, so one that was replaced and fires anyway does nothing.
     private var armings = 0
@@ -130,6 +132,20 @@ final class FlushPace: UploadPacing, @unchecked Sendable {
 
     /// Arms the next upload a spacing after the one that left the backlog began. One already armed
     /// is left where it is: `uploadBegan` has put it no earlier than that.
+    /**
+     The app opened: the next upload waits until `openSettle` from now, so the link or notification that opened it —
+     reported a moment after the open, by the code that receives it — rides in the same upload, and the server can put
+     the reason on the open. An upload already armed sooner is moved back to then; a trigger and a full batch, which do
+     not go through the pace, are not held.
+     */
+    func openSettling() {
+        locked {
+            let now = now()
+            settleUntil = now + Int64(TreebarsConstants.openSettle * 1000)
+            if let armed, armed < settleUntil { arm(at: settleUntil, now: now) }
+        }
+    }
+
     func uploadLeftBacklog() {
         locked {
             guard armed == nil, let lastBegan else { return }
@@ -149,7 +165,8 @@ final class FlushPace: UploadPacing, @unchecked Sendable {
     }
 
     /// Called under the lock.
-    private func arm(at: Int64, now: Int64) {
+    private func arm(at soonest: Int64, now: Int64) {
+        let at = max(soonest, settleUntil)
         wake?.cancel()
         armings += 1
         let arming = armings

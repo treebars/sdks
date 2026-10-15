@@ -60,6 +60,7 @@ class FlushPacePolicyFixtureTest {
             "spacing_ms" to TreebarsConstants.FLUSH_SPACING_MS,
             "spacing_metered_ms" to TreebarsConstants.FLUSH_SPACING_METERED_MS,
             "spacing_test_ms" to TreebarsConstants.FLUSH_SPACING_TEST_MS,
+            "open_settle_ms" to TreebarsConstants.OPEN_SETTLE_MS,
             // A device saving power or data keeps the interval every device kept before there was a pace.
             "spacing_constrained_ms" to TreebarsConstants.DEFAULT_FLUSH_INTERVAL_MS,
             "spacing_min_ms" to TreebarsConstants.FLUSH_SPACING_MIN_MS,
@@ -242,6 +243,11 @@ class FlushPaceScenariosTest(private val id: String) {
                             assertTrue("$label: the flush did not finish on the virtual clock", job.isCompleted)
                         }
                     }
+                    scheduler.runCurrent()
+                }
+                // The host's open, which the pace holds the next upload for.
+                "open" -> {
+                    pace.openSettling()
                     scheduler.runCurrent()
                 }
                 "advance" -> Unit

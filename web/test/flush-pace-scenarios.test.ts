@@ -18,6 +18,7 @@ import {
   FLUSH_SPACING_MIN_MS,
   FLUSH_SPACING_MS,
   FLUSH_SPACING_TEST_MS,
+  OPEN_SETTLE_MS,
   STORAGE_KEYS,
   TRIGGER_FLUSH_DEBOUNCE_MS,
 } from '../src/generated/constants';
@@ -50,7 +51,7 @@ interface ScriptedResponse {
 }
 
 interface Step {
-  do: 'track' | 'advance';
+  do: 'track' | 'advance' | 'open';
   at: number;
   events?: string[];
   /** The events of this step are on the stored trigger list. */
@@ -121,6 +122,7 @@ describe('the pace agrees with the shared scenarios', () => {
       spacing_ms: FLUSH_SPACING_MS,
       spacing_metered_ms: FLUSH_SPACING_METERED_MS,
       spacing_test_ms: FLUSH_SPACING_TEST_MS,
+      open_settle_ms: OPEN_SETTLE_MS,
       // A device saving data keeps the interval every device kept before there was a faster pace.
       spacing_constrained_ms: DEFAULT_FLUSH_INTERVAL_MS,
       spacing_min_ms: FLUSH_SPACING_MIN_MS,
@@ -234,6 +236,8 @@ describe('the pace agrees with the shared scenarios', () => {
       responses = [...(step.responses ?? [])];
 
       await advanceTo(step.at);
+      // `TreebarsWeb`'s open, which the pace holds the next upload for.
+      if (step.do === 'open') pace.openSettling();
       if (step.do === 'track') {
         for (const id of step.events ?? []) {
           const name = step.trigger ? LISTED : UNLISTED;

@@ -710,6 +710,13 @@ object Treebars {
 
         // Anything left over from the previous process goes out immediately.
         scope.launch {
+            /*
+             * Asked before the open is queued: whether this process found anything of the last one's still to send.
+             * Then it goes at once, as it always did; so does a device's first launch, which is how it registers.
+             * Otherwise the open holds the first upload a moment (`openSettling`), so the link or notification that
+             * launched the app — handed over by the app's own code just after this — rides with it.
+             */
+            val leftOver = queued.size() + core.pendingEvents() > 0
             if (autoTrackLifecycle) {
                 foregroundedAt = System.currentTimeMillis()
                 val opened = lifecycleProperties("is_first_launch" to firstLaunch)
@@ -725,7 +732,7 @@ object Treebars {
                 considerInApp(EVENT_APP_OPEN, opened, eventDimensions(snapshot.device, snapshot.screen, sdkName()))
             }
             reportDeviceContext()
-            uploader.flush()
+            if (firstLaunch || leftOver || !autoTrackLifecycle) uploader.flush() else paced.openSettling()
             // So a message queued while the app was closed is in hand before the first
             // screen finishes drawing.
             syncInApp()
@@ -790,7 +797,7 @@ object Treebars {
         }
         val clickId = clickIdFrom(url)
         if (clickId != null) {
-            reportLinkOpened(clickId)
+            reportLinkOpened(clickId, url)
             answer(null)
             return
         }
@@ -801,7 +808,7 @@ object Treebars {
         }
         scope.launch {
             val resolved = kotlinx.coroutines.withContext(Dispatchers.IO) { LinkResolve.ask(address) }
-            resolved?.let { reportLinkOpened(it.clickId) }
+            resolved?.let { reportLinkOpened(it.clickId, url) }
             answer(resolved?.deepLinkPath)
         }
     }
@@ -810,14 +817,23 @@ object Treebars {
      * `idle_seconds` and not a verdict. The gap is a fact only the device holds; whether it makes
      * this a re-engagement is one rule, server side, exactly as the referrer's encoding is.
      */
-    private fun reportLinkOpened(clickId: String) {
+    private fun reportLinkOpened(clickId: String, url: String?) {
         track(
             TreebarsConstants.LINK_OPENED_EVENT,
-            mapOf(
-                "click_id" to clickId,
-                "idle_seconds" to idleAtLaunchMs / 1000L,
-            ),
+            buildMap {
+                put("click_id", clickId)
+                put("idle_seconds", idleAtLaunchMs / 1000L)
+                // Where it opened, without its query: an app's own links can carry a token, and the click id is above.
+                openUrl(url)?.let { put("open_url", it) }
+            },
         )
+    }
+
+    /** A URL as an open names it: scheme, host and path — never the query or fragment, which can carry a secret. */
+    private fun openUrl(url: String?): String? {
+        val parsed = runCatching { android.net.Uri.parse(url ?: return null) }.getOrNull() ?: return null
+        val scheme = parsed.scheme ?: return null
+        return "$scheme://${parsed.host ?: ""}${parsed.path ?: ""}".take(512)
     }
 
     /**
@@ -3925,6 +3941,9 @@ object Treebars {
                     // Skipped for the launch itself, which `app_open` already reported.
                     if (backgroundedAt > 0) {
                         track(EVENT_APP_FOREGROUND, lifecycleProperties("background_ms" to now - backgroundedAt))
+                        // The link or notification that brought the app back is reported a moment after this:
+                        // hold the upload so it rides with the open (`openSettling`).
+                        pace?.openSettling()
 
                         /*
                          * And re-state the context, because coming back is the one moment

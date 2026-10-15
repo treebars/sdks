@@ -607,6 +607,13 @@ public final class Treebars {
 
         // Anything left over from the previous run goes out immediately.
         Task {
+            /*
+             * Asked before the open is queued: whether this run found anything of the last one's still to send. Then it
+             * goes at once, as it always did; so does a device's first launch, which is how it registers. Otherwise the
+             * open holds the first upload a moment (`openSettling`), so the link or notification that launched the app —
+             * handed over by the app's own code just after this — rides with it.
+             */
+            let leftOver = await (instance.uploader?.pending() ?? 0) > 0
             if autoTrackLifecycle {
                 instance.foregroundedAt = Date().timeIntervalSince1970
                 await instance.enqueue(
@@ -619,7 +626,11 @@ public final class Treebars {
                 await instance.enqueue(eventName: receipt.eventName, properties: receipt.properties)
             }
             await instance.reportDeviceContext()
-            await instance.uploader?.flush()
+            if instance.firstLaunch || leftOver || !autoTrackLifecycle {
+                await instance.uploader?.flush()
+            } else {
+                instance.pace?.openSettling()
+            }
             /*
              * One sync on the way up, so a message queued while the app was closed is in
              * hand before the first screen finishes drawing. Not awaited by `initialize`,
@@ -722,7 +733,7 @@ public final class Treebars {
             return
         }
         if let clickId = shared.clickId(from: url) {
-            reportLinkOpened(clickId)
+            reportLinkOpened(clickId, url: url)
             answer(nil)
             return
         }
@@ -735,7 +746,7 @@ public final class Treebars {
         }
         Task {
             let resolved = await LinkResolve.ask(address)
-            if let resolved { reportLinkOpened(resolved.clickId) }
+            if let resolved { reportLinkOpened(resolved.clickId, url: url) }
             answer(resolved?.deepLinkPath)
         }
     }
@@ -744,14 +755,20 @@ public final class Treebars {
      * `idle_seconds` and not a verdict: the gap is a fact only the device holds, and what it
      * means is one rule on the server, exactly as the referrer's encoding is.
      */
-    private static func reportLinkOpened(_ clickId: String) {
-        track(
-            TreebarsConstants.linkOpenedEvent,
-            properties: [
-                "click_id": clickId,
-                "idle_seconds": Int(shared.idleAtLaunch),
-            ]
-        )
+    private static func reportLinkOpened(_ clickId: String, url: URL?) {
+        var properties: [String: Any] = [
+            "click_id": clickId,
+            "idle_seconds": Int(shared.idleAtLaunch),
+        ]
+        // Where it opened, without its query: an app's own links can carry a token, and the click id is above.
+        if let opened = openURL(url) { properties["open_url"] = opened }
+        track(TreebarsConstants.linkOpenedEvent, properties: properties)
+    }
+
+    /// A URL as an open names it: scheme, host and path — never the query or fragment, which can carry a secret.
+    private static func openURL(_ url: URL?) -> String? {
+        guard let url, let scheme = url.scheme else { return nil }
+        return String("\(scheme)://\(url.host ?? "")\(url.path)".prefix(512))
     }
 
     /**
@@ -3802,6 +3819,9 @@ public final class Treebars {
 
             // Skipped for the launch itself, which `app_open` already reported.
             guard self.backgroundedAt > 0 else { return }
+            // The link or notification that brought the app back is reported a moment after this: hold the upload so
+            // it rides with the open (`openSettling`).
+            self.pace?.openSettling()
             Task {
                 await self.enqueue(
                     eventName: DefaultEvent.appForeground,

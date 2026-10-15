@@ -61,6 +61,7 @@ export const FLUSH_DEBOUNCE_MS = 1000;
 export const FLUSH_SPACING_MS = 5000;
 export const FLUSH_SPACING_METERED_MS = 5000;
 export const FLUSH_SPACING_TEST_MS = 1000;
+export const OPEN_SETTLE_MS = 2500;
 /** The bounds on the spacing a response may name. */
 export const FLUSH_SPACING_MIN_MS = 1000;
 export const FLUSH_SPACING_MAX_MS = 60000;
@@ -118,7 +119,7 @@ export const ACQUISITION = {
 /** Play's cap on the referrer it hands back, so a page cannot build one the store will truncate. */
 export const MAX_REFERRER_LENGTH = 1000;
 
-export const SDK_VERSION = '0.8.0';
+export const SDK_VERSION = '0.8.1';
 export const SDK_NAME = 'treebars-web';
 export const DEVICE_ID_PREFIX = 'dev_';
 

@@ -51,6 +51,7 @@ internal object TreebarsConstants {
     const val FLUSH_SPACING_MS = 5000L
     const val FLUSH_SPACING_METERED_MS = 5000L
     const val FLUSH_SPACING_TEST_MS = 1000L
+    const val OPEN_SETTLE_MS = 2500L
     /** The bounds on the spacing a response may name. */
     const val FLUSH_SPACING_MIN_MS = 1000L
     const val FLUSH_SPACING_MAX_MS = 60000L
@@ -107,7 +108,7 @@ internal object TreebarsConstants {
     /** Our click id's parameter, read out of the URL that opened the app. */
     const val ACQUISITION_CLICK_ID_PARAM = "tbrs_click_id"
 
-    const val SDK_VERSION = "0.8.0"
+    const val SDK_VERSION = "0.8.1"
     const val SDK_NAME = "treebars-android"
     const val DEVICE_ID_PREFIX = "dev_"
 

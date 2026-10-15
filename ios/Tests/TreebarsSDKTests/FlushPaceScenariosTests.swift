@@ -59,6 +59,7 @@ final class FlushPaceScenariosTests: XCTestCase {
             "spacing_ms": TreebarsConstants.flushSpacing * 1000,
             "spacing_metered_ms": TreebarsConstants.flushSpacingMetered * 1000,
             "spacing_test_ms": TreebarsConstants.flushSpacingTest * 1000,
+            "open_settle_ms": TreebarsConstants.openSettle * 1000,
             // A device saving power or data keeps the interval the public `defaultFlushInterval` names.
             "spacing_constrained_ms": TreebarsConstants.defaultFlushInterval * 1000,
             "spacing_min_ms": TreebarsConstants.flushSpacingMin * 1000,
@@ -79,7 +80,7 @@ final class FlushPaceScenariosTests: XCTestCase {
         for scenario in scenarios {
             try await run(scenario, fixture: fixture)
         }
-        XCTAssertEqual(scenarios.count, 21, "the fixture changed size; check every scenario still runs here")
+        XCTAssertEqual(scenarios.count, 22, "the fixture changed size; check every scenario still runs here")
         XCTAssertTrue(problems.value.isEmpty, "\n" + problems.value.joined(separator: "\n"))
     }
 
@@ -223,6 +224,9 @@ final class FlushPaceScenariosTests: XCTestCase {
                     pace.eventLogged()
                     if await queue.count >= batchSize { await uploader.flush() }
                 }
+            case "open":
+                // The host's open, which the pace holds the next upload for.
+                pace.openSettling()
             case "advance":
                 break
             default:
