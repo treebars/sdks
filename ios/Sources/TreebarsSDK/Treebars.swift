@@ -145,7 +145,9 @@ public final class Treebars {
     /// The person's `optOut()`, in `UserDefaults`: their answer travels with a backup, as it should.
     private static let optedOutKey = "treebars.opted_out"
 
-    private var writeKey: String?
+    /// Internal rather than private for `ScreenStampTests`, which records on an instance of its own: an event is
+    /// dropped while there is no key, and `initialize` is the only other thing that sets one.
+    var writeKey: String?
     /// `initialize`'s `env`, kept as passed. Nothing reads it.
     private var env: TreebarsEnv = .production
     /*
@@ -705,9 +707,15 @@ public final class Treebars {
      **A Universal Link on one of the app's `linkHosts` is asked about.** iOS opens the app holding
      only the link's address — `https://open.example.com/summer-sale` — with no click id and no path, so
      the core asks that address what it means, reports the return with the click id it gets back, and
-     hands `completion` the link's deep-link path to route on, if it is a path inside the app. Any other
-     URL is not asked, answers `completion` with nil, and the app routes it as it always did.
-     `completion` runs on the main queue, once.
+     hands `completion` the link's deep-link path to route on, if it is a path inside the app. A link
+     that carries values after its key — `https://open.example.com/spring/u_123` — is asked whole, and
+     the path comes back with the values filled in. Any other URL is not asked, answers `completion`
+     with nil, and the app routes it as it always did. `completion` runs on the main queue, once.
+
+     **A link that only goes to a website opens the browser.** The app opened because it claims the
+     link's domain, not because the link was for it: the core opens the website the link names — https,
+     and never one of `linkHosts`, which would only open the app again — hands `completion` nil, and
+     reports no app open.
 
      **A return never becomes an install.** The install was decided once, when the app first arrived;
      the server keeps that decision, leaves the person's acquisition source alone, and emits a
@@ -744,8 +752,21 @@ public final class Treebars {
         }
         // Held while the link is asked about: the open it caused waits for the answer, and rides with it.
         shared.pace?.openSettling()
+        let hosts = shared.linkHosts
         Task {
-            let resolved = await LinkResolve.ask(address)
+            let resolved = await LinkResolve.ask(address, hosts: hosts)
+            /*
+             A website-only link on a domain the app claims: the browser was where it was going, so the
+             person goes there, and the app routes nothing. Not an app open either — the link's author
+             said it never opens the app, and the tap is already counted as the click it was.
+             */
+            if let web = resolved?.webURL {
+                #if canImport(UIKit)
+                await MainActor.run { UIApplication.shared.open(web) }
+                #endif
+                answer(nil)
+                return
+            }
             if let resolved { reportLinkOpened(resolved.clickId, url: url) }
             answer(resolved?.deepLinkPath)
         }
@@ -765,10 +786,14 @@ public final class Treebars {
         track(TreebarsConstants.linkOpenedEvent, properties: properties)
     }
 
-    /// A URL as an open names it: scheme, host and path — never the query or fragment, which can carry a secret.
+    /**
+     A URL as an open names it: scheme, host and path — never the query or fragment, which can carry a
+     secret, and on one of the app's link hosts only the link's key, never the values after it.
+     */
     private static func openURL(_ url: URL?) -> String? {
         guard let url, let scheme = url.scheme else { return nil }
-        return String("\(scheme)://\(url.host ?? "")\(url.path)".prefix(512))
+        let path = LinkResolve.openedPath(url.path, host: url.host, hosts: shared.linkHosts)
+        return String("\(scheme)://\(url.host ?? "")\(path)".prefix(512))
     }
 
     /**
@@ -1283,7 +1308,7 @@ public final class Treebars {
     func contextToken(from client: BackendClient?) async -> UUID? {
         guard !optedOut, let client else { return nil }
 
-        let advance = await advanceSession(countsAsEvent: false)
+        let advance = await advanceSession(countsAsEvent: false, screen: currentScreen)
         await announceQueued(advance.queued)
         /*
          * A session this opened is offered to in-app as the event path offers one. Nothing else will: the purchase's
@@ -1368,13 +1393,19 @@ public final class Treebars {
     ///
     /// Moving to a different screen takes down the nudges `showNudge()` allowed on the last one.
     public static func screen(_ name: String, properties: [String: Any] = [:]) {
-        let previous = shared.currentScreen
-        shared.currentScreen = name
+        shared.recordScreen(name, properties: properties)
+    }
+
+    /// `screen` on this instance. The public door is static and acts on `shared`; this one is what a test of an
+    /// instance of its own calls.
+    func recordScreen(_ name: String, properties: [String: Any] = [:]) {
+        let previous = currentScreen
+        currentScreen = name
         // The nudges belonged to the screen they were allowed on: a new screen asks for its own with `showNudge`.
         #if canImport(UIKit)
-        if previous != name, shared.nudgePlace != nil {
-            shared.nudgePlace = nil
-            Task { @MainActor in shared.closeNudges() }
+        if previous != name, nudgePlace != nil {
+            nudgePlace = nil
+            Task { @MainActor in self.closeNudges() }
         }
         #endif
 
@@ -1382,7 +1413,7 @@ public final class Treebars {
         if let previous { enriched["previous_screen"] = previous }
         for (key, value) in properties { enriched[key] = value }
 
-        track(DefaultEvent.screenView, properties: enriched)
+        record(DefaultEvent.screenView, properties: enriched)
     }
 
     /// Records an event named `eventName` with `properties`, in the current session and under whoever
@@ -1391,13 +1422,25 @@ public final class Treebars {
     /// The event is written to the on-disk queue and uploaded with the next batch; `flush()` sends it
     /// now. An event logged before `initialize` is dropped, and nothing is recorded while opted out.
     public static func track(_ eventName: String, properties: [String: Any] = [:]) {
-        guard !shared.optedOut else { return }
+        shared.record(eventName, properties: properties)
+    }
+
+    /// `track` on this instance, for the same reason as `recordScreen`.
+    func record(_ eventName: String, properties: [String: Any] = [:]) {
+        guard !optedOut else { return }
+        /*
+         * The screen is read here, on the caller's thread, and not when the Task below builds the event. An app that
+         * tracks an event and then reports the next screen in the same breath tracked that event on the screen it was
+         * leaving; read later, the event would carry whichever screen had been reported by the time the Task ran —
+         * running in order does not help, because `screen` sets the current screen before its own Task is queued.
+         */
+        let screen = currentScreen
         /*
          * Remembered until it lands, so a flush() on the next line waits for it (`InFlight`). In order: each call's work
          * starts after the last call's has finished, so events are recorded — and stamped — in the order the app made
          * them. Two Tasks started a moment apart are not obliged to run in that order, and two events could swap.
          */
-        shared.recording.runInOrder { await shared.enqueue(eventName: eventName, properties: properties) }
+        recording.runInOrder { await self.enqueue(eventName: eventName, properties: properties, screen: .logged(screen)) }
     }
 
     /// Registers a push token so campaigns and journeys can reach this device.
@@ -3542,14 +3585,23 @@ public final class Treebars {
     /// identity has to be cleared synchronously — a logout that is only eventually true is
     /// a bug the caller cannot see — but this event still belongs to the person who left.
     /// The same shape `session_end` already uses with `timestamp` and `detached`.
+    ///
+    /// `screen` is the screen the event happened on: `log` passes the one current when the app called it. The SDK's
+    /// own events are recorded from Tasks of their own and take the one current when they get here.
     private func enqueue(
         eventName: String,
         properties: [String: Any],
-        userIdOverride: String? = nil
+        userIdOverride: String? = nil,
+        screen stamp: EventScreen = .now
     ) async {
         // Every event passes through here — the app's, the lifecycle's, the AdServices answer. Before
         // the `defer` below, so an opted-out event is not offered to in-app either.
         guard !optedOut else { return }
+        let screen: String?
+        switch stamp {
+        case .now: screen = currentScreen
+        case .logged(let name): screen = name
+        }
         /*
          * Guarded so reporting a display cannot recurse into considering one.
          *
@@ -3595,7 +3647,8 @@ public final class Treebars {
         // Both boundaries go out before the event that revealed them, so the events
         // read in the order things happened: the old session closes, the new one
         // opens, and only then does the event that triggered all this land inside it.
-        let advance = await advanceSession(countsAsEvent: true)
+        // The session an event opens is stamped as the event is, so the two agree on where it happened.
+        let advance = await advanceSession(countsAsEvent: true, screen: screen)
         var appended = advance.queued
         openedSession = advance.opened?.properties
         sessionDimensions = advance.opened?.dimensions
@@ -3604,6 +3657,7 @@ public final class Treebars {
             eventName: eventName,
             properties: properties,
             sessionId: advance.sessionId,
+            screen: screen,
             userIdOverride: userIdOverride
         )
         await queue.append(event)
@@ -3611,6 +3665,13 @@ public final class Treebars {
         eventDimensions = Self.stampedDimensions(event)
 
         await announceQueued(appended)
+    }
+
+    /// Which screen an event is stamped with: the one current when the app logged it, or, for an event this SDK
+    /// records by itself, the one current when it is queued.
+    enum EventScreen {
+        case now
+        case logged(String?)
     }
 
     /// What moving the session put on the queue, and the session it moved to.
@@ -3631,7 +3692,7 @@ public final class Treebars {
      copy of these lines would be two definitions of a session boundary, free to drift, on the one path where a drift
      files revenue under a session that no longer exists.
      */
-    private func advanceSession(countsAsEvent: Bool) async -> SessionAdvance {
+    private func advanceSession(countsAsEvent: Bool, screen: String?) async -> SessionAdvance {
         let touch = await sessionManager.touch(countsAsEvent: countsAsEvent)
         // A config key keeps its answer for a session: this is where a new one is heard of.
         remoteConfig?.sessionStarted(touch.sessionId)
@@ -3648,6 +3709,7 @@ public final class Treebars {
                     // the app at nine and reopened at noon had a session that ended at
                     // nine.
                     timestamp: Date(timeIntervalSince1970: expired.endedAt),
+                    screen: screen,
                     detached: true
                 )
             )
@@ -3659,7 +3721,8 @@ public final class Treebars {
             let sessionEvent = build(
                 eventName: DefaultEvent.sessionStart,
                 properties: sessionProperties,
-                sessionId: touch.sessionId
+                sessionId: touch.sessionId,
+                screen: screen
             )
             await queue.append(sessionEvent)
             advance.queued.append(DefaultEvent.sessionStart)
@@ -3713,7 +3776,9 @@ public final class Treebars {
         event.filter { TreebarsConstants.inAppDimensions.contains($0.key) }
     }
 
-    /// - Parameter detached: suppresses the current screen. Only `session_end` uses it:
+    /// - Parameter screen: the screen the event happened on, read by the caller at the moment
+    ///   the event was recorded — never read here, after the awaits that led here.
+    /// - Parameter detached: suppresses the screen. Only `session_end` uses it:
     ///   that event is stamped into a session that closed before this process started, so
     ///   labelling it with a screen the user is looking at now would be a false statement
     ///   about where it happened.
@@ -3722,6 +3787,7 @@ public final class Treebars {
         properties: [String: Any],
         sessionId: String,
         timestamp: Date = Iso8601.nextEvent(),
+        screen: String?,
         detached: Bool = false,
         userIdOverride: String? = nil
     ) -> [String: Any] {
@@ -3737,7 +3803,7 @@ public final class Treebars {
         ]
 
         if let owner = userIdOverride ?? userId { event["user_id"] = owner }
-        if !detached, let currentScreen { event["screen_name"] = currentScreen }
+        if !detached, let screen { event["screen_name"] = screen }
         // Includes platform_type. Cached after the first call, so this is a dictionary
         // copy per event rather than a fresh read of UIDevice and the bundle.
         DeviceInfo.dimensions().forEach { event[$0.key] = $0.value }

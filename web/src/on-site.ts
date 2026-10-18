@@ -1,7 +1,8 @@
-import type { InAppButton, InAppContent, InAppMessage, InAppTokens } from './in-app';
-import { inAppBodyMode, inAppShape } from './in-app';
-import { hostMarkup, type FrameMode } from './bridge-host';
+import type { InAppButton, InAppContent, InAppFold, InAppMessage, InAppTokens } from './in-app';
+import { inAppBodyMode, inAppFloats, inAppFold, inAppShape } from './in-app';
+import { hostMarkup, pageTheme, type FrameMode, type MarkupHost } from './bridge-host';
 import { IN_APP_CONTAINER } from './generated/bridge';
+import { inAppHostEnv, inAppStripBox, type HostInsets, type InAppEnv } from './host-env';
 import { PUSH_ASKABLE_STATUSES } from './generated/constants';
 
 /*
@@ -259,6 +260,8 @@ export interface BuiltInView {
   onShown?: (drawn?: { pushedDown?: number }) => void;
   /** An HTML body that could not be shown after all. */
   onFailed?: (reason: InAppFailureReason) => void;
+  /** The person folded the message away (`true`) or opened it again (`false`); neither is a dismissal or a display. */
+  onMinimise?: (minimised: boolean) => void;
   /**
    * An HTML body's `treebars` bridge: each call, answered by the SDK. `close` takes the message down without reporting
    * anything — the caller reports what it means.
@@ -301,18 +304,132 @@ export function countdownText(to: string, now = Date.now()): string {
 /**
  * Where a modal sits on the page: a popup grid — top, middle or bottom by start, center or end — and its own width,
  * clamped between the placement bounds and to the window less the gutters, so a 600-pixel
- * popup on a phone is the phone's width. `inset-inline-*` so a right-to-left page's start is its right. Absent, it is
+ * popup on a phone is the phone's width, and its own distance from the edges it is pinned to. `inset-inline-*` so a
+ * right-to-left page's start is its right. Absent, it is
  * the centred modal every host draws.
  */
-function modalPlacement(placement: InAppContent['placement'] | undefined): string {
+function modalPlacement(placement: InAppContent['placement'] | undefined, reserve = 0): string {
   const { modal, placement: bounds } = IN_APP_CONTAINER;
   const wanted = placement?.width ? Math.min(Math.max(placement.width, bounds.minWidth), bounds.maxWidth) : modal.maxWidth;
   const vertical = placement?.vertical ?? 'middle';
   const horizontal = placement?.horizontal ?? 'center';
-  const y = vertical === 'top' ? `top:${modal.gutter}px` : vertical === 'bottom' ? `bottom:${modal.gutter}px` : 'top:50%';
-  const x = horizontal === 'start' ? `inset-inline-start:${modal.gutter}px` : horizontal === 'end' ? `inset-inline-end:${modal.gutter}px` : 'left:50%';
+  const width = `min(calc(100% - ${modal.gutter * 2}px),${wanted}px)`;
+  // The author's distance from the pinned edges, or the gutter. Kept inside the window whatever its size: across, no
+  // further than the window less the message's width; down, no further than leaves room for the message under it.
+  const across = `min(${distance(placement?.offset_x, modal.gutter)}px,calc(100% - ${width}))`;
+  const down = `max(0px,min(${distance(placement?.offset_y, modal.gutter)}px,calc(100% - ${modal.gutter + bounds.minRoom}px)))`;
+  const y = vertical === 'top' ? `top:${down}` : vertical === 'bottom' ? `bottom:${down}` : 'top:50%';
+  const x = horizontal === 'start' ? `inset-inline-start:${across}` : horizontal === 'end' ? `inset-inline-end:${across}` : 'left:50%';
   const shift = `translate(${horizontal === 'center' ? '-50%' : '0'},${vertical === 'middle' ? '-50%' : '0'})`;
-  return `position:fixed;${y};${x};transform:${shift};width:min(calc(100% - ${modal.gutter * 2}px),${wanted}px);max-height:calc(100% - ${modal.gutter * 2}px)`;
+  const tall = vertical === 'middle' ? `calc(100% - ${modal.gutter * 2}px)` : `calc(100% - ${down} - ${modal.gutter + reserve}px)`;
+  return `position:fixed;${y};${x};transform:${shift};width:${width};max-height:${tall}`;
+}
+
+/**
+ * Whether the person may fold this message away: a modal that leaves the page usable, pinned to a corner of the page —
+ * as its presentation says for a document, as its placement says for an older message.
+ */
+export function foldable(content: InAppContent | undefined): boolean {
+  return inAppFold(content) !== null;
+}
+
+interface Fold {
+  folded: () => boolean;
+  /** `byPerson` false for a message drawn folded, which the person did not do and is not recorded. */
+  fold: (byPerson: boolean) => void;
+  /** The tab and the control go with the message. */
+  remove: () => void;
+}
+
+/** Where the – control and the tab sit: the edge the message is pinned to, and its side as a CSS inset property. */
+interface FoldCorner {
+  edge: 'top' | 'bottom';
+  /** `inset-inline-start` / `-end` where the corner is the author's word, `left` / `right` where it was measured. */
+  side: string;
+}
+
+/**
+ * The – control and what the message folds into. The control sits outside the message on its inner side, where it
+ * cannot cover the message's own way out; `inside` puts it in the corner beside the close control, for a body whose box
+ * scrolls. It is placed in `anchor` — the message's own box, or a box drawn over where an HTML page laid its container
+ * out. Folded, the message is hidden — still drawn, still holding its place — and a tab with its name sits at its edge
+ * (or a round button in its corner), and a press opens it again. The tab's words are set as text, never markup.
+ */
+function foldControls(
+  root: ShadowRoot | HTMLElement,
+  hide: HTMLElement[],
+  anchor: HTMLElement,
+  how: InAppFold,
+  corner: FoldCorner,
+  title: string,
+  tokens: InAppTokens,
+  inside: boolean,
+  onChange: (minimised: boolean) => void,
+): Fold {
+  const { edge, side } = corner;
+  let folded = false;
+  const handle = el(
+    'button',
+    inside
+      ? `position:absolute;top:8px;inset-inline-end:40px;border:0;background:none;font:600 18px/1 ${tokens.font_family};color:${tokens.on_surface_muted};cursor:pointer;padding:6px`
+      : `position:absolute;${edge === 'bottom' ? 'bottom' : 'top'}:calc(100% + 6px);${side}:12px;width:32px;height:26px;border:0;border-radius:8px;background:${tokens.surface};color:${tokens.on_surface};box-shadow:0 4px 14px rgba(0,0,0,.2);font:600 16px/1 ${tokens.font_family};cursor:pointer;padding:0;pointer-events:auto`,
+    '–',
+  );
+  handle.type = 'button';
+  handle.setAttribute('aria-label', 'Minimise');
+  handle.title = 'Minimise';
+  const label = (how.label ?? '').trim() || title || 'Open';
+  const round = how.look === 'round';
+  const tab = el(
+    'button',
+    `position:fixed;z-index:2147483647;display:none;align-items:center;justify-content:center;gap:8px;border:0;cursor:pointer;background:${tokens.accent};color:${tokens.on_accent};box-shadow:0 6px 18px rgba(0,0,0,.28);font:600 14px/1.2 ${tokens.font_family};` +
+      (round
+        ? `${edge}:16px;${side}:16px;width:48px;height:48px;border-radius:50%;padding:0;font-size:20px`
+        : `${edge}:0;${side}:16px;max-width:calc(100% - 32px);padding:9px 15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:${edge === 'bottom' ? '10px 10px 0 0' : '0 0 10px 10px'}`),
+  );
+  tab.type = 'button';
+  tab.textContent = round ? (Array.from(label)[0] ?? '•') : `${label} ${edge === 'bottom' ? '⌃' : '⌄'}`;
+  tab.setAttribute('aria-label', `Open: ${label}`);
+  const hidden = anchor === hide[0] ? hide : [...hide, anchor];
+  const fold = (byPerson: boolean) => {
+    if (folded) return;
+    folded = true;
+    for (const node of hidden) node.style.visibility = 'hidden';
+    tab.style.display = 'inline-flex';
+    // Focus follows the person's own press to what is left of the message; a message drawn folded takes none.
+    if (byPerson) tab.focus();
+    if (byPerson) onChange(true);
+  };
+  handle.addEventListener('click', () => fold(true));
+  tab.addEventListener('click', () => {
+    if (!folded) return;
+    folded = false;
+    tab.style.display = 'none';
+    for (const node of hidden) node.style.visibility = 'visible';
+    handle.focus();
+    onChange(false);
+  });
+  anchor.appendChild(handle);
+  root.appendChild(tab);
+  return {
+    folded: () => folded,
+    fold,
+    remove: () => {
+      handle.remove();
+      tab.remove();
+    },
+  };
+}
+
+/** A typed message's corner, from its placement: the author's own words, so start and end follow the page's direction. */
+function placedCorner(content: InAppContent): FoldCorner {
+  return { edge: content.placement?.vertical === 'top' ? 'top' : 'bottom', side: content.placement?.horizontal === 'start' ? 'inset-inline-start' : 'inset-inline-end' };
+}
+
+/** A distance in whole pixels within the placement bounds, or `fallback` for one that is absent or not a number. */
+function distance(value: number | undefined, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.min(Math.max(Math.round(value), 0), IN_APP_CONTAINER.placement.maxOffset);
 }
 
 /** What Tab can reach, in document order: a dialog's first stop is the first of these. */
@@ -389,10 +506,12 @@ export function renderBuiltIn(view: BuiltInView): () => void {
   };
   // Escape closes what can be closed, as the markup renderer's does; a message that cannot be dismissed ignores it.
   const onKey = (event: KeyboardEvent) => {
-    if (event.key === 'Escape' && content?.dismissible !== false) dismiss();
+    if (event.key === 'Escape' && content?.dismissible !== false && !fold?.folded()) dismiss();
   };
 
-  const backdrop = shape === 'banner' ? null : el('div', `position:fixed;inset:0;background:${tokens.backdrop};z-index:2147483646`);
+  // A modal asked to float has no backdrop and does not hold the page: what is under it stays usable.
+  const floating = inAppFloats(content);
+  const backdrop = shape === 'banner' || floating ? null : el('div', `position:fixed;inset:0;background:${tokens.backdrop};z-index:2147483646`);
   if (backdrop && content?.dismissible !== false) backdrop.addEventListener('click', () => dismiss());
   const position = content?.position ?? 'bottom';
   // A top banner that moves the page down is in the page's flow, the body's first child, rather than over it.
@@ -403,9 +522,10 @@ export function renderBuiltIn(view: BuiltInView): () => void {
       : shape === 'fullscreen'
         ? 'position:fixed;inset:0;padding:32px 24px;overflow:auto;display:flex;flex-direction:column;justify-content:center;align-items:center'
         : `${modalPlacement(content?.placement)};overflow:auto;padding:24px;box-sizing:border-box;border-radius:${tokens.radius}px;box-shadow:0 12px 40px rgba(0,0,0,.25)`;
+  let fold: Fold | null = null;
   const box = el('div', `${boxCss};z-index:2147483647;box-sizing:border-box;background:${tokens.surface};color:${tokens.on_surface};font:15px/1.5 ${tokens.font_family}`);
   box.setAttribute('role', 'dialog');
-  box.setAttribute('aria-modal', shape === 'banner' ? 'false' : 'true');
+  box.setAttribute('aria-modal', shape === 'banner' || floating ? 'false' : 'true');
   // A dialog with a name: a screen reader announces the title as it opens, rather than only "dialog".
   if (message.content.title) box.setAttribute('aria-label', message.content.title);
   /*
@@ -482,21 +602,26 @@ export function renderBuiltIn(view: BuiltInView): () => void {
     }
     box.appendChild(inner);
   }
+  // A typed body's box scrolls, so its – sits inside, beside the close control.
+  const how = inAppFold(content);
+  if (content && how) fold = foldControls(root, [box], box, how, placedCorner(content), message.content.title ?? '', tokens, true, (minimised) => view.onMinimise?.(minimised));
 
   if (backdrop) root.appendChild(backdrop);
   root.appendChild(box);
   if (pushDown) document.body.insertBefore(host, document.body.firstChild);
   else document.body.appendChild(host);
   document.addEventListener('keydown', onKey);
-  // A modal takes the keyboard: the page behind is inert and focus starts on the message's first control. A banner
-  // interrupts nothing and leaves focus where the person had it.
-  if (shape !== 'banner') {
+  // A modal takes the keyboard: the page behind is inert and focus starts on the message's first control. A banner, and
+  // a modal with no backdrop, interrupt nothing and leave focus where the person had it.
+  if (shape !== 'banner' && !floating) {
     release = holdFocus(host);
     focusFirst(box);
   }
 
+  if (fold && how?.start) fold.fold(false);
   const auto = extras?.display?.auto_dismiss_seconds;
-  if (auto) timers.push(setTimeout(() => dismiss('auto'), auto * 1000));
+  // A folded message is the person's to open or close: it does not close itself while folded.
+  if (auto) timers.push(setTimeout(() => !fold?.folded() && dismiss('auto'), auto * 1000));
   view.onShown?.(pushDown && typeof box.getBoundingClientRect === 'function' ? { pushedDown: Math.round(box.getBoundingClientRect().height) } : undefined);
   return close;
 }
@@ -529,58 +654,174 @@ function stackHeight(stack: HTMLElement, besides: HTMLElement): number {
   return total;
 }
 
+/** A device whose screen is touched: there an on-screen keyboard shrinks the visual viewport, and the stage with it. */
+function touchDevice(): boolean {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+}
+
+const NO_INSETS: HostInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+
 /**
- * An HTML body: the markup in a sandboxed frame with the `treebars` bridge, sized by the container spec
- * (`IN_APP_CONTAINER`), and nothing of the SDK's drawn over it — no close control, no padding. The markup carries its
- * own way out (the editor warns when it does not); Escape and a click on the dim still close a dismissible one, so a
- * template whose script broke cannot trap somebody on a site.
+ * An HTML body: the markup in a sandboxed frame with the `treebars` bridge, and nothing of the SDK's drawn around it — no
+ * backdrop, no surface, no corners, no shadow, no close control. The page draws all of that itself, so what an author
+ * sees in the editor is what a visitor sees.
  *
- * Hidden until the bridge says it is running, and a fitted shape until its height is known: what appears is the message
- * at its size, never a blank box that fills in or jumps.
+ * - A stage message — a modal, a sheet, a full screen, a canvas — is a transparent frame over the whole window; on a
+ *   touch device it is pinned to the visual viewport, so an on-screen keyboard shrinks the stage and the page lays itself
+ *   out above it. The page closes itself from its own scrim; the rest of the site is inert while it is up.
+ * - A strip — a banner, a nudge — is a transparent frame at its edge, as tall as the page says up to its cap. The page
+ *   pads its container with room for its shadow, and that room is part of the frame: a frame cannot pass a click to
+ *   the page beneath it.
+ * - The safe-area insets are read in this document by a probe — inside a frame, `env(safe-area-inset-*)` is always 0 —
+ *   and handed to the page with the rest of the environment, again whenever the window changes.
+ *
+ * Hidden until the page has laid itself out — a stage when it reports where its container is, a strip once its height
+ * is known — and then revealed with `shown`, which starts the page's own entrance. The markup carries its own way out;
+ * Escape still closes a dismissible message that interrupts, so a template whose script broke cannot trap somebody.
  */
 function renderMarkup(view: BuiltInView, tokens: InAppTokens): () => void {
   const { message } = view;
   const content = message.content.in_app;
-  const shape = inAppShape(content);
-  const nudge = shape === 'nudge';
-  const edge: 'top' | 'bottom' = content?.position === 'top' ? 'top' : 'bottom';
+  const presentation = content?.presentation;
+  const layout = content?.layout;
+  // The presentation Treebars wrote beside the markup; a message without one is read from its layout.
+  const strip = presentation?.mode ? presentation.mode === 'strip' : layout === 'banner' || layout === 'nudge';
+  const nudge = strip && (presentation?.floating ?? layout === 'nudge');
+  const edge: 'top' | 'bottom' = (presentation?.edge ?? content?.position) === 'top' ? 'top' : 'bottom';
+  const placed = content?.placement?.horizontal;
+  const corner: 'start' | 'end' | null =
+    nudge && deviceClass() !== 'mobile' ? (presentation?.web?.corner ?? (placed === 'start' || placed === 'end' ? placed : null)) : null;
   // A nudge in a corner on a device wide enough for one; on a phone every nudge is a full-width strip.
-  const corner: 'start' | 'end' | null = nudge && deviceClass() !== 'mobile' && (content?.placement?.horizontal === 'start' || content?.placement?.horizontal === 'end') ? content.placement.horizontal : null;
-  const pushDown = shape === 'banner' && content?.position === 'top' && content?.placement?.push_down === true;
-  const transparent = shape === 'fullscreen' && content?.transparent === true;
-  const dismissible = content?.dismissible !== false;
+  const pushDown = strip && !nudge && edge === 'top' && (presentation?.web?.push_down ?? content?.placement?.push_down) === true;
+  const dismissible = presentation?.dismissible ?? content?.dismissible !== false;
   const direction = content?.direction === 'rtl' || content?.direction === 'ltr' ? content.direction : undefined;
   const timers: ReturnType<typeof setTimeout>[] = [];
 
   const host = document.createElement('div');
   host.setAttribute('data-treebars-in-app', message.delivery_id);
   const root = host.attachShadow ? host.attachShadow({ mode: 'open' }) : host;
+  const probe = el(
+    'div',
+    'position:fixed;top:0;left:0;width:0;height:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)',
+  );
 
-  const backdrop = shape === 'banner' || nudge || transparent ? null : el('div', `position:fixed;inset:0;background:${tokens.backdrop};z-index:2147483646;visibility:hidden`);
-  const { banner } = IN_APP_CONTAINER;
-  const boxCss = nudge
-    ? // In the stack's flow: as tall as the content up to its share of the window, and the one thing here that takes a touch.
-      `position:relative;height:0;max-height:${IN_APP_CONTAINER.nudge.maxHeightShare * 100}vh;background:${tokens.surface};box-shadow:0 4px 24px rgba(0,0,0,.18);pointer-events:auto${corner ? `;border-radius:${tokens.radius}px` : ''}`
-    : shape === 'fullscreen'
-      ? `position:fixed;inset:0;background:${transparent ? 'transparent' : tokens.surface}`
-      : shape === 'banner'
-        ? `${pushDown ? 'position:relative;width:100%' : `position:fixed;left:0;right:0;${content?.position === 'top' ? 'top:0' : 'bottom:0'}`};height:0;max-height:${banner.maxHeightShare * 100}vh;background:${tokens.surface};box-shadow:0 4px 24px rgba(0,0,0,.18)`
-        : `${modalPlacement(content?.placement)};height:0;border-radius:${tokens.radius}px;background:${tokens.surface};box-shadow:0 12px 40px rgba(0,0,0,.25)`;
-  const box = el('div', `${boxCss};z-index:2147483647;overflow:hidden;visibility:hidden`);
+  const { banner, nudge: nudges } = IN_APP_CONTAINER;
+  const boxCss = !strip
+    ? 'position:fixed;inset:0'
+    : nudge
+      ? // In the stack's flow: as tall as the content up to its share of the window, and the one thing here that takes a touch.
+        `position:relative;height:0;max-height:${nudges.maxHeightShare * 100}vh;pointer-events:auto`
+      : `${pushDown ? 'position:relative;width:100%' : `position:fixed;left:0;right:0;${edge}:0`};height:0;max-height:${banner.maxHeightShare * 100}vh`;
+  const box = el('div', `${boxCss};z-index:2147483647;overflow:hidden;visibility:hidden;background:transparent`);
   box.setAttribute('role', 'dialog');
-  box.setAttribute('aria-modal', shape === 'banner' || nudge ? 'false' : 'true');
+  /*
+   * A modal with nothing behind it leaves the page usable (stage's web placement): its frame is clipped to where the page
+   * laid its container out, so a click beside it reaches the site, and it takes neither the keyboard nor the focus.
+   */
+  const floating = !strip && inAppFloats(content);
+  const how = floating ? inAppFold(content) : null;
+  box.setAttribute('aria-modal', strip || floating ? 'false' : 'true');
   if (message.content.title) box.setAttribute('aria-label', message.content.title);
+
+  // On a touch device the stage is the visual viewport: a keyboard shrinks it rather than covering the page's fields.
+  const viewport = !strip && touchDevice() ? (window.visualViewport ?? null) : null;
 
   let closed = false;
   let shown = false;
   let working: FrameMode | null = null;
   let release = () => {};
+  let markup: MarkupHost | null = null;
+  let fold: Fold | null = null;
+  // Over where the page laid its container out, for a modal that floats: what the – control is placed against.
+  const anchor = floating ? el('div', 'position:fixed;z-index:2147483647;pointer-events:none;visibility:hidden') : null;
+
+  /**
+   * A floating modal's frame, clipped to its container and the room its shadow takes, so the rest of the window is the
+   * site's again; the – control drawn against the container once its place is known.
+   */
+  const placeFloat = (container: { x: number; y: number; w: number; h: number }) => {
+    if (!floating || !anchor || closed) return;
+    const frame = typeof box.getBoundingClientRect === 'function' ? box.getBoundingClientRect() : null;
+    if (!frame || frame.width <= 0 || frame.height <= 0) return;
+    const bleed = IN_APP_CONTAINER.strip.bleed;
+    const top = Math.max(0, container.y - bleed);
+    const left = Math.max(0, container.x - bleed);
+    const right = Math.max(0, frame.width - (container.x + container.w) - bleed);
+    const bottom = Math.max(0, frame.height - (container.y + container.h) - bleed);
+    box.style.clipPath = `inset(${top}px ${right}px ${bottom}px ${left}px)`;
+    Object.assign(anchor.style, { left: `${frame.left + container.x}px`, top: `${frame.top + container.y}px`, width: `${container.w}px`, height: `${container.h}px` });
+    if (how && !fold) {
+      // Measured, not the author's words: the page placed the container, and the corner is the one it is nearest.
+      const corner: FoldCorner = {
+        edge: container.y + container.h / 2 < frame.height / 2 ? 'top' : 'bottom',
+        side: container.x + container.w / 2 < frame.width / 2 ? 'left' : 'right',
+      };
+      fold = foldControls(root, [box], anchor, how, corner, message.content.title ?? '', tokens, false, (minimised) => view.onMinimise?.(minimised));
+    }
+    if (!fold?.folded()) anchor.style.visibility = box.style.visibility;
+  };
+
+  /** The insets the probe reads, in CSS pixels; none where the browser has no notch, or no way to ask. */
+  const insets = (): HostInsets => {
+    if (typeof getComputedStyle !== 'function') return NO_INSETS;
+    const style = getComputedStyle(probe);
+    const px = (value: string) => {
+      const number = Number.parseFloat(value);
+      return Number.isFinite(number) ? number : 0;
+    };
+    return { top: px(style.paddingTop), right: px(style.paddingRight), bottom: px(style.paddingBottom), left: px(style.paddingLeft) };
+  };
+
+  const environment = (): InAppEnv => {
+    const window_ = viewport ? { width: viewport.width, height: viewport.height } : { width: window.innerWidth || 0, height: window.innerHeight || 0 };
+    const safe = insets();
+    let frame = null;
+    if (strip) {
+      // Where the strip is once it has a height; where it will be before.
+      const rect = typeof box.getBoundingClientRect === 'function' ? box.getBoundingClientRect() : null;
+      frame = rect && rect.height > 0 ? { x: rect.left, y: rect.top, w: rect.width, h: rect.height } : inAppStripBox({ window: window_, safe, edge, floating: nudge, contentHeight: null });
+    }
+    const device = deviceClass();
+    return inAppHostEnv({
+      host: 'web',
+      device: device === 'mobile' ? 'phone' : device,
+      theme: pageTheme(),
+      // A browser's own zoom is already in its CSS pixels.
+      textScale: 1,
+      shown,
+      window: window_,
+      safe,
+      frame,
+      keyboard: { height: 0, ms: 0 },
+    });
+  };
+
+  /** The stage pinned to the visual viewport, and the page told what it now is. */
+  const moved = () => {
+    if (closed) return;
+    if (viewport) {
+      Object.assign(box.style, {
+        top: `${viewport.offsetTop}px`,
+        left: `${viewport.offsetLeft}px`,
+        width: `${viewport.width}px`,
+        height: `${viewport.height}px`,
+        right: 'auto',
+        bottom: 'auto',
+      });
+    }
+    markup?.update();
+  };
+
   const close = () => {
     if (closed) return;
     closed = true;
     for (const timer of timers) clearTimeout(timer);
     document.removeEventListener('keydown', onKey);
-    markup.destroy();
+    window.removeEventListener('resize', moved);
+    viewport?.removeEventListener('resize', moved);
+    viewport?.removeEventListener('scroll', moved);
+    markup?.destroy();
+    fold?.remove();
     const stack = host.parentElement;
     host.remove();
     // The last nudge at an edge takes its empty stack with it.
@@ -595,10 +836,9 @@ function renderMarkup(view: BuiltInView, tokens: InAppTokens): () => void {
   // Escape is for what interrupts: a nudge interrupts nothing, and closes by its own control. Pressed inside the frame it
   // never reaches this document, so the shim forwards it (`_key`) and it arrives here as the same key.
   const escape = (key: string) => {
-    if (key === 'Escape' && shown && dismissible && !nudge) dismiss();
+    if (key === 'Escape' && shown && dismissible && !nudge && !fold?.folded()) dismiss();
   };
   const onKey = (event: KeyboardEvent) => escape(event.key);
-  if (backdrop && dismissible) backdrop.addEventListener('click', () => dismiss());
 
   const reveal = () => {
     if (shown || closed) return;
@@ -606,27 +846,44 @@ function renderMarkup(view: BuiltInView, tokens: InAppTokens): () => void {
      * A nudge that would take its edge past its share of the window waits instead: taken down unspent, and asked again
      * at the next event — by when another may have closed. Three at a fifth each would be most of a phone.
      */
-    if (nudge && stackHeight(nudgeStack(edge, corner), host) + box.getBoundingClientRect().height > IN_APP_CONTAINER.nudge.stackShare * window.innerHeight) {
+    if (nudge && stackHeight(nudgeStack(edge, corner), host) + box.getBoundingClientRect().height > nudges.stackShare * window.innerHeight) {
       close();
       view.onFailed?.('no_room');
       return;
     }
     shown = true;
-    box.style.visibility = 'visible';
-    if (backdrop) backdrop.style.visibility = 'visible';
-    // A modal takes the keyboard once it is on screen: the page behind inert, and focus into the message, where the
-    // shim puts it on the first control. A banner and a nudge leave focus where it was.
-    if (box.getAttribute('aria-modal') === 'true') {
+    // Drawn folded: the tab appears in its place, and the display is counted all the same.
+    if (fold && how?.start) fold.fold(false);
+    else box.style.visibility = 'visible';
+    // `shown` in the environment starts the page's own entrance; nothing of ours fades.
+    markup?.update();
+    // A stage takes the keyboard once it is on screen: the page behind inert, and focus into the message, where the shim
+    // puts it on the first control. A strip, and a modal that floats, leave focus where it was.
+    if (!strip && !floating) {
       release = holdFocus(host);
-      markup.focus();
+      markup?.focus();
     }
     if (working) view.frame?.remember(working);
     view.onShown?.(pushDown ? { pushedDown: Math.round(box.getBoundingClientRect().height) } : undefined);
     const auto = content?.display?.auto_dismiss_seconds;
-    if (auto) timers.push(setTimeout(() => dismiss('auto'), auto * 1000));
+    // A folded message is the person's to open or close: it does not close itself while folded.
+    if (auto) timers.push(setTimeout(() => !fold?.folded() && dismiss('auto'), auto * 1000));
   };
 
-  const markup = hostMarkup({
+  root.appendChild(probe);
+  root.appendChild(box);
+  if (anchor) root.appendChild(anchor);
+  // A nudge joins its edge's stack, the newest nearest the middle of the screen; everything else sits on the body.
+  if (nudge) nudgeStack(edge, corner).appendChild(host);
+  else if (pushDown) document.body.insertBefore(host, document.body.firstChild);
+  else document.body.appendChild(host);
+  if (viewport) {
+    viewport.addEventListener('resize', moved);
+    viewport.addEventListener('scroll', moved);
+    moved();
+  }
+
+  markup = hostMarkup({
     html: content?.html ?? '',
     direction,
     title: message.content.title || 'Message',
@@ -634,18 +891,27 @@ function renderMarkup(view: BuiltInView, tokens: InAppTokens): () => void {
     frameUrl: view.frame?.url ?? null,
     mode: view.frame?.mode ?? 'srcdoc',
     handle: (method, args) => (view.bridge ? view.bridge(method, args, close) : { ok: false, reason: 'unsupported' }),
+    environment,
     onReady: (mode) => {
       working = mode;
-      if (shape === 'fullscreen') reveal();
-      // A page that never reports its height is shown at the cap rather than never.
-      else timers.push(setTimeout(() => {
-        if (box.style.height === '0px') box.style.height = '100%';
-        reveal();
-      }, 1000));
+      // A page that never reports its box or its height is shown at the cap rather than never.
+      timers.push(
+        setTimeout(() => {
+          if (strip && box.style.height === '0px') box.style.height = '100%';
+          reveal();
+        }, 1000),
+      );
+    },
+    onLayout: (container) => {
+      placeFloat(container);
+      // A stage is laid out once the page says where its container is.
+      if (!strip && working) reveal();
+      if (anchor && !fold?.folded()) anchor.style.visibility = box.style.visibility;
     },
     onHeight: (height) => {
-      if (shape === 'fullscreen') return;
+      if (!strip) return;
       box.style.height = `${Math.ceil(height)}px`;
+      markup?.update();
       if (working) reveal();
     },
     onBlocked: () => {
@@ -660,13 +926,8 @@ function renderMarkup(view: BuiltInView, tokens: InAppTokens): () => void {
     device: deviceClass(),
   });
 
-  if (backdrop) root.appendChild(backdrop);
-  root.appendChild(box);
-  // A nudge joins its edge's stack, the newest nearest the middle of the screen; everything else sits on the body.
-  if (nudge) nudgeStack(edge, corner).appendChild(host);
-  else if (pushDown) document.body.insertBefore(host, document.body.firstChild);
-  else document.body.appendChild(host);
   document.addEventListener('keydown', onKey);
+  window.addEventListener('resize', moved);
   return close;
 }
 

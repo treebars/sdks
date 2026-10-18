@@ -1465,7 +1465,7 @@ final class InAppNativeHost {
         // The system's own parts — the menu, the date wheel, the keyboard — in the appearance the message was drawn in.
         window.overrideUserInterfaceStyle = plan.appearance == "dark" ? .dark : .light
         window.rootViewController = controller
-        window.passes = { [weak self] hit in self?.passes(hit) ?? true }
+        window.passes = { [weak self] hit, _ in self?.passes(hit) ?? true }
         window.accessibilityViewIsModal = plan.shape != "banner"
         self.window = window
         window.isHidden = false

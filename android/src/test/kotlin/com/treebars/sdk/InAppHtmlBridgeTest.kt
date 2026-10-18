@@ -28,15 +28,11 @@ class InAppHtmlBridgeTest {
         for (i in 0 until cases.length()) {
             val case = cases.getJSONObject(i)
             val options = case.getJSONObject("options")
-            val insets = options.optJSONObject("insets")?.let { BridgeInsets(it.getInt("top"), it.getInt("right"), it.getInt("bottom"), it.getInt("left")) }
             val built = BridgeDocument.build(
                 case.getString("html"),
-                options.getString("host"),
                 options.getString("nonce"),
                 if (options.isNull("direction")) null else options.optString("direction").takeIf { it.isNotEmpty() },
-                insets,
-                if (options.isNull("device")) null else options.optString("device").takeIf { it.isNotEmpty() },
-                if (options.isNull("orientation")) null else options.optString("orientation").takeIf { it.isNotEmpty() },
+                env(options.getJSONObject("env")),
             )
             assertEquals(case.getString("name"), case.getString("document"), built)
         }
@@ -169,4 +165,23 @@ class InAppHtmlBridgeTest {
     }
 
     private object UNANSWERED
+
+    companion object {
+        /** An environment as the fixtures write one. */
+        internal fun env(json: JSONObject): InAppEnv {
+            val safe = json.getJSONObject("safe")
+            val keyboard = json.getJSONObject("keyboard")
+            return InAppEnv(
+                host = json.getString("host"),
+                device = json.getString("device"),
+                orientation = json.getString("orientation"),
+                theme = json.getString("theme"),
+                safe = BridgeInsets(safe.getInt("top"), safe.getInt("right"), safe.getInt("bottom"), safe.getInt("left")),
+                keyboardHeight = keyboard.getInt("height"),
+                keyboardMs = keyboard.getInt("ms"),
+                textScale = json.getDouble("textScale"),
+                shown = json.getBoolean("shown"),
+            )
+        }
+    }
 }

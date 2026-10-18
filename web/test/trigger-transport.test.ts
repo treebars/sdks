@@ -54,6 +54,12 @@ describe('the browser glue around the trigger flush', () => {
         return answer(request);
       }),
     );
+    /*
+     * Uploads go out uncompressed here. Gzip runs on a real stream that the fake clock does not drive, so an upload
+     * `init` compressed could land at any later tick: counted inside the trigger's second, it reads as a second upload
+     * the trigger made. What is under test is the timing of the trigger flush, and the parser above reads JSON bodies.
+     */
+    vi.stubGlobal('CompressionStream', undefined);
     vi.stubGlobal('navigator', { userAgent: 'vitest', language: 'en-GB', sendBeacon: () => true });
     vi.stubGlobal('document', Object.assign(new EventTarget(), { visibilityState: 'visible', title: 'Test', referrer: '' }));
     vi.stubGlobal(

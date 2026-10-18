@@ -101,6 +101,9 @@ internal object TreebarsConstants {
      */
     const val DEEP_LINK_PARAM = "tbrs_deep_link"
     const val MAX_DEEP_LINK_PATH_LENGTH = 512
+    /** A link's address: the most values after its key, and the longest one, in UTF-16 code units once decoded. */
+    const val MAX_LINK_PATH_VALUES = 6
+    const val MAX_LINK_VALUE_LENGTH = 256
     const val DEFERRED_DEEP_LINK_WINDOW_MS = 24L * 60 * 60 * 1000
 
     /** The evidence event a link opening an already-installed app sends. */
@@ -108,7 +111,7 @@ internal object TreebarsConstants {
     /** Our click id's parameter, read out of the URL that opened the app. */
     const val ACQUISITION_CLICK_ID_PARAM = "tbrs_click_id"
 
-    const val SDK_VERSION = "0.8.2"
+    const val SDK_VERSION = "0.10.0"
     const val SDK_NAME = "treebars-android"
     const val DEVICE_ID_PREFIX = "dev_"
 
@@ -148,6 +151,10 @@ internal object TreebarsConstants {
         "install_attributed",
         "link_opened",
         "reengagement_attributed",
+        "landing_viewed",
+        "landing_cta_tapped",
+        "landing_engaged",
+        "landing_form_submitted",
     )
 
     // The condition operator codes, and only the codes: what each one means is the evaluator's.

@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { hostMarkup } from '../src/bridge-host';
 
 /**
- * Which way the window is held: the frame's document is stamped with it, and a turn is told to the frame, whose shim
- * rewrites the rule — so a message drawn upright does not go on hiding its landscape half once the phone is held
- * sideways. What the shim then does with the message is tested with the shim, not here.
+ * Which way the window is held: the frame's document is stamped with it, and a turn is told to the frame as a new
+ * environment, whose shim rewrites the rule — so a message drawn upright does not go on hiding its landscape half once
+ * the phone is held sideways. What the shim then does with the message is tested with the shim, not here.
  */
 
 class FakeFrame {
@@ -77,7 +77,10 @@ describe('the web host, as the window turns', () => {
   });
 
   const turns = (frame: FakeFrame) =>
-    frame.posted.map((text) => JSON.parse(text) as { tb: string; orientation?: string }).filter((one) => one.orientation);
+    frame.posted
+      .map((text) => JSON.parse(text) as { tb: string; env?: { orientation: string } })
+      .filter((one) => one.env)
+      .map((one) => ({ tb: one.tb, orientation: one.env!.orientation }));
 
   it('tells the frame when the window turns, once per turn, with this display’s nonce', () => {
     const { frame, turn, ready } = held(true);

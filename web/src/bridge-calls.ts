@@ -254,6 +254,7 @@ export class BridgeDisplay {
     // Said by the shim, and answered by the frame host before it reaches here.
     _ready: () => OK,
     resize: () => OK,
+    _layout: () => OK,
     _key: () => OK,
 
     dismissMessage: (_args, close) => {

@@ -48,7 +48,9 @@ import {
 import {
   InAppStore,
   clickValues,
+  foldedFromStart,
   formKeeps,
+  inAppFold,
   inAppClickEndsMessage,
   inAppClickProperties,
   inAppReceipt,
@@ -278,6 +280,7 @@ export type {
   InAppContent,
   InAppHtmlAction,
   InAppMessage,
+  InAppPresentation,
   InAppShape,
   InAppTokens,
   InAppTrigger,
@@ -329,6 +332,8 @@ export interface InAppView {
   onShown?: (drawn?: { pushedDown?: number }) => void;
   /** The built-in renderer's: an HTML body could not be shown after all (`csp_blocked`). */
   onFailed?: (reason: InAppFailureReason) => void;
+  /** The built-in renderer's: the person folded the message away (`true`) or opened it again (`false`). */
+  onMinimise?: (minimised: boolean) => void;
   /**
    * An HTML body's `treebars` bridge: each call from the page, answered. A page drawing HTML itself can host the bridge
    * by handing its frame's calls here; `close` takes the message down without a report.
@@ -861,6 +866,8 @@ class TreebarsWeb {
   /** The two offers of a page open, and its end. Never rejects: nothing waits on it. */
   private async answerPageOpen(opening: PageOpening): Promise<void> {
     try {
+      // A message folded away on an earlier page is drawn folded first; it holds the screen, so nothing else opens over it.
+      if (this.redrawFolded()) opening.answered = true;
       this.answerOpening(opening);
       const sync = this.pageOpenSync();
       if (sync) {
@@ -1833,7 +1840,7 @@ class TreebarsWeb {
       if (!content || content.surface !== 'overlay') continue;
       if (isNudge(message)) continue;
       const screen = typeof document !== 'undefined' ? document.title : null;
-      if (!triggerMatches(content.trigger, eventName, properties, { screen, dimensions })) continue;
+      if (!this.triggerFires(message, eventName, properties, { screen, dimensions }, sessionId)) continue;
       // Already waiting for its moment: the trigger firing again is not a second message.
       if (this.pendingDisplay?.deliveryId === message.delivery_id) return true;
       const blocked = this.displayBlockedBy(message, sessionId);
@@ -1863,6 +1870,18 @@ class TreebarsWeb {
   }
 
   /**
+   * The shared trigger rule, and the web's one difference. A website records `app_open` on every page load, where an
+   * app records it once a launch, so a session-start message matched on every page of a visit and was drawn on each one
+   * until it was closed. It is a session's message: drawn at most once a session — still on a later page when it arrived
+   * after the session began, which is what a page open's sync is for.
+   */
+  private triggerFires(message: InAppMessage, eventName: string, properties: EventProperties, context: Parameters<typeof triggerMatches>[3], sessionId: string): boolean {
+    const trigger = message.content.in_app!.trigger;
+    if (trigger.kind === 'session_start' && this.inApp?.drawnInSession(message.delivery_id, sessionId)) return false;
+    return triggerMatches(trigger, eventName, properties, context);
+  }
+
+  /**
    * What draws an overlay on this page: the page's own function, this SDK's renderer (`'builtin'`), or null — the
    * page asked for nothing to be drawn, or this is not a document at all (a worker, a server render), where the
    * SDK's renderer has nothing to draw on.
@@ -1886,7 +1905,7 @@ class TreebarsWeb {
       if (!content || content.surface !== 'overlay' || !isNudge(message)) continue;
       if (this.nudges.has(message.delivery_id)) continue;
       const screen = typeof document !== 'undefined' ? document.title : null;
-      if (!triggerMatches(content.trigger, eventName, properties, { screen, dimensions })) continue;
+      if (!this.triggerFires(message, eventName, properties, { screen, dimensions }, sessionId)) continue;
       const blocked = this.displayBlockedBy(message, sessionId);
       if (blocked) {
         if (blocked !== 'done') this.reportFailure(message, blocked);
@@ -2079,7 +2098,9 @@ class TreebarsWeb {
     this.inAppPreview = null;
   }
 
-  private showInApp(message: InAppMessage, sessionId: string | null = null): void {
+  private showInApp(message: InAppMessage, sessionId: string | null = null, refold = false): void {
+    // Folded away on an earlier page: drawn folded again, and not a second display.
+    if (refold) message = foldedFromStart(message);
     const content = message.content.in_app;
     // A large body that never arrived: a message with nothing to draw is not drawn empty.
     if (content?.html_ref && !content.html) {
@@ -2116,6 +2137,10 @@ class TreebarsWeb {
     const onShown = (drawn?: { pushedDown?: number }) => {
       if (shown) return;
       shown = true;
+      if (refold) {
+        this.log(`in-app: ${message.delivery_id} drawn folded again, as the person left it`);
+        return;
+      }
       // A preview is shown and nothing more: no display counted, no cap spent, no event.
       if (previewing) {
         console.info('[treebars preview] shown; nothing it does is recorded.');
@@ -2123,6 +2148,8 @@ class TreebarsWeb {
       }
       this.nudgesInFlight.delete(message.delivery_id);
       this.inApp!.recordDisplay(message, sessionId);
+      // Drawn folded from the start: folded on the next page too, until the person opens it.
+      if (inAppFold(content)?.start) this.inApp!.setFolded(message.delivery_id, true);
       /*
        * "Any event is an opportunity; the first one after a sync wins" (see `triggerMatches`)
        * is only true if showing it also spends it. `recordDisplay` alone only marks a message
@@ -2150,6 +2177,15 @@ class TreebarsWeb {
       onDismiss: (reason) => display.dismiss(reason),
       onSubmit: (responses) => (previewing ? console.info('[treebars preview] form sent; not recorded.', responses) : this.inAppSubmitted(message, responses)),
       onShown,
+      onMinimise: (minimised) => {
+        if (previewing) {
+          console.info(`[treebars preview] ${minimised ? 'minimised' : 'opened again'}; not recorded.`);
+          return;
+        }
+        // Remembered for the next page of the site: folded there too, until opened again or closed.
+        this.inApp?.setFolded(message.delivery_id, minimised);
+        this.track(minimised ? 'in_app_minimised' : 'in_app_restored', inAppReceipt(message));
+      },
       onFailed: (reason) => {
         free();
         // A site whose policy refuses both frames refuses them on every try: spent here, not retried on every event.
@@ -2370,6 +2406,18 @@ class TreebarsWeb {
     },
   };
 
+  /**
+   * The message the person folded away on an earlier page, drawn folded again: with the SDK's own renderer only (a
+   * page drawing its own messages has no tab to show), and only when the screen is free. Returns whether it drew one.
+   */
+  private redrawFolded(): boolean {
+    if (!this.inApp || this.renderer !== 'builtin' || this.screenHeld() || this.pendingDisplay) return false;
+    const message = this.inApp.foldedMessage();
+    if (!message) return false;
+    this.showInApp(message, this.currentSessionId, true);
+    return this.presentingSince !== null;
+  }
+
   /** Whether an overlay is on screen and unanswered, within the hold — or for as long as it lasts, when pinned. */
   private screenHeld(): boolean {
     if (this.presentingSince === null) return false;
@@ -2386,6 +2434,8 @@ class TreebarsWeb {
 
   /** The slot this message took is free again: the screen for a modal, its place among the nudges for a nudge. */
   private freeFor(message: InAppMessage): void {
+    // Taken down — closed, spent or failed — is no longer folded away, so the next page does not draw its tab again.
+    this.inApp?.setFolded(message.delivery_id, false);
     if (isNudge(message)) {
       this.nudges.delete(message.delivery_id);
       this.nudgesInFlight.delete(message.delivery_id);

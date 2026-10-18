@@ -5,16 +5,19 @@ import android.app.Activity
 import android.app.Dialog
 import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.RectF
 import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowInsets
+import android.view.WindowInsetsAnimation
+import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.RenderProcessGoneDetail
@@ -54,38 +57,35 @@ internal object BridgeDocument {
     private val DOCTYPE = Regex("^\\s*<!doctype[^>]*>", RegexOption.IGNORE_CASE)
     private val IS_DOCUMENT = Regex("^\\s*(<!doctype\\b|<html\\b)", RegexOption.IGNORE_CASE)
     private val AUTHOR_DIRECTION = Regex("<(html|body)\\b[^>]*\\sdir\\s*=", RegexOption.IGNORE_CASE)
-    /** The device classes `data-tb-show` names, as the session rules do. */
-    private val DEVICE_CLASSES = setOf("mobile", "tablet", "desktop")
-    /** The ways a device is held that `data-tb-orientation` names. */
-    private val ORIENTATIONS = setOf("portrait", "landscape")
 
-    /** What hides the elements not for this orientation; the shim writes it again on a turn. */
+    /** What hides the elements not for this orientation; the shim writes it again when the environment changes. */
     fun orientationRule(orientation: String): String = "[data-tb-orientation]:not([data-tb-orientation~=\"$orientation\"]){display:none!important}"
 
     /**
      * The document a message's WebView is handed: the web SDK's document, spelled in Kotlin. A fragment is framed as the
-     * preview frames it; a whole document stays one, the policy and shim straight after its doctype. The insets ride as
-     * CSS variables (`--tb-safe-top` …) because `env(safe-area-inset-*)` is not something every Android WebView answers.
-     * The device class hides every `data-tb-show` element not listed for it — a rule in the document, so it holds with
-     * scripts off and nothing is drawn and taken back. The orientation hides every `data-tb-orientation` element not for
-     * the way the device is held, in a rule of its own that
-     * [InAppHtmlHost] has the shim rewrite when the device turns.
+     * preview frames it, with a viewport that never zooms into a focused field; a whole document stays one, the policy
+     * and shim straight after its doctype. The environment is in it from the first byte — the insets, keyboard and text
+     * scale as CSS variables in `<style id="tb-env">`, because `env(safe-area-inset-*)` is not something every Android
+     * WebView answers, and the host, device, orientation, theme and states as `<html>` attributes, placed before an
+     * author's own `<html>` so the parser keeps ours. The device class hides every `data-tb-show` element not listed for
+     * it, and the orientation every `data-tb-orientation` element not for the way the device is held, in rules the shim
+     * rewrites as the environment changes.
      */
-    fun build(html: String, host: String, nonce: String, direction: String?, insets: BridgeInsets?, device: String? = null, orientation: String? = null): String {
+    fun build(html: String, nonce: String, direction: String?, env: InAppEnv): String {
         val policy = "<meta http-equiv=\"Content-Security-Policy\" content=\"${escapeAttribute(TreebarsBridge.FRAME_CSP)}\">"
-        val shim = "<script>${TreebarsBridge.SHIM}({\"host\":\"$host\",\"nonce\":\"$nonce\"})</script>"
-        val safe = insets?.let {
-            "<style>:root{--tb-safe-top:${it.top}px;--tb-safe-right:${it.right}px;--tb-safe-bottom:${it.bottom}px;--tb-safe-left:${it.left}px}</style>"
-        } ?: ""
-        val shown = if (device != null && device in DEVICE_CLASSES) "<style>[data-tb-show]:not([data-tb-show~=\"$device\"]){display:none!important}</style>" else ""
-        val held = if (orientation != null && orientation in ORIENTATIONS) "<style id=\"tb-orientation\">${orientationRule(orientation)}</style>" else ""
-        val dir = if (direction == "rtl" && !AUTHOR_DIRECTION.containsMatchIn(html)) "<html dir=\"rtl\">" else ""
+        val shim = "<script>${TreebarsBridge.SHIM}({\"host\":\"${env.host}\",\"nonce\":\"$nonce\"})</script>"
+        val environment = "<style id=\"tb-env\">${InAppHostEnv.style(env)}</style>"
+        val showClass = if (env.device == "phone") "mobile" else env.device
+        val shown = "<style>[data-tb-show]:not([data-tb-show~=\"$showClass\"]){display:none!important}</style>"
+        val held = "<style id=\"tb-orientation\">${orientationRule(env.orientation)}</style>"
+        val dir = if (direction == "rtl" && !AUTHOR_DIRECTION.containsMatchIn(html)) " dir=\"rtl\"" else ""
+        val root = "<html${InAppHostEnv.attributes(env)}$dir>"
         if (IS_DOCUMENT.containsMatchIn(html)) {
             val found = DOCTYPE.find(html)?.value
-            return "${found ?: "<!doctype html>"}$dir$policy$safe$shown$held$shim${html.substring(found?.length ?: 0)}"
+            return "${found ?: "<!doctype html>"}$root$policy$environment$shown$held$shim${html.substring(found?.length ?: 0)}"
         }
-        return "<!doctype html>$dir<meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">" +
-            "$policy<style>${TreebarsBridge.FRAME_RULES}</style>$safe$shown$held$shim$html"
+        return "<!doctype html>$root<meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover\">" +
+            "$policy<style>${TreebarsBridge.FRAME_RULES}</style>$environment$shown$held$shim$html"
     }
 
     private fun escapeAttribute(value: String): String = value.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;")
@@ -281,6 +281,7 @@ internal class BridgeDisplay(
         // Said by the shim, and answered by the host before it arrives here.
         "_ready" to { _, _, answer -> answer(OK) },
         "resize" to { _, _, answer -> answer(OK) },
+        "_layout" to { _, _, answer -> answer(OK) },
 
         "dismissMessage" to { _, close, answer ->
             close()
@@ -583,31 +584,39 @@ internal class BridgeDisplay(
 }
 
 /**
- * The window and the WebView for one HTML message, the Android half of the web SDK's `bridge-host.ts`: a Dialog
- * for a modal and a fullscreen, and the Activity's own decor view for a banner and a nudge, which leave the app usable.
+ * The window and the WebView for one HTML message, the Android half of the web SDK's `bridge-host.ts`.
  *
- * - **Hidden until it runs.** Drawn invisible and shown when the shim says `_ready` — a fitted shape once its height is
- *   known too — and only then counted as displayed ([onShown]). A WebView that cannot be made is `webview_unavailable`.
+ * - **It paints nothing.** A stage message — a modal, a sheet, a full screen, a canvas — is a WebView over the whole
+ *   window in a Dialog of its own: transparent, no dim, edge to edge and through the cutout, so the page draws its own
+ *   scrim, card, corners and shadow and nothing of ours shows at a rounded corner. A strip — a banner, a nudge — is a
+ *   transparent WebView on the Activity's own view tree at its edge, which leave the app usable, and a touch outside the
+ *   container's box (`_layout`) goes on to the app.
+ * - **The truth about the screen.** The environment ([InAppHostEnv]) is in the document and sent again on every change
+ *   of the window's insets — a turn, the bars, the cutout — and of the keyboard, whose height comes from the IME's own
+ *   insets and, from Android 11, its animation's duration, so the page moves with it. The WebView never resizes for the
+ *   keyboard; the page does. Text is drawn at 100% and the system's font scale is in the environment, where the page caps
+ *   it.
+ * - **Hidden until laid out.** Drawn invisible and not touchable; a stage shows on its first `_layout` or a second after
+ *   `_ready`, a strip once its height is known, with `shown: true`, which starts the page's own entrance. Only then is it
+ *   counted as displayed ([onShown]). A WebView that cannot be made is `webview_unavailable`.
+ * - **Back asks the page first.** A message with screens goes back one; otherwise a dismissible message closes. A strip's
+ *   Back is the app's.
  * - **Who may call.** The page reaches Java through one interface, `TreebarsBridge.postMessage`, whose calls arrive on a
  *   binder thread: each is posted to the main looper, and taken only with this display's nonce.
  * - **The frame.** JavaScript on, storage, file and content access off, no mixed content, no second window, and every
  *   navigation after the first refused — links come through the shim, which the SDK opens. Loaded with no base URL,
  *   so the page has no origin of the app's.
- * - **The container spec.** A modal is `min(width − 32, 420)` dp wide and as tall as the content up to the window less
- *   32; a banner is full width and up to 30% tall; a fullscreen is the window, drawing nothing of the SDK's behind a
- *   `transparent` one. No padding of the SDK's and no close control. The back button closes a dismissible modal or
- *   fullscreen; a banner's is the app's.
  */
 @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface", "AddJavascriptInterface")
 internal class InAppHtmlHost(
     private val activity: Activity,
     private val message: InAppMessage,
     private val content: InAppContent,
-    private val tokens: InAppTokens?,
+    @Suppress("UNUSED_PARAMETER") tokens: InAppTokens?,
     private val display: BridgeDisplay,
     private val onShown: () -> Unit,
     private val onFailed: (String) -> Unit,
-    /** The page, the back button or the dim closed it: recorded by the display. */
+    /** The page, the back button or the timer closed it: recorded by the display. */
     private val onPersonClosed: () -> Unit,
     private val customizer: ((WebView) -> Unit)?,
     /**
@@ -620,53 +629,56 @@ internal class InAppHtmlHost(
     private val nonce = BridgeDocument.nonce()
     private var dialog: Dialog? = null
     private var web: WebView? = null
+    /** What the WebView sits in: the Dialog's whole content for a stage, the strip at its edge. */
     private var box: FrameLayout? = null
-    private var root: FrameLayout? = null
     private var ready = false
     private var shown = false
     private var closed = false
+    /** A strip's height as the page reported it, its shadow room included, in dp. */
     private var height: Int? = null
+    /** The container's box in the WebView, in dp, as the page last reported it (`_layout`). */
+    private var container: RectF? = null
     private val density = activity.resources.displayMetrics.density
-    private val boxShape = when (content.layout) {
-        "banner", "fullscreen", "modal", "nudge" -> content.layout
-        "html" -> "fullscreen"
-        else -> "modal"
+    /** The window's bars and cutout, in dp, as its insets last said. */
+    private var safe: HostInsets? = null
+    /** How far the keyboard reaches up from the window's bottom edge, in dp, and how long its last move took. */
+    private var imeHeight = 0.0
+    private var imeMs = 0.0
+    /** The environment the page holds: the document's, then the last one sent. Sent again only when it differs. */
+    private var sentEnv: String? = null
+    private var lastEnv: InAppEnv? = null
+
+    private val presentation = content.presentation
+    /** Over the whole window (a modal, a sheet, a full screen, a canvas), or a strip at an edge (a banner, a nudge). */
+    private val stage: Boolean = when (presentation?.mode) {
+        "stage" -> true
+        "strip" -> false
+        else -> content.layout != "banner" && content.layout != "nudge"
     }
-    private val transparent = boxShape == "fullscreen" && content.transparent
-    /** The way the device was held when the document's orientation rule was last written. */
-    private var held: String = heldNow()
-    /**
-     * A turn is heard from the window's own layout, not only from [reconfigure]: that one needs the app to forward
-     * `onConfigurationChanged`, and an app that forgets would draw the upright half of a message on a phone held sideways.
-     */
-    private val turned = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> restampOrientation() }
+    /** A strip inside the safe area — a nudge — rather than flush with its edge. */
+    private val floating: Boolean = presentation?.floating ?: (content.layout == "nudge")
+    private val edge: String = presentation?.edge ?: if (content.position == "top") "top" else "bottom"
+    private val dismissible: Boolean = presentation?.dismissible ?: content.dismissible
+    private val backSteps: Boolean = presentation?.backSteps ?: true
+    private val isNudge: Boolean get() = !stage && floating
+
+    /** The window was laid out again — a turn, the bars, a new height — and the page is told the screen as it is now. */
+    private val relaid = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> laidOut() }
 
     /** The activity this message is drawn over, so the SDK can take it down with it. */
     val owner: Activity get() = activity
 
     /** A banner: the one shape of these a person can tap through to another screen under, so it goes when they do. */
-    val isBanner: Boolean get() = boxShape == "banner"
+    val isBanner: Boolean get() = !stage && !floating
 
-    /** The Dialog a modal or a fullscreen is in, for a test; null for a banner and a nudge. */
+    /** The Dialog a stage message is in, for a test; null for a strip. */
     internal val window: Dialog? get() = dialog
 
     /** The WebView the document went into, for a test. */
     internal val webView: WebView? get() = web
 
-    /** Landscape when the window is wider than it is tall, as the platform's own configuration says. */
-    private fun heldNow(): String =
-        if (activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) "landscape" else "portrait"
-
-    /** The device turned: the shim rewrites the rule, so `data-tb-orientation` follows the phone rather than the draw. */
-    private fun restampOrientation() {
-        // Before the page says it is running there is no shim to tell: `_ready` asks again.
-        if (closed || !ready) return
-        val now = heldNow()
-        if (now == held) return
-        held = now
-        val view = web ?: return
-        main.post { if (!closed) view.evaluateJavascript("window.__treebarsOrientation&&window.__treebarsOrientation(${JSONObject.quote(now)})", null) }
-    }
+    /** The view the WebView sits in, for a test: the Dialog's content for a stage, the strip itself otherwise. */
+    internal val holder: FrameLayout? get() = box
 
     fun show() {
         val view = try {
@@ -679,88 +691,56 @@ internal class InAppHtmlHost(
         }
         web = view
         configure(view)
-        val insets = insets()
-        // A tablet by the platform's own line, 600dp at the narrowest side: what `data-tb-show` is matched against.
-        val device = if (activity.resources.configuration.smallestScreenWidthDp >= 600) "tablet" else "mobile"
-        held = heldNow()
-        val document = BridgeDocument.build(html, "android", nonce, content.direction, insets, device, held)
-        runCatching { activity.window.decorView.addOnLayoutChangeListener(turned) }
+        safe = decorInsets()
+        val first = environment()
+        sentEnv = InAppHostEnv.json(first)
+        lastEnv = first
+        val document = BridgeDocument.build(html, nonce, content.direction, first)
+        runCatching { activity.window.decorView.addOnLayoutChangeListener(relaid) }
 
-        val dim = tokens?.backdrop?.let { cssColor(it) } ?: Color.argb(128, 0, 0, 0)
+        if (!stage) {
+            showStrip(view, document)
+            return
+        }
         val frame = FrameLayout(activity).apply {
-            setBackgroundColor(if (boxShape == "banner" || transparent) Color.TRANSPARENT else dim)
-            visibility = View.INVISIBLE
-            if (content.dismissible && boxShape != "banner" && !transparent) setOnClickListener { personClosed() }
-        }
-        root = frame
-        val holder = FrameLayout(activity).apply {
-            isClickable = true
-            val surface = tokens?.surface?.let { cssColor(it) } ?: Color.WHITE
-            background = GradientDrawable().apply {
-                setColor(if (transparent) Color.TRANSPARENT else surface)
-                cornerRadius = if (boxShape == "modal") ((tokens?.radius ?: 16.0) * density).toFloat() else 0f
-            }
-            clipToOutline = true
+            setBackgroundColor(Color.TRANSPARENT)
+            // Drawn, so the page lays itself out and says so, but not seen until it has.
+            alpha = 0f
             addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        }
-        box = holder
-        /*
-         * A nudge is not a Dialog: a Dialog's window takes every touch on the screen, which is what a
-         * modal wants and a nudge must not do. It joins its edge's column on the Activity's own view tree, which lets every
-         * touch through to the app except on a nudge itself; a modal's Dialog window is drawn over it.
-         */
-        if (boxShape == "nudge") {
-            root = null
-            holder.visibility = View.INVISIBLE
-            val column = nudgeColumn(insets)
-            // The newest nearest the middle of the screen: last at the top edge, first at the bottom one.
-            if (content.position == "top") column.addView(holder, nudgeParams(null)) else column.addView(holder, 0, nudgeParams(null))
-            view.loadDataWithBaseURL(null, document, "text/html", "utf-8", null)
-            main.postDelayed({ if (!ready && !closed) { destroy(); onFailed("render_error") } }, READY_TIMEOUT_MS)
-            return
-        }
-        /*
-         * Nor is a banner, for the same reason: a Dialog is the whole screen whatever the box inside it measures, so the
-         * app under a banner could be neither tapped nor scrolled — and a banner is the one shape meant to leave it
-         * usable, as the standard banner and iOS's window, which passes every touch around the box, both do. It goes
-         * straight onto the decor view at its edge, only as tall as itself, and reaching under the bars, since the page
-         * pads by the insets itself. Invisible until it runs, so a touch meanwhile is the app's too. Back is the app's: a
-         * banner never takes focus from the app, and neither does the standard one.
-         */
-        if (boxShape == "banner") {
-            root = holder
-            holder.visibility = View.INVISIBLE
-            /*
-             * A Dialog is a window TalkBack notices appearing; a view on the app's own tree is not. So it is named as a
-             * pane, which is read out when it turns visible — the standard banner's way, and the title the web's box is
-             * labelled with. A message with no title is not announced, rather than announced by a made-up name.
-             */
-            if (Build.VERSION.SDK_INT >= 28) message.title?.let { holder.accessibilityPaneTitle = it }
-            try {
-                (activity.window.decorView as ViewGroup).addView(holder, layoutFor(null))
-            } catch (error: Throwable) {
-                TreebarsLogger.log("in-app: could not attach ${message.deliveryId}: $error")
-                destroy()
-                onFailed("render_error")
-                return
+            // Every change of the window's insets — bars, cutout, keyboard — reaches the page; none pads the WebView.
+            setOnApplyWindowInsetsListener { _, insets ->
+                readInsets(insets)
+                laidOut()
+                insets
             }
-            view.loadDataWithBaseURL(null, document, "text/html", "utf-8", null)
-            main.postDelayed({ if (!ready && !closed) { destroy(); onFailed("render_error") } }, READY_TIMEOUT_MS)
-            return
-        }
-        frame.addView(holder, layoutFor(null))
+            if (Build.VERSION.SDK_INT >= 30) {
+                // The keyboard's own duration, known before its end state is dispatched, so the page moves in step.
+                setWindowInsetsAnimationCallback(object : WindowInsetsAnimation.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+                    override fun onPrepare(animation: WindowInsetsAnimation) {
+                        if (animation.typeMask and WindowInsets.Type.ime() != 0) imeMs = animation.durationMillis.toDouble()
+                    }
 
-        val created = Dialog(activity, android.R.style.Theme_Translucent_NoTitleBar).apply {
+                    override fun onProgress(insets: WindowInsets, running: MutableList<WindowInsetsAnimation>): WindowInsets = insets
+                })
+            }
+            addOnLayoutChangeListener(relaid)
+        }
+        box = frame
+
+        val created = object : Dialog(activity, android.R.style.Theme_Translucent_NoTitleBar) {
+            // Called by the system's Back, the predictive one included (the Dialog registers it).
+            @Deprecated("Back is asked through the page first")
+            @Suppress("OVERRIDE_DEPRECATION")
+            override fun onBackPressed() {
+                back()
+            }
+        }.apply {
             requestWindowFeature(Window.FEATURE_NO_TITLE)
             setContentView(frame)
-            setCancelable(content.dismissible)
-            setOnCancelListener { personClosed() }
-            window?.apply {
-                setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-                setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
-                // Drawn under the bars, so a fullscreen message is the whole window and the insets are the page's to use.
-                addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
-            }
+            // Back is the host's to decide (the page first), never the Dialog's own cancel.
+            setCancelable(false)
+            setCanceledOnTouchOutside(false)
+            window?.let { edgeToEdge(it) }
         }
         dialog = created
         view.loadDataWithBaseURL(null, document, "text/html", "utf-8", null)
@@ -776,6 +756,124 @@ internal class InAppHtmlHost(
         main.postDelayed({ if (!ready && !closed) { destroy(); onFailed("render_error") } }, READY_TIMEOUT_MS)
     }
 
+    /**
+     * The Dialog's window: transparent and undimmed, under the status and navigation bars and through the cutout, with
+     * the keyboard reported as insets rather than resizing the WebView. Until the page is revealed it neither takes a
+     * touch nor holds focus, so the app under a page that is still loading answers as if nothing were there.
+     */
+    @Suppress("DEPRECATION")
+    private fun edgeToEdge(window: Window) {
+        window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
+        window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        window.setDimAmount(0f)
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+        window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS or WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION)
+        window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= 29) {
+            // Or the system lays a scrim of its own behind a transparent bar.
+            window.isStatusBarContrastEnforced = false
+            window.isNavigationBarContrastEnforced = false
+        }
+        val lightStatus = when (presentation?.statusBar) {
+            "dark" -> true
+            "light" -> false
+            else -> appHasLightBars(status = true)
+        }
+        val lightNavigation = appHasLightBars(status = false)
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.setDecorFitsSystemWindows(false)
+            window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS }
+            window.insetsController?.setSystemBarsAppearance(
+                (if (lightStatus) WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS else 0) or
+                    (if (lightNavigation) WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS else 0),
+                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+            )
+        } else {
+            if (Build.VERSION.SDK_INT >= 28) {
+                window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES }
+            }
+            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or (if (lightStatus) View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR else 0) or
+                (if (lightNavigation && Build.VERSION.SDK_INT >= 26) View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0)
+        }
+    }
+
+    /** Whether the app draws dark icons on its own status (or navigation) bar: what a message that says nothing keeps. */
+    @Suppress("DEPRECATION")
+    private fun appHasLightBars(status: Boolean): Boolean {
+        val window = activity.window ?: return false
+        return if (Build.VERSION.SDK_INT >= 30) {
+            val flag = if (status) WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS else WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+            ((window.insetsController?.systemBarsAppearance ?: 0) and flag) != 0
+        } else {
+            val flag = if (status) View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR else if (Build.VERSION.SDK_INT >= 26) View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0
+            flag != 0 && (window.decorView.systemUiVisibility and flag) != 0
+        }
+    }
+
+    /**
+     * A banner or a nudge, on the Activity's own view tree rather than in a Dialog: a Dialog's window takes every touch on
+     * the screen, which is what a stage wants and a strip must not do. A banner goes onto the decor view at its edge,
+     * reaching under the bars, since the page pads by the insets itself; a nudge joins its edge's column inside the safe
+     * area. The strip itself hands every touch outside the container's box to the app ([StripFrame]). Back is the app's.
+     */
+    private fun showStrip(view: WebView, document: String) {
+        val holder = StripFrame().apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            alpha = 0f
+            addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        }
+        box = holder
+        /*
+         * A Dialog is a window TalkBack notices appearing; a view on the app's own tree is not. So it is named as a pane,
+         * which is read out when it turns visible — the title the web's box is labelled with. A message with no title is
+         * not announced, rather than announced by a made-up name.
+         */
+        if (Build.VERSION.SDK_INT >= 28) message.title?.let { holder.accessibilityPaneTitle = it }
+        try {
+            if (isNudge) {
+                val column = nudgeColumn()
+                // The newest nearest the middle of the screen: last at the top edge, first at the bottom one.
+                if (edge == "top") column.addView(holder, nudgeParams()) else column.addView(holder, 0, nudgeParams())
+            } else {
+                (activity.window.decorView as ViewGroup).addView(holder, bannerParams())
+            }
+        } catch (error: Throwable) {
+            TreebarsLogger.log("in-app: could not attach ${message.deliveryId}: $error")
+            destroy()
+            onFailed("render_error")
+            return
+        }
+        view.loadDataWithBaseURL(null, document, "text/html", "utf-8", null)
+        main.postDelayed({ if (!ready && !closed) { destroy(); onFailed("render_error") } }, READY_TIMEOUT_MS)
+    }
+
+    /** A strip's holder: transparent, and passing every touch and hover outside the container's box to the app under it. */
+    private inner class StripFrame : FrameLayout(activity) {
+        override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+            // Refusing the press refuses the gesture: the decor view hands it, and what follows it, to the app's views.
+            if (event.actionMasked == MotionEvent.ACTION_DOWN && !takes(event.x, event.y)) return false
+            return super.dispatchTouchEvent(event)
+        }
+
+        override fun dispatchHoverEvent(event: MotionEvent): Boolean {
+            // TalkBack's explore-by-touch arrives as hover: outside the container it reads the app, not an empty strip.
+            if (!takes(event.x, event.y)) return false
+            return super.dispatchHoverEvent(event)
+        }
+    }
+
+    /** Whether a touch at this point of the strip, in pixels, is the message's: on its container once it is shown. */
+    private fun takes(x: Float, y: Float): Boolean {
+        if (!shown || closed) return false
+        val rect = container ?: return true
+        return rect.contains(x / density, y / density)
+    }
+
     private fun configure(view: WebView) {
         view.settings.apply {
             javaScriptEnabled = true
@@ -786,8 +884,13 @@ internal class InAppHtmlHost(
             setSupportMultipleWindows(false)
             javaScriptCanOpenWindowsAutomatically = false
             mediaPlaybackRequiresUserGesture = true
+            // The page scales its own text by the font scale in the environment, capped where its layout survives.
+            textZoom = 100
         }
         view.setBackgroundColor(Color.TRANSPARENT)
+        view.overScrollMode = View.OVER_SCROLL_NEVER
+        view.isVerticalScrollBarEnabled = false
+        view.isHorizontalScrollBarEnabled = false
         view.webViewClient = object : WebViewClient() {
             // Every navigation after the first is the page trying to leave; links come through the shim instead.
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = true
@@ -823,16 +926,28 @@ internal class InAppHtmlHost(
             method == "_ready" -> {
                 if (!ready) {
                     ready = true
-                    // A turn while the page was loading reached no shim: say it now, if the device is held the other way.
-                    restampOrientation()
-                    if (boxShape == "fullscreen") reveal() else main.postDelayed({ if (height == null) resize(null); reveal() }, HEIGHT_WAIT_MS)
+                    // A turn, a keyboard or a new size while the page was loading reached no shim: said now.
+                    laidOut()
+                    main.postDelayed({ reveal() }, LAYOUT_WAIT_MS)
+                }
+                reply(id, BridgeDisplay.OK)
+            }
+            method == "_layout" -> {
+                val rect = (args.opt(0) as? JSONObject)?.optJSONObject("container")
+                val values = rect?.let { listOf("x", "y", "w", "h").map { key -> (it.opt(key) as? Number)?.toFloat() } }
+                if (values != null && values.all { it != null && it.isFinite() } && values[2]!! >= 0 && values[3]!! >= 0) {
+                    val (x, y, w, h) = values.map { it!! }
+                    container = RectF(x, y, x + w, y + h)
+                    // A stage is laid out once the page says where its container is.
+                    if (stage && ready) reveal()
                 }
                 reply(id, BridgeDisplay.OK)
             }
             method == "resize" -> {
                 val value = (args.opt(0) as? Number)?.toInt()
-                if (value != null && value >= 0 && boxShape != "fullscreen") {
-                    resize(value)
+                if (value != null && value >= 0 && !stage) {
+                    height = value
+                    relayout()
                     if (ready) reveal()
                 }
                 reply(id, BridgeDisplay.OK)
@@ -843,110 +958,211 @@ internal class InAppHtmlHost(
     }
 
     private fun reply(id: Number, result: Any?) {
-        val view = web ?: return
         val json = JSONObject().put("tb", nonce).put("reply", id).put("result", JSONObject.wrap(result) ?: JSONObject.NULL).toString()
-        main.post { if (!closed) view.evaluateJavascript("window.__treebarsReply(${JSONObject.quote(json)})", null) }
+        evaluate("window.__treebarsReply(${JSONObject.quote(json)})")
+    }
+
+    private fun evaluate(script: String, answer: ((String?) -> Unit)? = null) {
+        val view = web ?: return
+        main.post { if (!closed) view.evaluateJavascript(script, answer) }
+    }
+
+    /** The window this message lies in, in dp: the Dialog's content once laid out, the Activity's window before. */
+    private fun windowDp(): Pair<Double, Double> {
+        val drawn = if (stage) box else activity.window?.decorView
+        val laid = drawn ?: activity.window?.decorView
+        if (laid != null && laid.width > 0 && laid.height > 0) return laid.width / density.toDouble() to laid.height / density.toDouble()
+        val metrics = activity.resources.displayMetrics
+        return metrics.widthPixels / density.toDouble() to metrics.heightPixels / density.toDouble()
+    }
+
+    /** Where a strip's WebView is in the window, in dp: as laid out once it has been, as it will be before. */
+    private fun stripFrame(width: Double, height: Double): HostRect {
+        val holder = box
+        val parent = holder?.parent as? View
+        if (holder != null && parent != null && holder.width > 0 && holder.height > 0) {
+            val (x, y) = if (parent === activity.window?.decorView) 0 to 0 else parent.left to parent.top
+            return HostRect((x + holder.left) / density.toDouble(), (y + holder.top) / density.toDouble(), holder.width / density.toDouble(), holder.height / density.toDouble())
+        }
+        return InAppHostEnv.stripBox(width, height, safe ?: HostInsets.ZERO, edge, floating, this.height?.toDouble())
+    }
+
+    private fun environment(): InAppEnv {
+        val (width, height) = windowDp()
+        val configuration = activity.resources.configuration
+        return InAppHostEnv.env(
+            host = "android",
+            // A tablet by the platform's own line, 600dp at the narrowest side.
+            device = if (configuration.smallestScreenWidthDp >= 600) "tablet" else "phone",
+            theme = if (isNight()) "dark" else "light",
+            textScale = configuration.fontScale.toDouble(),
+            shown = shown,
+            width = width,
+            height = height,
+            safe = safe ?: HostInsets.ZERO,
+            frame = if (stage) null else stripFrame(width, height),
+            keyboardHeight = imeHeight,
+            keyboardMs = imeMs,
+        )
+    }
+
+    /** The window was laid out again, or its insets changed: the page is told the screen as it is now. */
+    private fun laidOut() {
+        if (closed) return
+        if (!stage) {
+            safe = decorInsets()
+            imeHeight = decorIme()
+        }
+        val env = environment()
+        lastEnv = env
+        // Before the page says it is running there is no shim to tell: `_ready` sends whatever changed meanwhile.
+        if (!ready) return
+        val text = InAppHostEnv.json(env)
+        if (text == sentEnv) return
+        sentEnv = text
+        evaluate("window.__treebarsEnv&&window.__treebarsEnv(${JSONObject.quote(text)})")
+    }
+
+    /** A stage's own insets: its bars and cutout, and the keyboard's height above the navigation bar. */
+    @Suppress("DEPRECATION")
+    private fun readInsets(insets: WindowInsets) {
+        fun dp(px: Int) = px / density.toDouble()
+        if (Build.VERSION.SDK_INT >= 30) {
+            val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+            safe = HostInsets(dp(bars.top), dp(bars.right), dp(bars.bottom), dp(bars.left))
+            imeHeight = dp(insets.getInsets(WindowInsets.Type.ime()).bottom)
+        } else {
+            // Below 11 the keyboard is the part of the bottom inset the stable one does not account for.
+            val cutout = if (Build.VERSION.SDK_INT >= 28) insets.displayCutout else null
+            safe = HostInsets(
+                dp(maxOf(insets.systemWindowInsetTop, cutout?.safeInsetTop ?: 0)),
+                dp(maxOf(insets.systemWindowInsetRight, cutout?.safeInsetRight ?: 0)),
+                dp(maxOf(insets.stableInsetBottom, cutout?.safeInsetBottom ?: 0)),
+                dp(maxOf(insets.systemWindowInsetLeft, cutout?.safeInsetLeft ?: 0)),
+            )
+            imeHeight = dp(maxOf(0, insets.systemWindowInsetBottom - insets.stableInsetBottom))
+        }
+    }
+
+    /** The Activity's window's bars and cutout in dp, from the platform's own insets (no androidx.core here). */
+    @Suppress("DEPRECATION")
+    private fun decorInsets(): HostInsets {
+        val raw = activity.window?.decorView?.rootWindowInsets ?: return safe ?: HostInsets.ZERO
+        fun dp(px: Int) = px / density.toDouble()
+        return if (Build.VERSION.SDK_INT >= 30) {
+            val bars = raw.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+            HostInsets(dp(bars.top), dp(bars.right), dp(bars.bottom), dp(bars.left))
+        } else {
+            HostInsets(dp(raw.systemWindowInsetTop), dp(raw.systemWindowInsetRight), dp(raw.stableInsetBottom), dp(raw.systemWindowInsetLeft))
+        }
+    }
+
+    /** The app's keyboard over the Activity's window, in dp: what a bottom strip may be partly under. */
+    @Suppress("DEPRECATION")
+    private fun decorIme(): Double {
+        val raw = activity.window?.decorView?.rootWindowInsets ?: return 0.0
+        val px = if (Build.VERSION.SDK_INT >= 30) raw.getInsets(WindowInsets.Type.ime()).bottom else maxOf(0, raw.systemWindowInsetBottom - raw.stableInsetBottom)
+        return px / density.toDouble()
     }
 
     private fun reveal() {
         if (shown || closed) return
-        if (boxShape == "nudge") {
+        val holder = box ?: return
+        if (isNudge) {
             /*
              * One that would take its edge past its share of the window waits instead: taken down unspent, and asked
              * again at the next moment — by when another may have closed. Three at a fifth each would be most of a phone.
              */
-            val holder = box ?: return
             val column = holder.parent as? ViewGroup
-            val others = column?.let { c -> (0 until c.childCount).map { c.getChildAt(it) }.filter { it !== holder && it.visibility == View.VISIBLE }.sumOf { it.height } } ?: 0
-            if (others + (holder.layoutParams?.height ?: 0) > TreebarsBridge.NUDGE_STACK_SHARE * activity.resources.displayMetrics.heightPixels) {
+            val others = column?.let { c -> (0 until c.childCount).map { c.getChildAt(it) }.filter { it !== holder && it.alpha > 0f }.sumOf { it.height } } ?: 0
+            if (others + (holder.layoutParams?.height ?: 0) > TreebarsBridge.NUDGE_STACK_SHARE * windowDp().second * density) {
                 destroy()
                 onFailed("no_room")
                 return
             }
-            holder.visibility = View.VISIBLE
         }
         shown = true
-        root?.visibility = View.VISIBLE
+        // `shown` in the environment starts the page's own entrance; nothing of ours fades.
+        laidOut()
+        holder.alpha = 1f
+        dialog?.window?.clearFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
         onShown()
         content.display?.autoDismissSeconds?.takeIf { it > 0 }?.let { seconds -> main.postDelayed({ if (!closed) personClosed() }, seconds * 1000L) }
     }
 
-    private fun resize(value: Int?) {
-        height = value
-        box?.layoutParams = if (boxShape == "nudge") nudgeParams(value) else layoutFor(value)
+    /**
+     * Back, on a stage: the page goes back a screen if it has one to go back to, and otherwise a dismissible message
+     * closes. One that cannot be dismissed stays, with its own way out.
+     */
+    private fun back() {
+        if (closed || !shown) return
+        if (!backSteps) {
+            if (dismissible) personClosed()
+            return
+        }
+        evaluate("window.__treebarsBack?window.__treebarsBack():false") { answer ->
+            if (answer != "true" && !closed && dismissible) personClosed()
+        }
+    }
+
+    /** The strip's box, again: a new height from the page, or a window that changed under it. */
+    private fun relayout() {
+        val holder = box ?: return
+        if (stage) return
+        holder.layoutParams = if (isNudge) nudgeParams() else bannerParams()
+        (holder.parent as? View)?.let { column -> if (isNudge) nudgeColumnMargins(column) }
     }
 
     /**
-     * A nudge's edge column: one per edge on the Activity's decor view, inside the safe area — a
-     * nudge is a small card, not a bar that runs under the status bar — and neither clickable nor focusable, so a touch
-     * anywhere but on a nudge reaches the app.
+     * A nudge's edge column: one per edge on the Activity's decor view, inside the safe area on every side — a nudge is a
+     * small card, not a bar that runs under the status bar — and neither clickable nor focusable, so a touch anywhere but
+     * on a nudge's container reaches the app.
      */
-    private fun nudgeColumn(insets: BridgeInsets): LinearLayout {
+    private fun nudgeColumn(): LinearLayout {
         val decor = activity.window.decorView as ViewGroup
-        val tag = if (content.position == "top") "treebars-nudges-top" else "treebars-nudges-bottom"
+        val tag = if (edge == "top") "treebars-nudges-top" else "treebars-nudges-bottom"
         (decor.findViewWithTag<View>(tag) as? LinearLayout)?.let { return it }
         return LinearLayout(activity).apply {
             this.tag = tag
             orientation = LinearLayout.VERTICAL
             isClickable = false
             isFocusable = false
-            val top = content.position == "top"
-            decor.addView(
-                this,
-                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, if (top) Gravity.TOP else Gravity.BOTTOM).apply {
-                    if (top) topMargin = (insets.top * density).toInt() else bottomMargin = (insets.bottom * density).toInt()
-                },
-            )
+            decor.addView(this, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, if (edge == "top") Gravity.TOP else Gravity.BOTTOM))
+            nudgeColumnMargins(this)
         }
     }
 
-    /** Full width, as tall as the content up to a fifth of the window (`NUDGE_MAX_HEIGHT_SHARE`). */
-    private fun nudgeParams(contentHeight: Int?): LinearLayout.LayoutParams {
-        val cap = activity.resources.displayMetrics.heightPixels / density * TreebarsBridge.NUDGE_MAX_HEIGHT_SHARE
-        val tall = contentHeight?.toFloat()?.coerceAtMost(cap.toFloat()) ?: cap.toFloat()
-        return LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (tall * density).toInt())
+    /** The column's place: [InAppHostEnv.stripBox]'s for a nudge, inside the insets on every side. */
+    private fun nudgeColumnMargins(column: View) {
+        val params = column.layoutParams as? FrameLayout.LayoutParams ?: return
+        val insets = safe ?: HostInsets.ZERO
+        val (width, height) = windowDp()
+        val box = InAppHostEnv.stripBox(width, height, insets, edge, true, 0.0)
+        val left = (box.x * density).toInt()
+        val right = ((width - box.x - box.w) * density).toInt()
+        val top = if (edge == "top") (insets.top * density).toInt() else 0
+        val bottom = if (edge == "top") 0 else (insets.bottom * density).toInt()
+        if (params.leftMargin == left && params.rightMargin == right && params.topMargin == top && params.bottomMargin == bottom) return
+        params.setMargins(left, top, right, bottom)
+        column.layoutParams = params
     }
 
-    /** The container spec for this boxShape, with the content's height where it is fitted. */
-    private fun layoutFor(contentHeight: Int?): FrameLayout.LayoutParams {
-        val metrics = activity.resources.displayMetrics
-        val widthDp = metrics.widthPixels / density
-        val heightDp = metrics.heightPixels / density
-        return when (boxShape) {
-            "fullscreen" -> FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            "banner" -> {
-                val cap = heightDp * TreebarsBridge.BANNER_MAX_HEIGHT_SHARE
-                val tall = contentHeight?.toFloat()?.coerceAtMost(cap.toFloat()) ?: cap.toFloat()
-                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (tall * density).toInt(), if (content.position == "top") Gravity.TOP else Gravity.BOTTOM)
-            }
-            else -> {
-                val gutter = TreebarsBridge.MODAL_GUTTER
-                val wide = minOf(widthDp - gutter * 2, TreebarsBridge.MODAL_MAX_WIDTH.toFloat())
-                val cap = heightDp - gutter * 2
-                val tall = contentHeight?.toFloat()?.coerceAtMost(cap) ?: cap
-                FrameLayout.LayoutParams((wide * density).toInt(), (tall * density).toInt(), Gravity.CENTER)
-            }
-        }
+    /** Full width, as tall as the page says up to a fifth of the window. */
+    private fun nudgeParams(): LinearLayout.LayoutParams {
+        val (width, windowHeight) = windowDp()
+        val box = InAppHostEnv.stripBox(width, windowHeight, safe ?: HostInsets.ZERO, edge, true, height?.toDouble())
+        return LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (box.h * density).toInt())
     }
 
-    /** The screen's safe area in dp: the bars and the cutout, from the platform's own insets (no androidx.core here). */
-    private fun insets(): BridgeInsets {
-        val decor = activity.window?.decorView ?: return BridgeInsets(0, 0, 0, 0)
-        val raw = decor.rootWindowInsets ?: return BridgeInsets(0, 0, 0, 0)
-        // Up, never to the nearest: an inset that rounds down puts a line of the page under the bar. At 2.625 (a Pixel
-        // 8's density), nearest gives 52 where the WebView's own env(safe-area-inset-top) gives 53.
-        fun dp(px: Int) = kotlin.math.ceil(px / density.toDouble()).toInt()
-        return if (Build.VERSION.SDK_INT >= 30) {
-            val bars = raw.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
-            BridgeInsets(dp(bars.top), dp(bars.right), dp(bars.bottom), dp(bars.left))
-        } else {
-            @Suppress("DEPRECATION")
-            BridgeInsets(dp(raw.systemWindowInsetTop), dp(raw.systemWindowInsetRight), dp(raw.systemWindowInsetBottom), dp(raw.systemWindowInsetLeft))
-        }
+    /** Edge to edge at its edge, under the bars, as tall as the page says up to 30% of the window. */
+    private fun bannerParams(): FrameLayout.LayoutParams {
+        val (width, windowHeight) = windowDp()
+        val box = InAppHostEnv.stripBox(width, windowHeight, safe ?: HostInsets.ZERO, edge, false, height?.toDouble())
+        return FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (box.h * density).toInt(), if (edge == "top") Gravity.TOP else Gravity.BOTTOM)
     }
 
-    /** The insets this display was drawn with, for `getContext()`. */
-    fun currentInsets(): BridgeInsets = insets()
+    /** The insets the page holds now, for `getContext()`. */
+    fun currentInsets(): BridgeInsets = lastEnv?.safe ?: environment().safe
 
     fun isNight(): Boolean = (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
@@ -956,11 +1172,11 @@ internal class InAppHtmlHost(
         onPersonClosed()
     }
 
-    /** `onConfigurationChanged`: the window changed under the message; its box is measured again. */
+    /** `onConfigurationChanged`: the window changed under the message; a strip is measured again and the page told. */
     fun reconfigure() {
         if (closed) return
-        box?.layoutParams = if (boxShape == "nudge") nudgeParams(height) else layoutFor(height)
-        restampOrientation()
+        relayout()
+        laidOut()
     }
 
     /** Takes it all down, quietly: whoever called says what it meant. */
@@ -968,10 +1184,10 @@ internal class InAppHtmlHost(
         if (closed) return
         closed = true
         main.removeCallbacksAndMessages(null)
-        runCatching { activity.window.decorView.removeOnLayoutChangeListener(turned) }
+        runCatching { activity.window.decorView.removeOnLayoutChangeListener(relaid) }
         runCatching { dialog?.dismiss() }
         // A nudge leaves its column, and the last one at an edge takes the empty column with it.
-        if (boxShape == "nudge") {
+        if (isNudge) {
             runCatching {
                 val column = box?.parent as? ViewGroup
                 column?.removeView(box)
@@ -979,7 +1195,7 @@ internal class InAppHtmlHost(
             }
         }
         // A banner has no Dialog to take it down with: it leaves the decor view itself.
-        if (boxShape == "banner") runCatching { (box?.parent as? ViewGroup)?.removeView(box) }
+        if (isBanner) runCatching { (box?.parent as? ViewGroup)?.removeView(box) }
         web?.let { view ->
             runCatching {
                 view.removeJavascriptInterface("TreebarsBridge")
@@ -993,21 +1209,8 @@ internal class InAppHtmlHost(
 
     companion object {
         private const val READY_TIMEOUT_MS = 8_000L
-        private const val HEIGHT_WAIT_MS = 1_000L
-
-        private val RGBA = Regex("^rgba?\\(\\s*(\\d{1,3})\\s*,\\s*(\\d{1,3})\\s*,\\s*(\\d{1,3})\\s*(?:,\\s*([0-9.]+)\\s*)?\\)$", RegexOption.IGNORE_CASE)
-
-        /** A token's colour as the web writes it — `#rrggbb`, `#rrggbbaa` or `rgba(r, g, b, a)` — or null otherwise. */
-        fun cssColor(value: String): Int? {
-            val text = value.trim()
-            if (Regex("^#[0-9a-fA-F]{6}$").matches(text)) return Color.parseColor(text)
-            // CSS writes the alpha last (`#0F172A99`); Android reads it first.
-            if (Regex("^#[0-9a-fA-F]{8}$").matches(text)) return Color.parseColor("#${text.substring(7, 9)}${text.substring(1, 7)}")
-            val match = RGBA.find(text) ?: return null
-            val (r, g, b) = match.groupValues.subList(1, 4).map { it.toInt().coerceIn(0, 255) }
-            val alpha = match.groupValues[4].takeIf { it.isNotEmpty() }?.toFloatOrNull() ?: 1f
-            return Color.argb((alpha.coerceIn(0f, 1f) * 255).toInt(), r, g, b)
-        }
+        /** How long a shown page has to lay itself out (a stage) or measure itself (a strip) before it is shown anyway. */
+        private const val LAYOUT_WAIT_MS = 1_000L
     }
 }
 

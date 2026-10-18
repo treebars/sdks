@@ -2,6 +2,8 @@ package com.treebars.sdk
 
 import android.app.Activity
 import android.content.Context
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
@@ -15,6 +17,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -95,8 +98,11 @@ class InAppHtmlBannerTest {
         return (0 until all.length()).map { all.getJSONObject(it) }.filter { it.optString("event_name") == name }
     }
 
-    /** Drawn for [event], then run: the page says it is running and how tall it is, and the host shows it. */
-    private fun drawn(event: String = "add_to_cart", height: Int = 72): InAppHtmlHost {
+    /**
+     * Drawn for [event], then run: the page says it is running, how tall it is, and where its container is — for a strip
+     * the [height] less the shadow room it pads itself by — and the host shows it.
+     */
+    private fun drawn(event: String = "add_to_cart", height: Int = 72, container: Int = height - 24): InAppHtmlHost {
         Treebars.track(event)
         settle { Treebars.htmlInAppHost?.webView != null }
         val host = requireNotNull(Treebars.htmlInAppHost) { "nothing was drawn" }
@@ -108,6 +114,7 @@ class InAppHtmlBannerTest {
             bridge.postMessage(JSONObject().put("tb", nonce).put("id", id).put("method", method).put("args", JSONArray(args.toList())).toString())
         call(1, "_ready")
         call(2, "resize", height)
+        call(3, "_layout", JSONObject().put("container", JSONObject().put("x", 0).put("y", 0).put("w", 400).put("h", container)))
         settle { queued("in_app_displayed").isNotEmpty() }
         assertEquals("shown once it ran", 1, queued("in_app_displayed").size)
         return host
@@ -171,6 +178,12 @@ class InAppHtmlBannerTest {
         assertEquals(listOf("app"), taps)
         tap(activity, decor.width / 2f, box.height / 2f)
         assertEquals("a touch on the banner is not passed through to the app", listOf("app"), taps)
+        // The banner's shadow room, below its container, is the app's: the strip is transparent there.
+        tap(activity, decor.width / 2f, box.height - 4f)
+        assertEquals("a touch in the shadow room is the app's", listOf("app", "app"), taps)
+        // Nothing of ours painted on the strip either.
+        assertEquals(Color.TRANSPARENT, ((box.background as? ColorDrawable)?.color ?: Color.TRANSPARENT))
+        assertFalse(box.clipToOutline)
 
         // Back is the app's, as the standard banner's is: the banner stays and nothing is recorded.
         activity.onBackPressed()
@@ -181,23 +194,62 @@ class InAppHtmlBannerTest {
     }
 
     @Test
-    fun `a modal is still a full-window Dialog that takes every touch`() {
+    fun `a modal is a transparent full-window Dialog that paints nothing and takes every touch`() {
         start(message("del_modal", "modal"))
         val host = drawn()
 
         val dialog = requireNotNull(host.window) { "a modal is a Dialog" }
         assertTrue(dialog.isShowing)
-        val attributes = requireNotNull(dialog.window).attributes
+        val window = requireNotNull(dialog.window)
+        val attributes = window.attributes
         assertEquals(WindowManager.LayoutParams.MATCH_PARENT, attributes.width)
         assertEquals(WindowManager.LayoutParams.MATCH_PARENT, attributes.height)
         assertEquals("touches outside it are not let through", 0, attributes.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
+        assertEquals("touchable once shown", 0, attributes.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
         assertTrue("not on the Activity's view tree", host.webView?.rootView !== screens.single().get().window.decorView)
 
-        // A dismissible modal still closes on back.
+        // Nothing of ours painted: no dim, no surface, no corners. The page draws its own scrim and card.
+        assertEquals(0, attributes.flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        assertEquals(0f, attributes.dimAmount)
+        val holder = requireNotNull(host.holder)
+        assertEquals(Color.TRANSPARENT, (holder.background as ColorDrawable).color)
+        assertFalse(holder.clipToOutline)
+        val web = requireNotNull(host.webView)
+        assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, web.layoutParams.width)
+        assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, web.layoutParams.height)
+        // Edge to edge and through the cutout, the keyboard as insets, and no limits-free layout to break them.
+        assertEquals(0, attributes.flags and WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+        assertEquals(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE, attributes.softInputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST)
+        assertEquals(WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS, attributes.layoutInDisplayCutoutMode)
+        assertFalse(window.isStatusBarContrastEnforced)
+        assertFalse(window.isNavigationBarContrastEnforced)
+        // The page scales its own text; the document never scrolls past its edge.
+        assertEquals(100, web.settings.textZoom)
+        assertEquals(View.OVER_SCROLL_NEVER, web.overScrollMode)
+
+        // Back asks the page first; one with nowhere to go back to, in a dismissible message, closes.
+        @Suppress("DEPRECATION")
         dialog.onBackPressed()
+        idle()
+        val shadow = shadowOf(web)
+        assertEquals("window.__treebarsBack?window.__treebarsBack():false", shadow.lastEvaluatedJavascript)
+        shadow.lastEvaluatedJavascriptCallback.onReceiveValue("false")
         settle { queued("in_app_dismissed").isNotEmpty() }
         assertEquals(1, queued("in_app_dismissed").size)
         assertNull(Treebars.htmlInAppHost)
+    }
+
+    @Test
+    fun `Back goes back a screen when the page has one, and the message stays`() {
+        start(message("del_back", "modal"))
+        val host = drawn()
+        @Suppress("DEPRECATION")
+        requireNotNull(host.window).onBackPressed()
+        idle()
+        shadowOf(requireNotNull(host.webView)).lastEvaluatedJavascriptCallback.onReceiveValue("true")
+        settle()
+        assertTrue(Treebars.htmlInAppHost === host)
+        assertTrue(queued("in_app_dismissed").isEmpty())
     }
 
     @Test

@@ -1,6 +1,6 @@
 {
   "name": "@treebars/web-sdk",
-  "version": "0.8.2",
+  "version": "0.10.0",
   "description": "Browser SDK for Treebars analytics and engagement",
   "license": "MIT",
   "homepage": "https://treebars.com/docs",
@@ -18,7 +18,8 @@
   "types": "dist/index.d.ts",
   "files": [
     "dist",
-    "treebars-sw.js"
+    "treebars-sw.js",
+    "CHANGELOG.md"
   ],
   "sideEffects": false,
   "scripts": {

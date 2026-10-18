@@ -702,8 +702,9 @@ export class TreebarsSDK {
    * Pass every URL the app is opened with. Resolves with the link's deep-link path when a
    * Universal Link or App Link on one of the config's `linkHosts` opened the app — the operating
    * system hands over only the link's address, so the native SDK asks the link host what it
-   * means — and with null for every other URL, which the app routes as it always did. It never
-   * routes anything itself, and a host not on that list is never asked.
+   * means, values after the link's key included — and with null for every other URL, which the app
+   * routes as it always did. It routes nothing itself, with one exception: a link that only goes to a
+   * website is opened in the browser, and resolves with null. A host not on that list is never asked.
    *
    * The parsing, the lookup and the event all run in the native SDK on both platforms; this
    * passes the URL across.

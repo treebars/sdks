@@ -1,4 +1,5 @@
 import { BRIDGE_HOST_METHODS, BRIDGE_SHIM, IN_APP_FRAME_CSP, IN_APP_FRAME_RULES, IN_APP_FRAME_SANDBOX } from './generated/bridge';
+import { inAppEnvAttributes, inAppEnvJson, inAppEnvStyle, type InAppEnv } from './host-env';
 
 /*
  * The web's host for an HTML in-app message's `treebars` bridge.
@@ -50,6 +51,13 @@ export interface MarkupHostOptions {
    * A caller names one only to pin it — a test, or a preview drawn at a device's size.
    */
   orientation?: 'portrait' | 'landscape' | null;
+  /**
+   * The screen as the page should be told it: asked when the document is built, when the shim is running, when the
+   * window turns, and whenever the caller says something moved (`update`). Absent, it is made from the window alone.
+   */
+  environment?(): InAppEnv;
+  /** The container's box in the frame, each time the page reports it moved (`_layout`). */
+  onLayout?(box: { x: number; y: number; w: number; h: number }): void;
   /** A key pressed inside the frame that the page should hear: Escape. */
   onKey?(key: string): void;
 }
@@ -58,6 +66,8 @@ export interface MarkupHost {
   frame: HTMLIFrameElement;
   /** Focus into the message, onto its first control. */
   focus(): void;
+  /** Tells the page the screen as it is now, if that is not what it last heard. */
+  update(): void;
   destroy(): void;
 }
 
@@ -90,40 +100,36 @@ export interface BridgeInsets {
  * the golden cases in `test/fixtures/bridge-documents.json` check.
  *
  * The policy and the shim come before anything of the message's. A fragment is framed as the preview and the apps
- * frame it (`IN_APP_FRAME_RULES`). A document is kept as a document, since HTML templates are often written as whole
- * pages: the policy and the shim go straight after its doctype, where the parser puts them in the head it has not yet
- * been shown, and the document's own `<html>` attributes still apply. `rtl` goes on `<html>` only when the author has
- * not said.
+ * frame it (`IN_APP_FRAME_RULES`), with a viewport that never zooms into a focused field. A document is kept as a
+ * document, since HTML templates are often written as whole pages: the policy and the shim go straight after its
+ * doctype, where the parser puts them in the head it has not yet been shown. The environment is in it from the first
+ * byte — the insets and the text scale as CSS variables in `<style id="tb-env">`, and the host, device, orientation,
+ * theme and states as `<html>` attributes, placed before an author's own `<html>` so the parser keeps ours. `rtl` goes
+ * on `<html>` only when the author has not said.
  */
 export function bridgeDocument(
   html: string,
   options: {
-    host: 'web' | 'android' | 'ios';
     nonce: string;
     direction?: 'ltr' | 'rtl' | null;
-    insets?: BridgeInsets | null;
-    device?: 'mobile' | 'tablet' | 'desktop' | null;
-    orientation?: 'portrait' | 'landscape' | null;
+    env: InAppEnv;
   },
 ): string {
+  const { env } = options;
   const policy = `<meta http-equiv="Content-Security-Policy" content="${escapeAttribute(IN_APP_FRAME_CSP)}">`;
-  const shim = `<script>${BRIDGE_SHIM}({"host":"${options.host}","nonce":"${options.nonce}"})</script>`;
-  const insets = options.insets;
-  const safe = insets
-    ? `<style>:root{--tb-safe-top:${insets.top}px;--tb-safe-right:${insets.right}px;--tb-safe-bottom:${insets.bottom}px;--tb-safe-left:${insets.left}px}</style>`
-    : '';
-  // The device class hides every `data-tb-show` element not listed for it.
-  const device = options.device === 'mobile' || options.device === 'tablet' || options.device === 'desktop' ? options.device : null;
-  const shown = device ? `<style>[data-tb-show]:not([data-tb-show~="${device}"]){display:none!important}</style>` : '';
+  const shim = `<script>${BRIDGE_SHIM}({"host":"${env.host}","nonce":"${options.nonce}"})</script>`;
+  const environment = `<style id="tb-env">${inAppEnvStyle(env)}</style>`;
+  // The device class hides every `data-tb-show` element not listed for it, which names a phone `mobile`.
+  const shown = `<style>[data-tb-show]:not([data-tb-show~="${env.device === 'phone' ? 'mobile' : env.device}"]){display:none!important}</style>`;
   // The way the device is held, in a rule of its own that the shim rewrites when it turns.
-  const orientation = options.orientation === 'portrait' || options.orientation === 'landscape' ? options.orientation : null;
-  const held = orientation ? `<style id="tb-orientation">[data-tb-orientation]:not([data-tb-orientation~="${orientation}"]){display:none!important}</style>` : '';
-  const dir = options.direction === 'rtl' && !/<(html|body)\b[^>]*\sdir\s*=/i.test(html) ? '<html dir="rtl">' : '';
+  const held = `<style id="tb-orientation">[data-tb-orientation]:not([data-tb-orientation~="${env.orientation}"]){display:none!important}</style>`;
+  const dir = options.direction === 'rtl' && !/<(html|body)\b[^>]*\sdir\s*=/i.test(html) ? ' dir="rtl"' : '';
+  const root = `<html${inAppEnvAttributes(env)}${dir}>`;
   if (isMarkupDocument(html)) {
     const found = /^\s*<!doctype[^>]*>/i.exec(html)?.[0];
-    return `${found ?? '<!doctype html>'}${dir}${policy}${safe}${shown}${held}${shim}${html.slice(found?.length ?? 0)}`;
+    return `${found ?? '<!doctype html>'}${root}${policy}${environment}${shown}${held}${shim}${html.slice(found?.length ?? 0)}`;
   }
-  return `<!doctype html>${dir}<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">${policy}<style>${IN_APP_FRAME_RULES}</style>${safe}${shown}${held}${shim}${html}`;
+  return `<!doctype html>${root}<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">${policy}<style>${IN_APP_FRAME_RULES}</style>${environment}${shown}${held}${shim}${html}`;
 }
 
 /** A nonce for one display: unguessable, and in nothing but the document the frame is handed. */
@@ -142,19 +148,46 @@ interface Call {
 
 /**
  * How this window is held: landscape when it is wider than it is tall, as `(orientation: landscape)` says. Null
- * where there is no `matchMedia` to ask, which stamps nothing and so hides nothing.
+ * where there is no `matchMedia` to ask.
  */
 export function pageOrientation(): 'portrait' | 'landscape' | null {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return null;
   return window.matchMedia('(orientation: portrait)').matches ? 'portrait' : 'landscape';
 }
 
+/** Whether this browser's own colour scheme is dark: what the page is told as its theme. */
+export function pageTheme(): 'light' | 'dark' {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'light';
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+/** An environment from the window alone: no insets, no keyboard, the browser's own text size. */
+function windowEnv(device: MarkupHostOptions['device'], orientation: 'portrait' | 'landscape' | null): InAppEnv {
+  return {
+    host: 'web',
+    device: device === 'mobile' ? 'phone' : device === 'tablet' ? 'tablet' : 'desktop',
+    orientation: orientation ?? 'portrait',
+    theme: pageTheme(),
+    safe: { top: 0, right: 0, bottom: 0, left: 0 },
+    keyboard: { height: 0, ms: 0 },
+    textScale: 1,
+    shown: false,
+  };
+}
+
 /** Draws the markup in a sandboxed frame and carries its bridge. Returns the frame and a way to take it all down. */
 export function hostMarkup(options: MarkupHostOptions): MarkupHost {
   const nonce = displayNonce();
   const pinned = options.orientation !== undefined;
-  let held = pinned ? (options.orientation ?? null) : pageOrientation();
-  const document_ = bridgeDocument(options.html, { host: 'web', nonce, direction: options.direction, device: options.device ?? null, orientation: held });
+  const environment = (): InAppEnv => {
+    const env = options.environment ? options.environment() : windowEnv(options.device, pinned ? (options.orientation ?? null) : pageOrientation());
+    // A pinned orientation holds whatever the window says.
+    return pinned && options.orientation ? { ...env, orientation: options.orientation } : env;
+  };
+  const first = environment();
+  // What the page holds: the document's environment, then the last one it was sent.
+  let told = inAppEnvJson(first);
+  const document_ = bridgeDocument(options.html, { nonce, direction: options.direction, env: first });
   let frame = createFrame();
   let mode: FrameMode = options.mode === 'hosted' && options.frameUrl ? 'hosted' : 'srcdoc';
   let ready = false;
@@ -194,9 +227,18 @@ export function hostMarkup(options: MarkupHostOptions): MarkupHost {
       if (!ready) {
         ready = true;
         for (const timer of timers.splice(0)) clearTimeout(timer);
-        // A turn while the frame was loading reached no shim: said now, if the window is held the other way.
-        if (!pinned) turned();
+        // A turn or a resize while the frame was loading reached no shim: said now.
+        update();
         options.onReady(mode);
+      }
+      reply(id, { ok: true });
+      return;
+    }
+    if (call.method === '_layout') {
+      const box = (args[0] as { container?: Record<string, unknown> } | undefined)?.container;
+      const values = box ? [box.x, box.y, box.w, box.h].map(Number) : [];
+      if (values.length === 4 && values.every(Number.isFinite) && values[2]! >= 0 && values[3]! >= 0) {
+        options.onLayout?.({ x: values[0]!, y: values[1]!, w: values[2]!, h: values[3]! });
       }
       reply(id, { ok: true });
       return;
@@ -273,24 +315,26 @@ export function hostMarkup(options: MarkupHostOptions): MarkupHost {
   }
 
   /*
-   * The window turned: the frame is told, and its shim rewrites the rule it was drawn with, so a message drawn
-   * upright does not go on hiding its landscape half once the phone is held sideways. Through the Treebars frame too,
-   * which passes on anything carrying the nonce.
+   * The screen moved — the window turned or resized, the caller revealed the message, its strip changed size — and the
+   * frame is told, so the page lays itself out for the screen it is on now: its shim rewrites the environment and the
+   * orientation rule. Through the Treebars frame too, which passes on anything carrying the nonce.
    */
-  const turned = () => {
-    const now = pageOrientation();
+  function update(): void {
     // Before the shim says it is running there is nothing in the frame to tell: `_ready` asks again.
-    if (destroyed || !ready || !now || now === held) return;
-    held = now;
+    if (destroyed || !ready) return;
+    const env = environment();
+    const text = inAppEnvJson(env);
+    if (text === told) return;
+    told = text;
     try {
-      // nosemgrep: treebars-postmessage-any-origin — the frame's origin is opaque, and this says nothing but which way the window is held.
-      frame.contentWindow?.postMessage(JSON.stringify({ tb: nonce, orientation: now }), '*');
+      // nosemgrep: treebars-postmessage-any-origin — the frame's origin is opaque, and this says nothing but what the screen around it is.
+      frame.contentWindow?.postMessage(JSON.stringify({ tb: nonce, env }), '*');
     } catch {
-      /* a frame that has gone has nothing to turn */
+      /* a frame that has gone has nothing to tell */
     }
-  };
+  }
   const query = !pinned && typeof window.matchMedia === 'function' ? window.matchMedia('(orientation: portrait)') : null;
-  query?.addEventListener?.('change', turned);
+  query?.addEventListener?.('change', update);
 
   window.addEventListener('message', onMessage);
   start(mode);
@@ -313,10 +357,11 @@ export function hostMarkup(options: MarkupHostOptions): MarkupHost {
         /* a frame that has gone takes no focus */
       }
     },
+    update,
     destroy() {
       destroyed = true;
       for (const timer of timers.splice(0)) clearTimeout(timer);
-      query?.removeEventListener?.('change', turned);
+      query?.removeEventListener?.('change', update);
       window.removeEventListener('message', onMessage);
       frame.remove();
     },

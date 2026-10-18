@@ -135,7 +135,7 @@ final class WriteKeyStampTests: XCTestCase {
      */
     func testEveryDeviceKeySurvivesTheRoundTrip() throws {
         // device-keys:start
-        let json = #"{"surface":"overlay","direction":"rtl","layout":"modal","body_mode":"html","html":"<p>Hi</p>","declared":{"events":["offer_claimed"],"traits":["streak"]},"transparent":true,"html_ref":{"sha256":"ab12","bytes":70000},"position":"bottom","image_alt":"A red winter coat","dismissible":true,"buttons":[{"label":"OK","action":"dismiss"}],"trigger":{"kind":"immediate"},"expires_after_seconds":3600,"max_displays":2,"ignore_min_gap":true,"display":{"on":"delay","delay_seconds":2,"contexts":["home"],"priority":1,"auto_dismiss_seconds":30,"self_handled":false,"only_when_push_askable":true},"form":{"fields":[{"id":"size","kind":"dropdown","label":"Size","required":true,"options":["S","M"],"placeholder":"Pick one","save_as":"email","trait":"shoe_size"}]},"slides":[{"image_url":"https://cdn.example.com/1.png","image_alt":"The first coat","title":"One"}],"countdown_to":"2030-01-01T00:00:00Z","font_url":"https://fonts.example.com/a.css","card":{"template":"basic","icon_url":"https://cdn.example.com/i.png","image_alt":"A coat","action":{"type":"url","value":"https://shop.example/sale"},"pinned":true,"show_from":"2030-01-01T00:00:00Z","category":"Offers","cta":{"label":"Shop","action":{"type":"deep_link","value":"app://sale"}},"expires_after_seen_days":7}}"#
+        let json = #"{"surface":"overlay","direction":"rtl","layout":"modal","body_mode":"html","html":"<p>Hi</p>","declared":{"events":["offer_claimed"],"traits":["streak"]},"html_ref":{"sha256":"ab12","bytes":70000},"position":"bottom","image_alt":"A red winter coat","dismissible":true,"buttons":[{"label":"OK","action":"dismiss"}],"trigger":{"kind":"immediate"},"expires_after_seconds":3600,"max_displays":2,"ignore_min_gap":true,"display":{"on":"delay","delay_seconds":2,"contexts":["home"],"priority":1,"auto_dismiss_seconds":30,"self_handled":false,"only_when_push_askable":true},"form":{"fields":[{"id":"size","kind":"dropdown","label":"Size","required":true,"options":["S","M"],"placeholder":"Pick one","save_as":"email","trait":"shoe_size"}]},"slides":[{"image_url":"https://cdn.example.com/1.png","image_alt":"The first coat","title":"One"}],"countdown_to":"2030-01-01T00:00:00Z","font_url":"https://fonts.example.com/a.css","card":{"template":"basic","icon_url":"https://cdn.example.com/i.png","image_alt":"A coat","action":{"type":"url","value":"https://shop.example/sale"},"pinned":true,"show_from":"2030-01-01T00:00:00Z","category":"Offers","cta":{"label":"Shop","action":{"type":"deep_link","value":"app://sale"}},"expires_after_seen_days":7},"presentation":{"bridge":2,"mode":"strip","edge":"top","floating":true,"dismissible":true,"back_steps":true,"status_bar":"dark","web":{"corner":"end","push_down":false}}}"#
         // device-keys:end
         let sent = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
         let decoded = try JSONDecoder().decode(InAppContent.self, from: Data(json.utf8))
@@ -160,6 +160,12 @@ final class WriteKeyStampTests: XCTestCase {
         let againField = try XCTUnwrap(((again["form"] as? [String: Any])?["fields"] as? [[String: Any]])?.first)
         for key in sentField.keys {
             XCTAssertNotNil(againField[key], "form.fields[0].\(key) was dropped by the round trip")
+        }
+        // And every key of the presentation, which the host reads to decide how to draw it.
+        let sentPresentation = try XCTUnwrap(sent["presentation"] as? [String: Any])
+        let againPresentation = try XCTUnwrap(again["presentation"] as? [String: Any])
+        for key in sentPresentation.keys {
+            XCTAssertNotNil(againPresentation[key], "presentation.\(key) was dropped by the round trip")
         }
         XCTAssertEqual(decoded.body_mode, "html")
     }

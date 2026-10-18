@@ -772,9 +772,16 @@ object Treebars {
      * **An App Link on one of the app's `linkHosts` is asked about.** Android opens the app holding
      * only the link's address — `https://open.example.com/summer-sale` — with no click id and no path,
      * so the core asks that address what it means, reports the return with the click id it gets back,
-     * and hands [onPath] the link's deep-link path to route on, if it is a path inside the app. Any
-     * other URL — another host, or one given by another app's intent — is not asked, answers [onPath]
-     * with null, and the app routes it as it always did. [onPath] runs on the main thread, once.
+     * and hands [onPath] the link's deep-link path to route on, if it is a path inside the app. A link
+     * that carries values after its key — `https://open.example.com/spring/u_123` — is asked whole, and
+     * the path comes back with the values filled in. Any other URL — another host, or one given by
+     * another app's intent — is not asked, answers [onPath] with null, and the app routes it as it always
+     * did. [onPath] runs on the main thread, once.
+     *
+     * **A link that only goes to a website opens the browser.** The app opened because it claims the
+     * link's domain, not because the link was for it: the core opens the website the link names — https,
+     * and never one of `linkHosts`, which would only open the app again — hands [onPath] null, and reports
+     * no app open.
      *
      * **A return is not an install, and this never becomes one.** The install was decided once, when
      * the app first arrived; the server keeps that decision, does not touch the person's acquisition
@@ -810,8 +817,19 @@ object Treebars {
         }
         // Held while the link is asked about: the open it caused waits for the answer, and rides with it.
         pace?.openSettling()
+        val hosts = linkHosts
         scope.launch {
-            val resolved = kotlinx.coroutines.withContext(Dispatchers.IO) { LinkResolve.ask(address) }
+            val resolved = kotlinx.coroutines.withContext(Dispatchers.IO) { LinkResolve.ask(address, hosts) }
+            /*
+             * A website-only link on a domain the app claims: the browser was where it was going, so the
+             * person goes there, and the app routes nothing. Not an app open either — the link's author
+             * said it never opens the app, and the tap is already counted as the click it was.
+             */
+            val web = resolved?.webUrl
+            if (web != null) {
+                mainHandler.post { deviceActions.open(web) }
+                return@launch answer(null)
+            }
             resolved?.let { reportLinkOpened(it.clickId, url) }
             answer(resolved?.deepLinkPath)
         }
@@ -833,11 +851,15 @@ object Treebars {
         )
     }
 
-    /** A URL as an open names it: scheme, host and path — never the query or fragment, which can carry a secret. */
+    /**
+     * A URL as an open names it: scheme, host and path — never the query or fragment, which can carry a
+     * secret, and on one of the app's link hosts only the link's key, never the values after it.
+     */
     private fun openUrl(url: String?): String? {
         val parsed = runCatching { android.net.Uri.parse(url ?: return null) }.getOrNull() ?: return null
         val scheme = parsed.scheme ?: return null
-        return "$scheme://${parsed.host ?: ""}${parsed.path ?: ""}".take(512)
+        val path = LinkResolve.openedPath(parsed.path ?: "", parsed.host, linkHosts)
+        return "$scheme://${parsed.host ?: ""}$path".take(512)
     }
 
     /**

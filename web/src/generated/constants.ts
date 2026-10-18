@@ -119,7 +119,7 @@ export const ACQUISITION = {
 /** Play's cap on the referrer it hands back, so a page cannot build one the store will truncate. */
 export const MAX_REFERRER_LENGTH = 1000;
 
-export const SDK_VERSION = '0.8.2';
+export const SDK_VERSION = '0.10.0';
 export const SDK_NAME = 'treebars-web';
 export const DEVICE_ID_PREFIX = 'dev_';
 
@@ -162,6 +162,10 @@ export const RESERVED_EVENT_NAMES = [
   'install_attributed',
   'link_opened',
   'reengagement_attributed',
+  'landing_viewed',
+  'landing_cta_tapped',
+  'landing_engaged',
+  'landing_form_submitted',
 ] as const;
 
 /** The condition operator codes, and only the codes: what each one means is the evaluator's. */

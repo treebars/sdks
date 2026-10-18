@@ -105,9 +105,12 @@ enum TreebarsConstants {
     static let handoffProperty = "tbrs_handoff"
     static let deepLinkParam = "tbrs_deep_link"
     static let maxDeepLinkPathLength = 512
+    /** A link's address: the most values after its key, and the longest one, in UTF-16 code units once decoded. */
+    static let maxLinkPathValues = 6
+    static let maxLinkValueLength = 256
     static let deferredDeepLinkWindowMs: Int64 = 24 * 60 * 60 * 1000
 
-    static let sdkVersion = "0.8.2"
+    static let sdkVersion = "0.10.0"
     static let sdkName = "treebars-ios"
     static let deviceIdPrefix = "dev_"
 
@@ -147,6 +150,10 @@ enum TreebarsConstants {
         "install_attributed",
         "link_opened",
         "reengagement_attributed",
+        "landing_viewed",
+        "landing_cta_tapped",
+        "landing_engaged",
+        "landing_form_submitted",
     ]
 
     // The condition operator codes, and only the codes: what each one means is the evaluator's.

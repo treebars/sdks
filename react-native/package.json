@@ -1,6 +1,6 @@
 {
   "name": "@treebars/react-native-sdk",
-  "version": "0.8.2",
+  "version": "0.10.0",
   "description": "React Native SDK for Treebars analytics and engagement",
   "//publish": [
     "`files` keeps the tarball to what a consumer needs: the TypeScript, both native halves and the",
@@ -29,7 +29,8 @@
     "ios",
     "android/src",
     "android/build.gradle",
-    "TreebarsReactNative.podspec"
+    "TreebarsReactNative.podspec",
+    "CHANGELOG.md"
   ],
   "main": "src/index.ts",
   "react-native": "src/index.ts",

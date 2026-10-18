@@ -58,32 +58,33 @@ enum BridgeDocument {
     private static let authorDirection = pattern("<(html|body)\\b[^>]*\\sdir\\s*=", .caseInsensitive)
 
     /**
-     The document a message's WebView is handed: the web SDK's `bridgeDocument`, spelled in Swift. A
-     fragment is framed as the preview frames it; a whole document stays one, the policy and shim straight after its
-     doctype. The insets ride as CSS variables (`--tb-safe-top` …) as well, because a page written against them reads
-     the same on every host, where `env(safe-area-inset-*)` is WebKit's alone. The device class hides every
-     `data-tb-show` element not listed for it, in the document so it holds with scripts off. The
-     orientation hides every `data-tb-orientation` element not for the way the device is held, in a rule of its own
-     the host has the shim rewrite when the device turns.
+     The document a message's WebView is handed: the web SDK's `bridgeDocument`, spelled in Swift. A fragment is framed
+     as the preview frames it, with a viewport WebKit will not zoom into a focused field; a whole document stays one, the
+     policy and shim straight after its doctype. The environment is in it from the first byte — the insets, keyboard and
+     text scale as CSS variables in `<style id="tb-env">`, because a page written against them reads the same on every
+     host, and the host, device, orientation, theme and states as `<html>` attributes, placed before an author's own
+     `<html>` so the parser keeps ours. The device class hides every `data-tb-show` element not listed for it, and the
+     orientation every `data-tb-orientation` element not for the way the device is held, in rules the shim rewrites as
+     the environment changes.
      */
-    static func build(_ html: String, host: String, nonce: String, direction: String?, insets: BridgeInsets?, device: String? = nil, orientation: String? = nil) -> String {
+    static func build(_ html: String, nonce: String, direction: String?, env: InAppEnv) -> String {
         let policy = "<meta http-equiv=\"Content-Security-Policy\" content=\"\(escapeAttribute(InAppBridge.frameCSP))\">"
-        let shim = "<script>\(InAppBridge.shim)({\"host\":\"\(host)\",\"nonce\":\"\(nonce)\"})</script>"
-        let safe = insets.map {
-            "<style>:root{--tb-safe-top:\($0.top)px;--tb-safe-right:\($0.right)px;--tb-safe-bottom:\($0.bottom)px;--tb-safe-left:\($0.left)px}</style>"
-        } ?? ""
-        let shown = device.map { ["mobile", "tablet", "desktop"].contains($0) ? "<style>[data-tb-show]:not([data-tb-show~=\"\($0)\"]){display:none!important}</style>" : "" } ?? ""
-        let held = orientation.map { ["portrait", "landscape"].contains($0) ? "<style id=\"tb-orientation\">\(orientationRule($0))</style>" : "" } ?? ""
-        let dir = direction == "rtl" && !authorDirection.test(html) ? "<html dir=\"rtl\">" : ""
+        let shim = "<script>\(InAppBridge.shim)({\"host\":\"\(env.host)\",\"nonce\":\"\(nonce)\"})</script>"
+        let environment = "<style id=\"tb-env\">\(InAppHostEnv.style(env))</style>"
+        let showClass = env.device == "phone" ? "mobile" : env.device
+        let shown = "<style>[data-tb-show]:not([data-tb-show~=\"\(showClass)\"]){display:none!important}</style>"
+        let held = "<style id=\"tb-orientation\">\(orientationRule(env.orientation))</style>"
+        let dir = direction == "rtl" && !authorDirection.test(html) ? " dir=\"rtl\"" : ""
+        let root = "<html\(InAppHostEnv.attributes(env))\(dir)>"
         if isDocument.test(html) {
             // In UTF-16 units, as JavaScript's `slice` cuts, so a document opening with an emoji is cut where the web's is.
             let text = html as NSString
             let found = doctype.firstMatch(in: html, range: NSRange(location: 0, length: text.length))
             let head = found.map { text.substring(with: $0.range) } ?? "<!doctype html>"
-            return "\(head)\(dir)\(policy)\(safe)\(shown)\(held)\(shim)\(text.substring(from: found?.range.length ?? 0))"
+            return "\(head)\(root)\(policy)\(environment)\(shown)\(held)\(shim)\(text.substring(from: found?.range.length ?? 0))"
         }
-        return "<!doctype html>\(dir)<meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">"
-            + "\(policy)<style>\(InAppBridge.frameRules)</style>\(safe)\(shown)\(held)\(shim)\(html)"
+        return "<!doctype html>\(root)<meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover\">"
+            + "\(policy)<style>\(InAppBridge.frameRules)</style>\(environment)\(shown)\(held)\(shim)\(html)"
     }
 
     /// What hides the elements not for this orientation — Android's `orientationRule` too; the shim writes it again on a turn.
@@ -408,6 +409,7 @@ final class BridgeDisplay {
         // Said by the shim, and answered by the host before they arrive here.
         table["_ready"] = { _, _, _, answer in answer(ok) }
         table["resize"] = { _, _, _, answer in answer(ok) }
+        table["_layout"] = { _, _, _, answer in answer(ok) }
 
         table["dismissMessage"] = { display, _, close, answer in
             close()
@@ -681,22 +683,30 @@ func readInAppHtmlAction(_ url: String) -> InAppHtmlAction? {
  - **A window of its own**, above the app's at `.normal + 1`, rather than a view controller presented over the app's:
    a presentation of ours would make the app's own `present` calls fail for as long as the message was up, and the
    app's navigation is not ours to hold.
- - **Hidden until it runs.** Drawn invisible and shown when the shim says `_ready` — a fitted shape once its height is
-   known too — and only then counted as displayed (`onShown`). While hidden, and outside a banner, every touch passes
-   through to the app.
+ - **It paints nothing.** A stage message — a modal, a sheet, a full screen, a canvas — is a transparent WebView over
+   the whole window, under the bars: the page draws its own scrim, card, corners and shadow, and closes itself from its
+   own scrim. A strip — a banner, a nudge — is a transparent WebView at its edge, placed by `InAppHostEnv.stripBox`, and
+   a touch outside the container's box (`_layout`) goes on to the app, so its shadow never blocks what is under it.
+ - **The truth about the screen.** The environment (`InAppHostEnv`) is in the document and sent again on every layout —
+   a rotation, a split view, the text size — and on every keyboard change, with the keyboard's own duration, so the page
+   can move with it. The text scale is the body style's size against its default of 17.
+ - **The document does not scroll; screens do.** The outer scroll view is off and held at zero, so WebKit revealing a
+   focused field cannot slide the stage out from under the page's own keyboard handling.
+ - **Hidden until laid out.** Drawn invisible, and shown — a stage on its first `_layout` or a second after `_ready`, a
+   strip once its height is known — with `shown: true`, which starts the page's own entrance. Only then is it counted
+   as displayed (`onShown`). While hidden every touch passes through to the app.
  - **Who may call.** One script message handler, `treebars`, held weakly and removed when the message closes; a call is
    taken only from the main frame and with this display's nonce.
  - **The WebView.** JavaScript on, a non-persistent data store (nothing of the app's, nothing kept), no second window,
    sound only on a tap (a muted video plays by itself), and every navigation after the first refused — links come
    through the shim, which the SDK opens. Loaded with no base URL, so the page has no origin of the app's.
- - **The container spec.** A modal is `min(width − 32, 420)` points wide and as tall as the content up to the window
-   less 32; a banner is full width and up to 30% tall; a fullscreen is the window, drawing nothing of ours behind a
-   `transparent` one. No padding of ours and no close control; a tap on the dim closes a dismissible message.
+ - **Closing.** The page carries its own way out. A dismissible message also closes on the accessibility escape gesture.
  */
 @MainActor
 final class InAppHtmlHost: NSObject, WKNavigationDelegate, WKUIDelegate {
     private static let readyTimeout: TimeInterval = 8
-    private static let heightWait: TimeInterval = 1
+    /// How long a shown page has to lay itself out (a stage) or measure itself (a strip) before it is shown anyway.
+    private static let layoutWait: TimeInterval = 1
 
     /**
      One non-persistent store for every message this process draws: nothing on disk, gone with the process. A store per
@@ -759,19 +769,24 @@ final class InAppHtmlHost: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     private let message: InAppMessage
     private let content: InAppContent
-    private let tokens: InAppTokens?
     private let display: BridgeDisplay
     private let onShown: () -> Void
     private let onFailed: (String) -> Void
-    /// The dim or the timer closed it: recorded by the display.
+    /// The timer or the escape gesture closed it: recorded by the display.
     private let onPersonClosed: () -> Void
     private let customizer: ((WKWebView) -> Void)?
     /// The markup to draw: the body with its prefetched files inlined as `data:` URIs, prepared
     /// before the display was drawn (`InAppAssetCache.prepare`); the body as it came, otherwise.
     private let html: String
     private let nonce = BridgeDocument.nonce()
-    private let shape: String
-    private let transparent: Bool
+    /// Over the whole window (a modal, a sheet, a full screen, a canvas), or a strip at an edge (a banner, a nudge).
+    private let stage: Bool
+    /// A strip's edge.
+    private let edge: String
+    /// A strip inside the safe area — a nudge — rather than flush with its edge.
+    private let floating: Bool
+    private let dismissible: Bool
+    private let statusBar: String?
 
     private var window: InAppHtmlWindow?
     private weak var previousKey: UIWindow?
@@ -781,8 +796,18 @@ final class InAppHtmlHost: NSObject, WKNavigationDelegate, WKUIDelegate {
     private var ready = false
     private var shown = false
     private(set) var closed = false
+    /// A strip's height as the page reported it, its shadow room included.
     private var height: CGFloat?
+    /// The container's box in the WebView, as the page last reported it (`_layout`).
+    private var container: CGRect?
+    /// How far the keyboard reaches up from the window's bottom edge, and how long its last move took.
+    private var keyboard: (height: CGFloat, ms: Double) = (0, 0)
+    /// The environment the page holds: the document's, then the last one sent. Sent again only when it differs.
+    private var sentEnv: String?
+    private var lastEnv: InAppEnv?
     private var timers: [DispatchWorkItem] = []
+    private var observers: [NSObjectProtocol] = []
+    private var pin: NSKeyValueObservation?
 
     init(
         message: InAppMessage,
@@ -798,18 +823,23 @@ final class InAppHtmlHost: NSObject, WKNavigationDelegate, WKUIDelegate {
         self.message = message
         self.content = content
         self.html = html ?? content.html ?? ""
-        self.tokens = tokens
         self.display = display
         self.onShown = onShown
         self.onFailed = onFailed
         self.onPersonClosed = onPersonClosed
         self.customizer = customizer
-        switch content.layout {
-        case "banner", "fullscreen", "modal", "nudge": shape = content.layout
-        case "html": shape = "fullscreen"
-        default: shape = "modal"
+        // The presentation Treebars wrote beside the markup; a message without one is read from its layout.
+        let presentation = content.presentation
+        let strip = content.layout == "banner" || content.layout == "nudge"
+        if let mode = presentation?.mode, mode == "stage" || mode == "strip" {
+            stage = mode == "stage"
+        } else {
+            stage = !strip
         }
-        transparent = shape == "fullscreen" && content.transparent == true
+        floating = presentation?.floating ?? (content.layout == "nudge")
+        edge = presentation?.edge ?? (content.position == "top" ? "top" : "bottom")
+        dismissible = presentation?.dismissible ?? (content.dismissible != false)
+        statusBar = presentation?.status_bar
     }
 
     /// The scene the app is showing, or nil when it is showing none.
@@ -818,17 +848,19 @@ final class InAppHtmlHost: NSObject, WKNavigationDelegate, WKUIDelegate {
         return scenes.first { $0.activationState == .foregroundActive } ?? scenes.first { $0.activationState == .foregroundInactive }
     }
 
+    /// A nudge: a strip that floats inside the safe area and stacks with the others at its edge.
+    private var isNudge: Bool { !stage && floating }
+
     func show(in scene: UIWindowScene) {
         let appWindow = scene.windows.first(where: \.isKeyWindow) ?? scene.windows.first
         previousKey = appWindow
-        let safe = appWindow?.safeAreaInsets ?? .zero
-        let insets = BridgeInsets(safe)
-        // An iPad is a tablet: what `data-tb-show` is matched against.
-        let device = UIDevice.current.userInterfaceIdiom == .pad ? "tablet" : "mobile"
-        // Landscape when the window is wider than it is tall, and followed as it turns (`windowResized`).
         let bounds = appWindow?.bounds ?? scene.coordinateSpace.bounds
-        held = bounds.width > bounds.height ? "landscape" : "portrait"
-        let document = BridgeDocument.build(html, host: "ios", nonce: nonce, direction: content.direction, insets: insets, device: device, orientation: held)
+        let safe = appWindow?.safeAreaInsets ?? .zero
+        // The document carries the screen as it is now; the first layout of the window sends any difference.
+        let first = environment(in: bounds, safe: safe, frame: stage ? nil : frame(in: bounds, safe: safe), traits: appWindow?.traitCollection ?? scene.traitCollection)
+        sentEnv = InAppHostEnv.json(first)
+        lastEnv = first
+        let document = BridgeDocument.build(html, nonce: nonce, direction: content.direction, env: first)
 
         let view = Self.takeSpare() ?? Self.makeWebView()
         // Live on the view's controller, which the spare's configuration shares: added now, for this display's nonce.
@@ -839,24 +871,23 @@ final class InAppHtmlHost: NSObject, WKNavigationDelegate, WKUIDelegate {
         // The page lays itself out under the bars, with the insets to pad by; WebKit adding its own would count twice.
         view.scrollView.contentInsetAdjustmentBehavior = .never
         view.scrollView.bounces = false
+        view.scrollView.isScrollEnabled = false
+        view.scrollView.showsVerticalScrollIndicator = false
+        view.scrollView.showsHorizontalScrollIndicator = false
+        /*
+         Held at the top. WebKit scrolls the document itself to reveal a focused field, whatever `isScrollEnabled` says,
+         and a stage that slides under the keyboard's own handling in the page ends up twice as far up as it should be.
+         */
+        pin = view.scrollView.observe(\.contentOffset, options: [.new]) { scroll, _ in
+            MainActor.assumeIsolated {
+                if scroll.contentOffset != .zero { scroll.contentOffset = .zero }
+            }
+        }
         view.navigationDelegate = self
         view.uiDelegate = self
         web = view
 
-        let dim = tokens.flatMap { cssColor($0.backdrop) } ?? UIColor(white: 0, alpha: 0.5)
-        let surface = tokens.flatMap { cssColor($0.surface) } ?? .white
-        let controller = InAppHtmlController(
-            web: view,
-            dim: shape == "banner" || shape == "nudge" || transparent ? .clear : dim,
-            surface: transparent ? .clear : surface,
-            radius: shape == "modal" ? CGFloat(tokens?.radius ?? 16) : 0,
-            closesOnDim: content.dismissible != false && shape != "banner" && shape != "nudge" && !transparent,
-            layout: { [weak self] bounds in
-                self?.windowResized(bounds.size)
-                return self?.frame(in: bounds) ?? bounds
-            },
-            dimTapped: { [weak self] in self?.personClosed() }
-        )
+        let controller = InAppHtmlController(web: view, host: self)
         self.controller = controller
         controller.view.alpha = 0
 
@@ -865,12 +896,27 @@ final class InAppHtmlHost: NSObject, WKNavigationDelegate, WKUIDelegate {
          A nudge sits a half level lower than a modal, so a modal is drawn over nudges; it
          stacks at its edge with the others (`nudges`), inside the safe area.
          */
-        window.windowLevel = shape == "nudge" ? UIWindow.Level(rawValue: UIWindow.Level.normal.rawValue + 0.5) : .normal + 1
-        if shape == "nudge" { Self.nudges.append(self) }
+        window.windowLevel = isNudge ? UIWindow.Level(rawValue: UIWindow.Level.normal.rawValue + 0.5) : .normal + 1
+        if isNudge { Self.nudges.append(self) }
         window.backgroundColor = .clear
         window.rootViewController = controller
-        window.passes = { [weak self] hit in self?.passes(hit) ?? true }
+        window.passes = { [weak self] hit, point in self?.passes(hit, at: point) ?? true }
+        // VoiceOver stays in a stage message, as it stays in any modal; a strip leaves the app readable around it.
+        window.accessibilityViewIsModal = stage
         self.window = window
+
+        let center = NotificationCenter.default
+        observers = [
+            center.addObserver(forName: UIResponder.keyboardWillChangeFrameNotification, object: nil, queue: .main) { [weak self] note in
+                MainActor.assumeIsolated { self?.keyboardMoved(note, hiding: false) }
+            },
+            center.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { [weak self] note in
+                MainActor.assumeIsolated { self?.keyboardMoved(note, hiding: true) }
+            },
+            center.addObserver(forName: UIContentSizeCategory.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.laidOut() }
+            },
+        ]
 
         runCustomizer(view)
         view.loadHTMLString(document, baseURL: nil)
@@ -883,84 +929,111 @@ final class InAppHtmlHost: NSObject, WKNavigationDelegate, WKUIDelegate {
         }
     }
 
-    /// The way the device was held when the document's orientation rule was last written.
-    private var held = "portrait"
-    /// The window's last laid-out size: a turn before the page was running is told once it is.
-    private var lastSize: CGSize?
-
-    /**
-     The window was laid out again, which a turn of the device does: when it now runs the other way, the shim
-     rewrites the orientation rule, so `data-tb-orientation` follows the phone rather than the moment it was drawn.
-     */
-    private func windowResized(_ size: CGSize) {
-        guard !closed, size.width > 0, size.height > 0 else { return }
-        lastSize = size
-        // Before the page says it is running there is no shim to tell: `_ready` looks again (`lastSize`).
-        guard ready else { return }
-        let now = size.width > size.height ? "landscape" : "portrait"
-        guard now != held else { return }
-        held = now
-        let script = "window.__treebarsOrientation&&window.__treebarsOrientation(\"\(now)\")"
-        DispatchQueue.main.async { [weak self] in
-            guard let self, !self.closed else { return }
-            self.web?.evaluateJavaScript(script, completionHandler: nil)
-        }
-    }
-
     private func runCustomizer(_ view: WKWebView) {
         guard let customizer else { return }
         customizer(view)
-        // The app may change the WebView; the bridge and who may navigate stay this SDK's.
+        // The app may change the WebView; the bridge, who may navigate and the scrolling stay this SDK's.
         view.navigationDelegate = self
         view.uiDelegate = self
+        view.scrollView.isScrollEnabled = false
     }
 
-    /// Whether a touch at this view goes on to the app: all of them while the message is hidden, and a banner's
-    /// surroundings once it shows.
-    private func passes(_ hit: UIView) -> Bool {
+    /// Whether a touch at this point of the window goes on to the app: every one while the message is hidden, none on a
+    /// stage, and on a strip every one outside the container's box — its shadow room and the window around it.
+    private func passes(_ hit: UIView, at point: CGPoint) -> Bool {
         if !shown || closed { return true }
-        return (shape == "banner" || shape == "nudge") && (hit === window || hit === controller?.view || hit === controller?.dimView)
+        if stage { return false }
+        guard let web, let window else { return true }
+        let local = web.convert(point, from: window)
+        guard web.bounds.contains(local) else { return true }
+        guard let container else { return false }
+        return !container.contains(local)
     }
 
     /// The nudges drawn, oldest first: where each sits in its edge's stack comes from the ones before it.
     private static var nudges: [InAppHtmlHost] = []
 
-    /// This nudge's height as laid out: its content, up to a fifth of the window.
-    private func nudgeHeight(in bounds: CGRect) -> CGFloat {
-        let cap = bounds.height * InAppBridge.nudgeMaxHeightShare
-        return min(height ?? cap, cap)
+    /// The window's safe area: the window covers the scene, so these are the scene's.
+    private var windowSafe: UIEdgeInsets {
+        (window ?? previousKey)?.safeAreaInsets ?? .zero
     }
 
-    /// The nudges shown at this one's edge, other than it.
-    private func edgeNeighbours() -> [InAppHtmlHost] {
-        Self.nudges.filter { $0 !== self && $0.shown && !$0.closed && ($0.content.position == "top") == (content.position == "top") }
+    /// This strip's box in a window of this size, after the nudges shown before it at its edge.
+    private func frame(in bounds: CGRect, safe: UIEdgeInsets) -> CGRect {
+        if stage { return bounds }
+        let offset = isNudge
+            ? Self.nudges.prefix { $0 !== self }.filter { $0.shown && !$0.closed && $0.edge == edge }.reduce(0.0) { $0 + $1.ownHeight(in: bounds, safe: safe) }
+            : 0
+        let box = InAppHostEnv.stripBox(width: bounds.width, height: bounds.height, safe: HostInsets(safe), edge: edge, floating: floating,
+                                        contentHeight: height.map(Double.init), offset: offset)
+        return CGRect(x: box.x, y: box.y, width: box.w, height: box.h)
     }
 
-    /// The container spec for this shape, in the window's bounds, with the content's height where it is fitted.
-    private func frame(in bounds: CGRect) -> CGRect {
-        switch shape {
-        case "fullscreen":
-            return bounds
-        case "nudge":
-            // Stacked after the ones already shown at its edge, newest nearest the middle, inside the safe area.
-            let safe = window?.safeAreaInsets ?? .zero
-            let tall = nudgeHeight(in: bounds)
-            let before = Self.nudges.prefix { $0 !== self }
-            let offset = before.filter { $0.shown && !$0.closed && ($0.content.position == "top") == (content.position == "top") }
-                .reduce(CGFloat(0)) { $0 + $1.nudgeHeight(in: bounds) }
-            let y = content.position == "top" ? safe.top + offset : bounds.height - safe.bottom - offset - tall
-            return CGRect(x: 0, y: y, width: bounds.width, height: tall)
-        case "banner":
-            let cap = bounds.height * InAppBridge.bannerMaxHeightShare
-            let tall = min(height ?? cap, cap)
-            return CGRect(x: 0, y: content.position == "top" ? 0 : bounds.height - tall, width: bounds.width, height: tall)
-        default:
-            let gutter = InAppBridge.modalGutter
-            let wide = min(bounds.width - gutter * 2, InAppBridge.modalMaxWidth)
-            let cap = bounds.height - gutter * 2
-            let tall = min(height ?? cap, cap)
-            return CGRect(x: (bounds.width - wide) / 2, y: (bounds.height - tall) / 2, width: wide, height: tall)
+    /// This strip's height as laid out: what the page reported, up to its cap.
+    private func ownHeight(in bounds: CGRect, safe: UIEdgeInsets) -> Double {
+        InAppHostEnv.stripBox(width: bounds.width, height: bounds.height, safe: HostInsets(safe), edge: edge, floating: floating,
+                              contentHeight: height.map(Double.init)).h
+    }
+
+    /// Where the WebView goes, asked by the controller on every layout.
+    fileprivate func webFrame(in bounds: CGRect) -> CGRect {
+        frame(in: bounds, safe: windowSafe)
+    }
+
+    private func environment(in bounds: CGRect, safe: UIEdgeInsets, frame: CGRect?, traits: UITraitCollection) -> InAppEnv {
+        InAppHostEnv.env(
+            host: "ios",
+            device: UIDevice.current.userInterfaceIdiom == .pad ? "tablet" : "phone",
+            theme: traits.userInterfaceStyle == .dark ? "dark" : "light",
+            textScale: Double(UIFontMetrics.default.scaledValue(for: 17, compatibleWith: traits) / 17),
+            shown: shown,
+            width: bounds.width,
+            height: bounds.height,
+            safe: HostInsets(safe),
+            frame: frame.map { HostRect(x: $0.minX, y: $0.minY, w: $0.width, h: $0.height) },
+            keyboardHeight: keyboard.height,
+            keyboardMs: keyboard.ms
+        )
+    }
+
+    /// The window was laid out again — a turn, a split view, a strip's new height — or the text size changed: the page
+    /// is told the screen as it is now.
+    fileprivate func laidOut() {
+        guard !closed, let controller, let web else { return }
+        let bounds = controller.view.bounds
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        let env = environment(in: bounds, safe: windowSafe, frame: stage ? nil : web.frame, traits: controller.traitCollection)
+        lastEnv = env
+        send(env)
+    }
+
+    private func send(_ env: InAppEnv) {
+        // Before the page says it is running there is no shim to tell: `_ready` sends whatever changed meanwhile.
+        guard ready, !closed else { return }
+        let text = InAppHostEnv.json(env)
+        guard text != sentEnv, let quoted = try? JSONEncoder().encode(text) else { return }
+        sentEnv = text
+        evaluate("window.__treebarsEnv&&window.__treebarsEnv(\(String(decoding: quoted, as: UTF8.self)))")
+    }
+
+    /**
+     The keyboard moved. What the page is told is how far it reaches up from the bottom of the window, and only when it
+     is docked there: a floating or split iPad keyboard covers nothing the page should move for, and a hardware keyboard
+     leaves only its shortcut bar, which is what it covers.
+     */
+    private func keyboardMoved(_ note: Notification, hiding: Bool) {
+        guard !closed, let view = controller?.view, let space = view.window?.screen.coordinateSpace else { return }
+        let duration = (note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0
+        var overlap: CGFloat = 0
+        if !hiding, let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue {
+            let frame = view.convert(end, from: space)
+            let bounds = view.bounds
+            if frame.maxY >= bounds.maxY - 1, frame.width >= bounds.width - 1, frame.minY < bounds.maxY {
+                overlap = bounds.maxY - frame.minY
+            }
         }
+        keyboard = (overlap, duration * 1000)
+        laidOut()
     }
 
     fileprivate func receive(_ body: Any, isMainFrame: Bool) {
@@ -973,21 +1046,26 @@ final class InAppHtmlHost: NSObject, WKNavigationDelegate, WKUIDelegate {
         case "_ready":
             if !ready {
                 ready = true
-                // A turn while the page was loading reached no shim: say it now, if the device is held the other way.
-                if let size = lastSize { windowResized(size) }
-                if shape == "fullscreen" {
-                    reveal()
-                } else {
-                    after(Self.heightWait) { [weak self] in self?.reveal() }
-                }
+                // A turn, a keyboard or a new size while the page was loading reached no shim: said now.
+                if let lastEnv { send(lastEnv) }
+                after(Self.layoutWait) { [weak self] in self?.reveal() }
+            }
+            reply(id, BridgeDisplay.ok)
+        case "_layout":
+            if let box = (args.first as? [String: Any])?["container"] as? [String: Any],
+               let x = jsonNumber(box["x"]), let y = jsonNumber(box["y"]), let w = jsonNumber(box["w"]), let h = jsonNumber(box["h"]),
+               [x, y, w, h].allSatisfy(\.isFinite), w >= 0, h >= 0 {
+                container = CGRect(x: x, y: y, width: w, height: h)
+                // A stage is laid out once the page says where its container is.
+                if stage, ready { reveal() }
             }
             reply(id, BridgeDisplay.ok)
         case "resize":
-            if let value = jsonNumber(args.first), value.isFinite, value >= 0, shape != "fullscreen" {
+            if let value = jsonNumber(args.first), value.isFinite, value >= 0, !stage {
                 height = CGFloat(value)
                 controller?.view.setNeedsLayout()
                 // A nudge's height moves the ones stacked after it.
-                if shape == "nudge" { for other in Self.nudges where other !== self { other.controller?.view.setNeedsLayout() } }
+                if isNudge { for other in Self.nudges where other !== self { other.controller?.view.setNeedsLayout() } }
                 if ready { reveal() }
             }
             reply(id, BridgeDisplay.ok)
@@ -1002,7 +1080,10 @@ final class InAppHtmlHost: NSObject, WKNavigationDelegate, WKUIDelegate {
         if !JSONSerialization.isValidJSONObject(payload) { payload["result"] = BridgeDisplay.refuse("error") }
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let quoted = try? JSONEncoder().encode(String(decoding: data, as: UTF8.self)) else { return }
-        let script = "window.__treebarsReply(\(String(decoding: quoted, as: UTF8.self)))"
+        evaluate("window.__treebarsReply(\(String(decoding: quoted, as: UTF8.self)))")
+    }
+
+    private func evaluate(_ script: String) {
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.closed else { return }
             self.web?.evaluateJavaScript(script, completionHandler: nil)
@@ -1011,11 +1092,12 @@ final class InAppHtmlHost: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     private func reveal() {
         guard !shown, !closed, let window, let controller else { return }
-        if shape == "nudge" {
+        if isNudge {
             // One that would take its edge past its share of the window waits instead, taken down unspent.
             let bounds = window.bounds
-            let taken = edgeNeighbours().reduce(CGFloat(0)) { $0 + $1.nudgeHeight(in: bounds) }
-            if taken + nudgeHeight(in: bounds) > bounds.height * InAppBridge.nudgeStackShare {
+            let safe = windowSafe
+            let taken = Self.nudges.filter { $0 !== self && $0.shown && !$0.closed && $0.edge == edge }.reduce(0.0) { $0 + $1.ownHeight(in: bounds, safe: safe) }
+            if taken + ownHeight(in: bounds, safe: safe) > Double(bounds.height) * InAppBridge.nudgeStackShare {
                 destroy()
                 onFailed("no_room")
                 return
@@ -1024,9 +1106,12 @@ final class InAppHtmlHost: NSObject, WKNavigationDelegate, WKUIDelegate {
         shown = true
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
-        UIView.animate(withDuration: 0.2) { controller.view.alpha = 1 }
-        // A banner or a nudge leaves the keyboard with the app; anything else takes it, so its own fields can type.
-        if shape != "banner" && shape != "nudge" { window.makeKey() }
+        // `shown` in the environment starts the page's own entrance; nothing of ours fades.
+        laidOut()
+        controller.view.alpha = 1
+        controller.setNeedsStatusBarAppearanceUpdate()
+        // A strip leaves the keyboard with the app; a stage takes it, so its own fields can type.
+        if stage { window.makeKey() }
         onShown()
         if let seconds = content.display?.auto_dismiss_seconds, seconds > 0 {
             after(TimeInterval(seconds)) { [weak self] in self?.personClosed() }
@@ -1039,16 +1124,35 @@ final class InAppHtmlHost: NSObject, WKNavigationDelegate, WKUIDelegate {
         onPersonClosed()
     }
 
+    /// The accessibility escape gesture: a dismissible message closes, as the person asked.
+    fileprivate func escape() -> Bool {
+        guard dismissible, shown, !closed else { return false }
+        personClosed()
+        return true
+    }
+
+    /// The status bar's text and icons over the message: as the message says, or as the app has them.
+    fileprivate func statusBarStyle() -> UIStatusBarStyle {
+        switch statusBar {
+        case "light": return .lightContent
+        case "dark": return .darkContent
+        default:
+            var front = previousKey?.rootViewController
+            while let next = front?.presentedViewController { front = next }
+            while let child = front?.childForStatusBarStyle { front = child }
+            return front?.preferredStatusBarStyle ?? .default
+        }
+    }
+
     private func after(_ seconds: TimeInterval, _ work: @escaping () -> Void) {
         let item = DispatchWorkItem(block: work)
         timers.append(item)
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: item)
     }
 
-    /// The insets this display was drawn under, for `getContext()`.
+    /// The insets the page holds now, for `getContext()`.
     func currentInsets() -> BridgeInsets {
-        let safe = (previousKey ?? window)?.safeAreaInsets ?? .zero
-        return BridgeInsets(safe)
+        lastEnv?.safe ?? BridgeInsets(windowSafe)
     }
 
     func isNight() -> Bool {
@@ -1071,6 +1175,10 @@ final class InAppHtmlHost: NSObject, WKNavigationDelegate, WKUIDelegate {
         closed = true
         timers.forEach { $0.cancel() }
         timers = []
+        observers.forEach { NotificationCenter.default.removeObserver($0) }
+        observers = []
+        pin?.invalidate()
+        pin = nil
         if let web {
             web.configuration.userContentController.removeScriptMessageHandler(forName: "treebars")
             web.stopLoading()
@@ -1085,7 +1193,7 @@ final class InAppHtmlHost: NSObject, WKNavigationDelegate, WKUIDelegate {
         controller = nil
         if wasKey { previousKey?.makeKey() }
         // The nudges after it at its edge close the gap it leaves.
-        if shape == "nudge" {
+        if isNudge {
             Self.nudges.removeAll { $0 === self }
             for other in Self.nudges { other.controller?.view.setNeedsLayout() }
         }
@@ -1133,23 +1241,10 @@ final class InAppHtmlHost: NSObject, WKNavigationDelegate, WKUIDelegate {
     }
 }
 
-private let hexColor = pattern("^#([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$")
-private let rgbaColor = pattern("^rgba?\\(\\s*([0-9]{1,3})\\s*,\\s*([0-9]{1,3})\\s*,\\s*([0-9]{1,3})\\s*(?:,\\s*([0-9.]+)\\s*)?\\)$", .caseInsensitive)
-
-/// A token's colour as the web writes it — `#rrggbb`, `#rrggbbaa` (alpha last) or `rgba(r, g, b, a)` — or nil.
-private func cssColor(_ value: String) -> UIColor? {
-    let text = value.trimmingCharacters(in: .whitespacesAndNewlines) as NSString
-    let range = NSRange(location: 0, length: text.length)
-    if let found = hexColor.firstMatch(in: text as String, range: range) {
-        let rgb = UInt32(text.substring(with: found.range(at: 1)), radix: 16) ?? 0
-        let alpha = found.range(at: 2).location == NSNotFound ? 255 : UInt32(text.substring(with: found.range(at: 2)), radix: 16) ?? 255
-        return UIColor(red: CGFloat((rgb >> 16) & 0xFF) / 255, green: CGFloat((rgb >> 8) & 0xFF) / 255,
-                       blue: CGFloat(rgb & 0xFF) / 255, alpha: CGFloat(alpha) / 255)
+extension HostInsets {
+    init(_ safe: UIEdgeInsets) {
+        self.init(top: Double(safe.top), right: Double(safe.right), bottom: Double(safe.bottom), left: Double(safe.left))
     }
-    guard let found = rgbaColor.firstMatch(in: text as String, range: range) else { return nil }
-    let channel = { (index: Int) in CGFloat(min(255, Int(text.substring(with: found.range(at: index))) ?? 0)) / 255 }
-    let alpha = found.range(at: 4).location == NSNotFound ? 1 : min(1, max(0, Double(text.substring(with: found.range(at: 4))) ?? 1))
-    return UIColor(red: channel(1), green: channel(2), blue: channel(3), alpha: CGFloat(alpha))
 }
 
 /**
@@ -1296,33 +1391,30 @@ private final class SpareWatch: NSObject, WKNavigationDelegate {
 
 /// A window that lets a touch go on to the app when its host says so: the HTML host's, and the native one's.
 final class InAppHtmlWindow: UIWindow {
-    var passes: (UIView) -> Bool = { _ in false }
+    /// The view the touch landed on and where, in the window's coordinates.
+    var passes: (UIView, CGPoint) -> Bool = { _, _ in false }
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         guard let hit = super.hitTest(point, with: event) else { return nil }
-        return passes(hit) ? nil : hit
+        return passes(hit, point) ? nil : hit
     }
 }
 
-/// The dim, the box with the container spec, and the WebView in it.
+/// The WebView, at the whole window for a stage and at the strip's box for a strip, and nothing painted around it.
 private final class InAppHtmlController: UIViewController {
-    let dimView = UIView()
-    private let box = UIView()
     private let web: WKWebView
-    private let layoutBox: (CGRect) -> CGRect
-    private let dimTapped: () -> Void
+    private weak var host: InAppHtmlHost?
 
-    init(web: WKWebView, dim: UIColor, surface: UIColor, radius: CGFloat, closesOnDim: Bool,
-         layout: @escaping (CGRect) -> CGRect, dimTapped: @escaping () -> Void) {
+    init(web: WKWebView, host: InAppHtmlHost) {
         self.web = web
-        layoutBox = layout
-        self.dimTapped = dimTapped
+        self.host = host
         super.init(nibName: nil, bundle: nil)
-        dimView.backgroundColor = dim
-        box.backgroundColor = surface
-        box.layer.cornerRadius = radius
-        box.clipsToBounds = true
-        if closesOnDim { dimView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped))) }
+        // A theme switched while the message is up reaches the page as the rest of the screen does.
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitPreferredContentSizeCategory.self]) { (controller: InAppHtmlController, _) in
+                controller.host?.laidOut()
+            }
+        }
     }
 
     @available(*, unavailable)
@@ -1331,20 +1423,24 @@ private final class InAppHtmlController: UIViewController {
     override func loadView() {
         let root = UIView()
         root.backgroundColor = .clear
-        root.addSubview(dimView)
-        root.addSubview(box)
-        box.addSubview(web)
+        root.addSubview(web)
         view = root
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        dimView.frame = view.bounds
-        box.frame = layoutBox(view.bounds)
-        web.frame = box.bounds
+        web.frame = host?.webFrame(in: view.bounds) ?? view.bounds
+        // Every layout — a turn, a split view, a strip's new height — tells the page the screen as it is now.
+        host?.laidOut()
     }
 
-    @objc private func tapped() { dimTapped() }
+    override var preferredStatusBarStyle: UIStatusBarStyle {
+        host?.statusBarStyle() ?? .default
+    }
+
+    override func accessibilityPerformEscape() -> Bool {
+        host?.escape() ?? false
+    }
 }
 
 /// The page's one way in, held weakly: a WKUserContentController keeps its handlers, and a handler that kept the host

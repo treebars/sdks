@@ -351,6 +351,32 @@ data class InAppContent(
      * which a renderer draws as it always has.
      */
     val direction: String? = null,
+    /**
+     * How an HTML message is presented — the stage or a strip, its edge, whether it can be dismissed, the status bar —
+     * written by Treebars beside [html]. Null on a message that predates it, which is drawn from [layout].
+     */
+    val presentation: InAppPresentation? = null,
+)
+
+/**
+ * How the host presents an HTML message. Nothing in it is paint: the page draws its own scrim, card, corners and shadow.
+ *
+ * - [mode]: `stage`, a transparent WebView over the whole window, or `strip`, one fitted at an edge.
+ * - [edge] and [floating], for a strip: the top or the bottom, and inside the safe area (a nudge) or flush with the edge
+ *   (a banner).
+ * - [dismissible]: Back closes it.
+ * - [backSteps]: Back goes back a screen before it closes the message.
+ * - [statusBar]: the colour of the status bar's own icons over the message — `light` for a dark page, `dark` for a
+ *   light one. Null, the app's.
+ */
+data class InAppPresentation(
+    val bridge: Int? = null,
+    val mode: String? = null,
+    val edge: String? = null,
+    val floating: Boolean? = null,
+    val dismissible: Boolean? = null,
+    val backSteps: Boolean? = null,
+    val statusBar: String? = null,
 )
 
 data class InAppMessage(
@@ -815,6 +841,19 @@ internal fun parseInAppContent(json: JSONObject): InAppContent {
         ),
         // `isNull` first: org.json hands back the string "null" for a JSON null.
         direction = if (json.isNull("direction")) null else json.optString("direction").takeIf { it.isNotEmpty() },
+        presentation = json.optJSONObject("presentation")?.let { presentation ->
+            fun text(key: String) = if (presentation.isNull(key)) null else presentation.optString(key).takeIf { it.isNotEmpty() }
+            fun flag(key: String) = presentation.opt(key) as? Boolean
+            InAppPresentation(
+                bridge = (presentation.opt("bridge") as? Number)?.toInt(),
+                mode = text("mode"),
+                edge = text("edge"),
+                floating = flag("floating"),
+                dismissible = flag("dismissible"),
+                backSteps = flag("back_steps"),
+                statusBar = text("status_bar"),
+            )
+        },
         maxDisplays = if (json.isNull("max_displays")) null else json.optInt("max_displays"),
         ignoreMinGap = json.optBoolean("ignore_min_gap", false),
         display = json.optJSONObject("display")?.let { display ->

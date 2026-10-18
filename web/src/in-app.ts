@@ -95,7 +95,7 @@ export interface InAppContent {
    * Where the message sits. `'html'` is the legacy spelling of `fullscreen` +
    * `body_mode: 'html'` — read it through `inAppShape()`, never directly.
    */
-  layout: 'modal' | 'banner' | 'fullscreen' | 'nudge' | 'html';
+  layout: 'modal' | 'sheet' | 'banner' | 'fullscreen' | 'nudge' | 'canvas' | 'html';
   /** Who writes the body: the typed fields, or `html`. Absent means `standard`. */
   body_mode?: 'standard' | 'html';
   html?: string;
@@ -109,7 +109,7 @@ export interface InAppContent {
   /** What the message's image shows, for a screen reader. */
   image_alt?: string;
   /** Where on the page it sits, past the shapes every host draws. */
-  placement?: { vertical?: 'top' | 'middle' | 'bottom'; horizontal?: 'start' | 'center' | 'end'; width?: number; push_down?: boolean };
+  placement?: { vertical?: 'top' | 'middle' | 'bottom'; horizontal?: 'start' | 'center' | 'end'; width?: number; offset_x?: number; offset_y?: number; push_down?: boolean; no_backdrop?: boolean; minimisable?: boolean; minimised_look?: 'tab' | 'round'; minimised_label?: string; start_minimised?: boolean };
   dismissible?: boolean;
   buttons?: InAppButton[];
   trigger: InAppTrigger;
@@ -138,6 +138,78 @@ export interface InAppContent {
    * reads as broken even when every glyph is right. Absent, a renderer draws it in the page's own direction.
    */
   direction?: 'rtl' | 'ltr';
+  /**
+   * How an HTML message is presented, written by Treebars beside `html`. Absent on a message that predates it, which is
+   * drawn from `layout`.
+   */
+  presentation?: InAppPresentation;
+}
+
+/**
+ * How the host presents an HTML message. Nothing in it is paint: the page draws its own scrim, card, corners and shadow.
+ *
+ * - `mode`: `stage`, a transparent frame over the whole window, or `strip`, one fitted at an edge.
+ * - `edge` and `floating`, for a strip: the top or the bottom, and inside the safe area (a nudge) or flush with the edge
+ *   (a banner).
+ * - `dismissible`: Escape closes it.
+ * - `web.corner`: a nudge on a wide screen sits in this corner as a card; `web.push_down`: a top banner moves the page
+ *   down rather than covering it; `web.float`: a modal with nothing behind it leaves the page usable; `web.minimise`: a
+ *   floating modal in a corner the person may fold into a tab with its name, or a round button.
+ */
+export interface InAppPresentation {
+  bridge?: number;
+  mode?: 'stage' | 'strip';
+  edge?: 'top' | 'bottom';
+  floating?: boolean;
+  dismissible?: boolean;
+  back_steps?: boolean;
+  status_bar?: 'light' | 'dark';
+  web?: { corner?: 'start' | 'end'; push_down?: boolean; float?: boolean; minimise?: InAppFold };
+}
+
+/** How a message folds away: a tab with its name (or a round button), the words on it, and whether it starts folded. */
+export interface InAppFold {
+  look?: 'tab' | 'round';
+  label?: string;
+  start?: boolean;
+}
+
+/**
+ * Whether a modal leaves the page under it usable: a message written as a document says so in its presentation (a modal
+ * with nothing behind it); an older one in its placement (`no_backdrop`).
+ */
+export function inAppFloats(content: InAppContent | null | undefined): boolean {
+  if (!content || inAppShape(content) !== 'modal') return false;
+  if (content.presentation?.mode) return content.presentation.mode === 'stage' && content.presentation.web?.float === true;
+  return content.placement?.no_backdrop === true;
+}
+
+/**
+ * How the person may fold this message away, or null: a floating modal in a corner, where its tab has an edge to sit on.
+ * Read from the presentation for a document, from the placement for an older message.
+ */
+export function inAppFold(content: InAppContent | null | undefined): InAppFold | null {
+  if (!content || !inAppFloats(content)) return null;
+  if (content.presentation?.mode) return content.presentation.web?.minimise ?? null;
+  const placement = content.placement;
+  if (!placement?.minimisable || (placement.vertical !== 'top' && placement.vertical !== 'bottom') || (placement.horizontal !== 'start' && placement.horizontal !== 'end')) return null;
+  return {
+    ...(placement.minimised_look ? { look: placement.minimised_look } : {}),
+    ...(placement.minimised_label ? { label: placement.minimised_label } : {}),
+    ...(placement.start_minimised ? { start: true } : {}),
+  };
+}
+
+/** The same message, drawn folded from the start: how a page draws again what the person folded away on the last one. */
+export function foldedFromStart(message: InAppMessage): InAppMessage {
+  const content = message.content.in_app;
+  if (!content) return message;
+  if (content.presentation?.mode && content.presentation.web?.minimise) {
+    const web = content.presentation.web;
+    return { ...message, content: { ...message.content, in_app: { ...content, presentation: { ...content.presentation, web: { ...web, minimise: { ...web.minimise, start: true } } } } } };
+  }
+  if (content.placement) return { ...message, content: { ...message.content, in_app: { ...content, placement: { ...content.placement, start_minimised: true } } } };
+  return message;
 }
 
 /**
@@ -446,6 +518,13 @@ interface Ledger {
    * change and a store that keeps nothing each make the next page open ask, with no key of its own to forget.
    */
   synced_at?: number;
+  /**
+   * The messages the person folded away and has not opened again or closed: each page of the site draws them folded
+   * again, without counting another display. Kept per message for as long as a sync still sends it.
+   */
+  folded?: Record<string, true>;
+  /** The messages drawn in the current session, keyed by its id so a new session starts with none. */
+  session_drawn?: { id: string; deliveries: string[] };
 }
 
 /*
@@ -505,6 +584,7 @@ export class InAppStore {
     const live = new Set(this.messages.map((message) => message.delivery_id));
     for (const id of Object.keys(this.ledger.shown)) if (!live.has(id)) delete this.ledger.shown[id];
     for (const id of Object.keys(this.ledger.done)) if (!live.has(id)) delete this.ledger.done[id];
+    for (const id of Object.keys(this.ledger.folded ?? {})) if (!live.has(id)) delete this.ledger.folded![id];
     this.save();
   }
 
@@ -553,6 +633,7 @@ export class InAppStore {
         this.ledger.nudge_session = { id: sessionId, shown: session.shown + 1 };
       }
       this.ledger.nudge_last_shown_at = now;
+      this.noteDrawnInSession(id, sessionId);
       const shown = (this.ledger.shown[id] ?? 0) + 1;
       this.ledger.shown[id] = shown;
       const max = message.content.in_app?.max_displays;
@@ -561,6 +642,7 @@ export class InAppStore {
       return;
     }
     const firstTime = (this.ledger.shown[id] ?? 0) === 0;
+    this.noteDrawnInSession(id, sessionId);
     if (sessionId) {
       const session = this.ledger.session?.id === sessionId ? this.ledger.session : { id: sessionId, shown: 0 };
       this.ledger.session = { id: sessionId, shown: session.shown + 1 };
@@ -580,9 +662,47 @@ export class InAppStore {
     this.save();
   }
 
+  private noteDrawnInSession(deliveryId: string, sessionId: string | null): void {
+    if (!sessionId) return;
+    const drawn = this.ledger.session_drawn?.id === sessionId ? this.ledger.session_drawn.deliveries : [];
+    if (!drawn.includes(deliveryId)) this.ledger.session_drawn = { id: sessionId, deliveries: [...drawn, deliveryId] };
+  }
+
+  /** Whether this message was drawn in this session already. */
+  drawnInSession(deliveryId: string, sessionId: string | null): boolean {
+    return !!sessionId && this.ledger.session_drawn?.id === sessionId && this.ledger.session_drawn.deliveries.includes(deliveryId);
+  }
+
   markDone(deliveryId: string): void {
     this.ledger.done[deliveryId] = true;
     this.save();
+  }
+
+  /** The person folded this message away (`true`), or opened it again (`false`). */
+  setFolded(deliveryId: string, folded: boolean): void {
+    if (!folded && !this.ledger.folded?.[deliveryId]) return;
+    const now = { ...this.ledger.folded };
+    if (folded) now[deliveryId] = true;
+    else delete now[deliveryId];
+    this.ledger.folded = now;
+    this.save();
+  }
+
+  /**
+   * The message to draw folded as a page opens, or null: one the person folded away on an earlier page, still sent and
+   * unexpired, and not closed since. Closing it marks it done, which ends this; a message whose `trigger` spent it on
+   * its first display (`immediate`) is done as well, so `done` alone cannot be the test — the fold is cleared instead
+   * whenever the message is taken down: closed, spent by a press, or failed.
+   */
+  foldedMessage(now: number = Date.now()): InAppMessage | null {
+    const folded = this.ledger.folded ?? {};
+    return (
+      this.messages.find((message) => {
+        if (!folded[message.delivery_id]) return false;
+        if (message.expires_at && Date.parse(message.expires_at) <= now) return false;
+        return inAppFold(message.content.in_app) !== null;
+      }) ?? null
+    );
   }
 
   reset(): void {

@@ -95,7 +95,8 @@ describe('a markup body’s direction', () => {
 
   it('puts right-to-left on the framed document, which inherits nothing from the dialog', () => {
     const srcdoc = srcdocOf(draw({ body_mode: 'html', html: '<p>Special offer</p>', direction: 'rtl' }));
-    expect(srcdoc.startsWith('<!doctype html><html dir="rtl"><meta charset="utf-8">')).toBe(true);
+    // On the `<html>` the environment's attributes go on, last, as every host writes it.
+    expect(srcdoc).toMatch(/^<!doctype html><html data-tb-host="web"[^>]* dir="rtl"><meta charset="utf-8">/);
     expect(bodyOf(srcdoc)).toBe('<p>Special offer</p>');
   });
 
@@ -103,14 +104,14 @@ describe('a markup body’s direction', () => {
     expect(inAppHtmlWithDirection('<!DOCTYPE html><html lang="ar"><body><p>x</p></body></html>', 'rtl')).toBe('<!DOCTYPE html><html dir="rtl"><html lang="ar"><body><p>x</p></body></html>');
     // A document is kept as a document: its doctype first, then the direction, the policy and the shim, then it.
     const srcdoc = srcdocOf(draw({ body_mode: 'html', html: '<!DOCTYPE html><html lang="ar"><body><p>x</p></body></html>', direction: 'rtl' }));
-    expect(srcdoc.startsWith('<!DOCTYPE html><html dir="rtl"><meta http-equiv="Content-Security-Policy"')).toBe(true);
+    expect(srcdoc).toMatch(/^<!DOCTYPE html><html data-tb-host="web"[^>]* dir="rtl"><meta http-equiv="Content-Security-Policy"/);
     expect(bodyOf(srcdoc)).toBe('<html lang="ar"><body><p>x</p></body></html>');
   });
 
   it('leaves markup that sets its own direction alone', () => {
     for (const html of ['<html dir="ltr"><p>x</p></html>', '<body class="m" DIR=rtl><p>x</p></body>']) {
       const srcdoc = srcdocOf(draw({ body_mode: 'html', html, direction: 'rtl' }));
-      expect(srcdoc).not.toContain('<html dir="rtl">');
+      expect(srcdoc).not.toContain(' dir="rtl">');
       expect(srcdoc.endsWith(html)).toBe(true);
     }
   });

@@ -20,20 +20,31 @@ final class InAppHtmlBridgeTests: XCTestCase {
         XCTAssertFalse(cases.isEmpty)
         for spec in cases {
             let options = try XCTUnwrap(spec["options"] as? [String: Any])
-            let insets = (options["insets"] as? [String: Int]).map {
-                BridgeInsets(top: $0["top"] ?? 0, right: $0["right"] ?? 0, bottom: $0["bottom"] ?? 0, left: $0["left"] ?? 0)
-            }
             let built = BridgeDocument.build(
                 try XCTUnwrap(spec["html"] as? String),
-                host: try XCTUnwrap(options["host"] as? String),
                 nonce: try XCTUnwrap(options["nonce"] as? String),
                 direction: options["direction"] as? String,
-                insets: insets,
-                device: options["device"] as? String,
-                orientation: options["orientation"] as? String
+                env: try Self.env(try XCTUnwrap(options["env"] as? [String: Any]))
             )
             XCTAssertEqual(built, spec["document"] as? String, spec["name"] as? String ?? "")
         }
+    }
+
+    /// An environment as the fixtures write one.
+    static func env(_ json: [String: Any]) throws -> InAppEnv {
+        let safe = try XCTUnwrap(json["safe"] as? [String: Int])
+        let keyboard = try XCTUnwrap(json["keyboard"] as? [String: Int])
+        return InAppEnv(
+            host: try XCTUnwrap(json["host"] as? String),
+            device: try XCTUnwrap(json["device"] as? String),
+            orientation: try XCTUnwrap(json["orientation"] as? String),
+            theme: try XCTUnwrap(json["theme"] as? String),
+            safe: BridgeInsets(top: safe["top"] ?? 0, right: safe["right"] ?? 0, bottom: safe["bottom"] ?? 0, left: safe["left"] ?? 0),
+            keyboardHeight: keyboard["height"] ?? 0,
+            keyboardMs: keyboard["ms"] ?? 0,
+            textScale: try XCTUnwrap(json["textScale"] as? Double),
+            shown: try XCTUnwrap(json["shown"] as? Bool)
+        )
     }
 
     func testAnswersEveryMethodTheBridgeTableGivesIOS() {

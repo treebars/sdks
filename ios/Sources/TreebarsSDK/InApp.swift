@@ -701,6 +701,62 @@ public struct InAppContent: Codable, Sendable {
     public var direction: String? = nil
     /// What the message's image shows, for VoiceOver. Declared for the same reason `direction` is.
     public var image_alt: String? = nil
+    /// How an HTML message is presented — the stage or a strip, its edge, whether it can be dismissed, the status
+    /// bar — written by Treebars beside `html`. Declared for the same reason `direction` is: the store and the React
+    /// Native bridge re-encode this struct. Nil on a message that predates it, which is drawn from `layout`.
+    public var presentation: InAppPresentation? = nil
+}
+
+/**
+ How the host presents an HTML message. Nothing in it is paint: the page draws its own scrim, card, corners and shadow.
+
+ - `mode`: `stage`, a transparent WebView over the whole window, or `strip`, one fitted at an edge.
+ - `edge` and `floating`, for a strip: the top or the bottom, and inside the safe area (a nudge) or flush with the edge
+   (a banner).
+ - `dismissible`: Escape, the accessibility escape gesture and Android's Back close it.
+ - `back_steps`: Back goes back a screen before it closes the message (Android).
+ - `status_bar`: the colour of the status bar's own text and icons over the message — `light` for a dark page, `dark`
+   for a light one. Absent, the app's.
+ */
+public struct InAppPresentation: Codable, Sendable, Equatable {
+    public var bridge: Int? = nil
+    public var mode: String? = nil
+    public var edge: String? = nil
+    public var floating: Bool? = nil
+    public var dismissible: Bool? = nil
+    public var back_steps: Bool? = nil
+    public var status_bar: String? = nil
+    public var web: InAppPresentationWeb? = nil
+
+    public init(bridge: Int? = nil, mode: String? = nil, edge: String? = nil, floating: Bool? = nil, dismissible: Bool? = nil,
+                back_steps: Bool? = nil, status_bar: String? = nil, web: InAppPresentationWeb? = nil) {
+        self.bridge = bridge
+        self.mode = mode
+        self.edge = edge
+        self.floating = floating
+        self.dismissible = dismissible
+        self.back_steps = back_steps
+        self.status_bar = status_bar
+        self.web = web
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        bridge = container.tolerant(.bridge)
+        mode = container.tolerant(.mode)
+        edge = container.tolerant(.edge)
+        floating = container.tolerant(.floating)
+        dismissible = container.tolerant(.dismissible)
+        back_steps = container.tolerant(.back_steps)
+        status_bar = container.tolerant(.status_bar)
+        web = container.tolerant(.web)
+    }
+}
+
+/// Where a web page places a message: read by the web SDK, kept here so a re-encoded message still carries it.
+public struct InAppPresentationWeb: Codable, Sendable, Equatable {
+    public var corner: String? = nil
+    public var push_down: Bool? = nil
 }
 
 extension InAppContent {
@@ -738,6 +794,7 @@ extension InAppContent {
         card = container.tolerant(.card)
         direction = container.tolerant(.direction)
         image_alt = container.tolerant(.image_alt)
+        presentation = container.tolerant(.presentation)
     }
 }
 
