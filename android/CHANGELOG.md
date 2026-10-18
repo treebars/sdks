@@ -3,6 +3,16 @@
 Every release of the Treebars SDKs carries one version number across Android, iOS, React Native and
 the web. Releases before 0.9.0 are not described here.
 
+## 0.10.1
+
+- **`Treebars.holdInApp()` now holds a message that was already waiting out its display delay.** A message whose
+  trigger fired before the hold, and whose delay ended while the app held the screen, was drawn over whatever the app
+  was holding it for. It now waits, unspent, and is drawn after `releaseInApp()`.
+- **`Treebars.holdInApp()` now holds a message that was already on its way to the screen.** A hold that began after a
+  message was chosen and before it was drawn — while an HTML message's files were being fetched, say — did not stop it,
+  and the message was drawn over whatever the app was holding the screen for. The hold is now asked again as the
+  message is drawn: nothing is drawn or spent, and the message is drawn after `releaseInApp()`.
+
 ## 0.10.0
 
 - **An HTML in-app message draws itself, and the SDK paints nothing behind it.** No dimmed backdrop, no white box

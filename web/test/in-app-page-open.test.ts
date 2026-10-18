@@ -163,6 +163,27 @@ describe('in-app messages on a page that only calls init', () => {
     expect(displayed()).toEqual(['welcome']);
   });
 
+  it('keeps a message waiting out its delay when the page holds the screen, and draws it on release', async () => {
+    queue = [message('later', { kind: 'session_start' }, { on: 'delay', delay_seconds: 5 })];
+    const sdk = open();
+    await settle();
+    expect(shown()).toEqual([]);
+    // The page's passcode comes up before the delay ends, and stays up well past it.
+    vi.advanceTimersByTime(2_000);
+    sdk.holdInApp();
+    vi.advanceTimersByTime(3_000);
+    vi.advanceTimersByTime(10_000);
+    await settle();
+    expect(shown()).toEqual([]);
+    expect(displayed()).toEqual([]);
+    expect(failed()).toEqual([]);
+    sdk.releaseInApp();
+    vi.advanceTimersByTime(1_000);
+    await settle();
+    expect(shown()).toEqual(['later']);
+    expect(displayed()).toEqual(['later']);
+  });
+
   it('draws nothing after setInAppRenderer(null), and reports the message as held back', async () => {
     queue = [message('welcome')];
     open({}, (sdk) => sdk.setInAppRenderer(null));

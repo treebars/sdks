@@ -1909,15 +1909,63 @@ enum DelayedInApp: Equatable {
 }
 
 /**
- The decision, apart from the task that runs it. The screen is asked first, so a message waiting behind
- another is judged by the caps as they stand once the screen is free rather than while the other is still
- up; then the caps, as the immediate path asks them; then the renderer.
+ The decision, apart from the task that runs it. The app's hold and the screen are asked first, so a message
+ waiting behind either is judged by the caps as they stand once it is free rather than while it is not; then the
+ caps, as the immediate path asks them; then the renderer.
+
+ The app's hold (`holdInApp()`) is a wait, never a drop: a message that started its delay before the hold has waited it
+ out by the time it looks, so it keeps its place, unspent, and is drawn on its first look after `releaseInApp()`. Not
+ handed to the release's replay of held triggers instead, as an immediate message is — its trigger fired before the
+ hold, and answering it again would start the delay over from the release. Required, so no look can leave it out.
  */
-func delayedInAppStep(blocked: String?, hasRenderer: Bool, screenHeld: Bool) -> DelayedInApp {
-    if screenHeld { return .wait }
+func delayedInAppStep(appHeld: Bool, blocked: String?, hasRenderer: Bool, screenHeld: Bool) -> DelayedInApp {
+    if appHeld || screenHeld { return .wait }
     if let blocked { return .drop(blocked == "done" ? nil : blocked) }
     if !hasRenderer { return .drop("no_renderer") }
     return .present
+}
+
+/// Why an overlay that has claimed the screen is not drawn after all (`inAppDrawRefusal`).
+enum InAppDrawRefusal: Equatable {
+    /// The app holds the screen (`holdInApp()`).
+    case heldByApp
+    /// The app is not active, or has no scene to draw in.
+    case noScreen
+
+    /// In the words the log, and a trigger kept for later, say it in.
+    var why: String {
+        switch self {
+        case .heldByApp: return "held by the app"
+        case .noScreen: return "no screen to draw on"
+        }
+    }
+}
+
+/**
+ The draw's last question, asked on the main thread as the message is drawn: after the slot is claimed, and for a markup
+ body after its files are had, which can mean fetching them. Nil to draw. The app's hold (`holdInApp()`) is asked first,
+ and asked here although every path asked it before choosing the message, because it can begin in between — a lock
+ screen that comes up while a message's files are fetched would otherwise have the message drawn over it. Either
+ refusal spends nothing and lets the slot go, and the caller keeps what it needs to try again: the immediate path its
+ trigger, answered on release or when the app is active again, and a delayed message its wait, which waits out a hold.
+ */
+func inAppDrawRefusal(appHeld: Bool, surface: Bool) -> InAppDrawRefusal? {
+    if appHeld { return .heldByApp }
+    if !surface { return .noScreen }
+    return nil
+}
+
+/**
+ A delayed message's `present` for `runDelayedInApp`: true only when `draw` took the screen and drew, not when the draw
+ was refused (`inAppDrawRefusal`). A refused draw still says it claimed the screen, as the immediate path needs, so it
+ is told apart here: refused, the loop sleeps and looks again — and a look asks the hold, so a message whose draw met a
+ hold waits it out. Counted as presented, the loop would finish and the message would be let go unshown. Every draw on
+ this platform is refused before it returns, which is what lets the answer be read here.
+ */
+func drawnUnlessRefused(_ draw: (@escaping (InAppDrawRefusal) -> Void) async -> Bool) async -> Bool {
+    var refused = false
+    let drawn = await draw { _ in refused = true }
+    return drawn && !refused
 }
 
 /**

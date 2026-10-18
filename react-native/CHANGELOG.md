@@ -4,6 +4,18 @@ Every release of the Treebars SDKs carries one version number across Android, iO
 the web, and this package runs the Android and iOS SDKs of the same version. Releases before 0.9.0 are
 not described here.
 
+## 0.10.1
+
+Requires `com.treebars:sdk-android` and the `TreebarsSDK` pod at 0.10.1, which this package names.
+
+- **`holdInApp()` now holds a message that was already waiting out its display delay**, on Android and iOS alike. A
+  message whose delay ended while the app held the screen was drawn over whatever the app was holding it for. It now
+  waits, unspent, and is drawn after `releaseInApp()`.
+- **`holdInApp()` now holds a message that was already on its way to the screen**, on Android and iOS alike. A hold
+  that began after a message was chosen and before it was drawn — while an HTML message's files were being fetched,
+  say — did not stop it, and the message was drawn over whatever the app was holding the screen for. It is now drawn
+  after `releaseInApp()`, and nothing is spent meanwhile.
+
 ## 0.10.0
 
 Requires `com.treebars:sdk-android` and the `TreebarsSDK` pod at 0.10.0, which this package names.

@@ -449,17 +449,36 @@ class InAppTest {
      */
     @Test
     fun `a delayed message waits for the screen rather than being dropped`() {
-        assertEquals(DelayedInApp.Wait, delayedInAppStep(blocked = null, hasRenderer = true, screenHeld = true))
+        assertEquals(DelayedInApp.Wait, delayedInAppStep(appHeld = false, blocked = null, hasRenderer = true, screenHeld = true))
         // Held back by a cap only it would trip is still a wait while the other is up: the screen is asked first.
-        assertEquals(DelayedInApp.Wait, delayedInAppStep(blocked = "min_gap", hasRenderer = true, screenHeld = true))
-        assertEquals(DelayedInApp.Present, delayedInAppStep(blocked = null, hasRenderer = true, screenHeld = false))
+        assertEquals(DelayedInApp.Wait, delayedInAppStep(appHeld = false, blocked = "min_gap", hasRenderer = true, screenHeld = true))
+        assertEquals(DelayedInApp.Present, delayedInAppStep(appHeld = false, blocked = null, hasRenderer = true, screenHeld = false))
     }
 
     @Test
     fun `a delayed message the caps or the app refuse is reported, except one already done`() {
-        assertEquals(DelayedInApp.Drop("min_gap"), delayedInAppStep(blocked = "min_gap", hasRenderer = true, screenHeld = false))
-        assertEquals(DelayedInApp.Drop(null), delayedInAppStep(blocked = "done", hasRenderer = true, screenHeld = false))
-        assertEquals(DelayedInApp.Drop("no_renderer"), delayedInAppStep(blocked = null, hasRenderer = false, screenHeld = false))
+        assertEquals(DelayedInApp.Drop("min_gap"), delayedInAppStep(appHeld = false, blocked = "min_gap", hasRenderer = true, screenHeld = false))
+        assertEquals(DelayedInApp.Drop(null), delayedInAppStep(appHeld = false, blocked = "done", hasRenderer = true, screenHeld = false))
+        assertEquals(DelayedInApp.Drop("no_renderer"), delayedInAppStep(appHeld = false, blocked = null, hasRenderer = false, screenHeld = false))
+    }
+
+    /* Held by the app ([Treebars.holdInApp]): a wait before anything else, so a cap is judged once it is released. */
+    @Test
+    fun `a delayed message waits while the app holds the screen`() {
+        assertEquals(DelayedInApp.Wait, delayedInAppStep(appHeld = true, blocked = null, hasRenderer = true, screenHeld = false))
+        assertEquals(DelayedInApp.Wait, delayedInAppStep(appHeld = true, blocked = "min_gap", hasRenderer = true, screenHeld = false))
+        assertEquals(DelayedInApp.Wait, delayedInAppStep(appHeld = true, blocked = null, hasRenderer = false, screenHeld = false))
+        assertEquals(DelayedInApp.Wait, delayedInAppStep(appHeld = true, blocked = null, hasRenderer = true, screenHeld = true))
+    }
+
+    /* The draw's last question: the app's hold first, so a message refused with no screen as well says it was held. */
+    @Test
+    fun `the draw refuses a hold before a missing screen, and draws only with neither`() {
+        assertEquals(InAppDrawRefusal.HELD_BY_APP, inAppDrawRefusal(appHeld = true, surface = true))
+        assertEquals(InAppDrawRefusal.HELD_BY_APP, inAppDrawRefusal(appHeld = true, surface = false))
+        assertEquals(InAppDrawRefusal.NO_SCREEN, inAppDrawRefusal(appHeld = false, surface = false))
+        assertEquals(null, inAppDrawRefusal(appHeld = false, surface = true))
+        assertEquals("held by the app", InAppDrawRefusal.HELD_BY_APP.why)
     }
 
     /*
@@ -472,6 +491,9 @@ class InAppTest {
         val scheduled = ArrayDeque<Pair<Long, () -> Unit>>()
         var waiting = true
         var held = 0
+        /** Held by the app ([Treebars.holdInApp]) until the test releases it. */
+        var appHeld = false
+        var presentedWhileAppHeld = 0
         var blocked: String? = null
         var claimRefusals = 0
         var presented = 0
@@ -479,11 +501,15 @@ class InAppTest {
         val loop = DelayedInAppLoop(
             schedule = { ms, tick -> scheduled.addLast(ms to tick) },
             stillWaiting = { waiting },
+            appHeld = { appHeld },
             blockedBy = { blocked },
             hasRenderer = { true },
             // Held for the next `held` looks, then free.
             screenHeld = { (held > 0).also { if (it) held -= 1 } },
-            present = { if (claimRefusals > 0) { claimRefusals -= 1; false } else { presented += 1; true } },
+            present = {
+                if (appHeld) presentedWhileAppHeld += 1
+                if (claimRefusals > 0) { claimRefusals -= 1; false } else { presented += 1; true }
+            },
             finish = { waiting = false },
             report = { reports += it },
         )
@@ -520,6 +546,26 @@ class InAppTest {
         assertEquals(listOf("min_gap"), fake.reports)
         assertFalse(fake.waiting)
         assertTrue(fake.scheduled.isEmpty())
+    }
+
+    /*
+     * The app held the screen after the trigger fired and before the delay ended — a lock screen coming up. Not drawn
+     * while held, however many looks that takes, nor spent or reported; drawn on the first look after release.
+     */
+    @Test
+    fun `a delayed message started before a hold waits it out and is drawn after release`() {
+        val fake = FakeDelayed().apply { appHeld = true }
+        fake.loop.tick()
+        repeat(4) { fake.advance() }
+        assertEquals(0, fake.presented)
+        assertEquals(1, fake.scheduled.size)
+        fake.appHeld = false
+        fake.advance()
+        assertEquals(0, fake.presentedWhileAppHeld)
+        assertEquals(1, fake.presented)
+        assertFalse(fake.waiting)
+        assertTrue(fake.scheduled.isEmpty())
+        assertEquals(emptyList<String>(), fake.reports)
     }
 
     @Test

@@ -110,7 +110,7 @@ enum TreebarsConstants {
     static let maxLinkValueLength = 256
     static let deferredDeepLinkWindowMs: Int64 = 24 * 60 * 60 * 1000
 
-    static let sdkVersion = "0.10.0"
+    static let sdkVersion = "0.10.1"
     static let sdkName = "treebars-ios"
     static let deviceIdPrefix = "dev_"
 

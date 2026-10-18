@@ -119,7 +119,7 @@ export const ACQUISITION = {
 /** Play's cap on the referrer it hands back, so a page cannot build one the store will truncate. */
 export const MAX_REFERRER_LENGTH = 1000;
 
-export const SDK_VERSION = '0.10.0';
+export const SDK_VERSION = '0.10.1';
 export const SDK_NAME = 'treebars-web';
 export const DEVICE_ID_PREFIX = 'dev_';
 

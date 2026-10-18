@@ -1918,7 +1918,8 @@ public final class Treebars {
 
     /// Draws no in-app message until `releaseInApp()`: for a screen the app shows over everything — a lock screen, a
     /// passcode, a checkout it must not lose — that no message may cover, and which is not a view controller of its own.
-    /// A trigger that fires while held is kept and answered on release. A message already on screen stays.
+    /// A trigger that fires while held is kept and answered on release, and a message already waiting out its display
+    /// delay waits on and is drawn after release. A message already on screen stays.
     public static func holdInApp() {
         shared.inAppHeld = true
     }
@@ -2645,9 +2646,10 @@ public final class Treebars {
 
             // One at a time: two overlays at once is two messages nobody reads. False when another
             // event's consideration claimed the screen first; this message stays queued, unspent.
-            let noSurface = {
-                self.holdTrigger(eventName, properties: properties, dimensions: dimensions,
-                                 why: "the screen went before the message could be drawn")
+            // Refused at the draw — the app held the screen, or it went — the trigger is kept as it is above, and
+            // answered on release or when the app is active again.
+            let noSurface = { (refusal: InAppDrawRefusal) in
+                self.holdTrigger(eventName, properties: properties, dimensions: dimensions, why: refusal.why)
             }
             /*
              Who draws it: a markup body is the WebView host's whatever is registered; a registered renderer is handed a
@@ -2722,9 +2724,9 @@ public final class Treebars {
     /**
      A delayed message whose delay is up, or which is waiting for the screen.
 
-     A message whose delay ends while another holds the screen waits for it rather than being dropped —
-     otherwise it would next appear on a later matching trigger, which for a `session_start + 10s`
-     message is the next session. It looks again every `delayedInAppRetryNanoseconds` and asks the caps
+     A message whose delay ends while another holds the screen, or while the app holds it (`holdInApp()`), waits
+     rather than being dropped — otherwise it would next appear on a later matching trigger, which for a
+     `session_start + 10s` message is the next session. It looks again every `delayedInAppRetryNanoseconds` and asks the caps
      again each time (`delayedInAppStep`): shown once the other message is answered or its hold lapses,
      or reported as not shown (`in_app_failed`) when a cap closes on it meanwhile — the minimum gap,
      typically, since the other message was just drawn. `delayedDelivery` stays set while it waits, so
@@ -2743,6 +2745,8 @@ public final class Treebars {
                 // No screen to draw on waits as a taken one does: the message is shown once there is one.
                 let surface = await self.inAppSurfaceReady()
                 return delayedInAppStep(
+                    // The app holds the screen (`holdInApp()`): waits, and is drawn on the first look after release.
+                    appHeld: self.inAppHeld,
                     blocked: self.inAppBlockedBy(message, content: content, session: session),
                     // Something to draw it with — the app's renderer or this SDK — else `no_renderer`.
                     hasRenderer: inAppDrawer(content, hasRenderer: renderer != nil, coreDraws: Self.coreDraws) != .none,
@@ -2751,25 +2755,21 @@ public final class Treebars {
             },
             // Another consideration can still claim the slot between the look and the claim; then it waits again.
             present: {
-                let again = {
-                    // The screen went between the look and the draw: wait for it again, unspent.
-                    self.delayedDelivery = message.delivery_id
-                    Task {
-                        try? await Task.sleep(nanoseconds: delayedInAppRetryNanoseconds)
-                        await self.presentDelayed(message, content: content)
+                // The screen went, or the app held it, between the look and the draw: not presented, so the loop waits
+                // and looks again, unspent — and every look asks the hold, so this waits it out.
+                await drawnUnlessRefused { refused in
+                    // The same hook as the immediate path's, so a delayed message is drawn by whoever would draw it at once.
+                    switch inAppDrawer(content, hasRenderer: renderer != nil, coreDraws: Self.coreDraws) {
+                    case .markup:
+                        return await self.presentHtml(message, content: content, noSurface: refused)
+                    case .app:
+                        guard let renderer else { return false }
+                        return await self.presentInApp(message, content: content, renderer: renderer, session: session, noSurface: refused)
+                    case .native:
+                        return await self.presentNative(message, content: content, session: session, noSurface: refused)
+                    case .none:
+                        return false
                     }
-                }
-                // The same hook as the immediate path's, so a delayed message is drawn by whoever would draw it at once.
-                switch inAppDrawer(content, hasRenderer: renderer != nil, coreDraws: Self.coreDraws) {
-                case .markup:
-                    return await self.presentHtml(message, content: content, noSurface: again)
-                case .app:
-                    guard let renderer else { return false }
-                    return await self.presentInApp(message, content: content, renderer: renderer, session: session, noSurface: again)
-                case .native:
-                    return await self.presentNative(message, content: content, session: session, noSurface: again)
-                case .none:
-                    return false
                 }
             },
             finish: { self.delayedDelivery = nil },
@@ -2802,9 +2802,23 @@ public final class Treebars {
     }
 
     /**
+     `inAppDrawRefusal`, asked on the main actor as the message is drawn. Refused, the slot is let go, nothing is spent,
+     and `noSurface` is told why — on the main actor too, the thread an app draws its lock screen on and so holds and
+     releases the screen from, so a release cannot fall between the refusal and the trigger it keeps for that release.
+     */
+    @MainActor
+    private func refusedAtDraw(_ message: InAppMessage, surface: Bool, noSurface: (InAppDrawRefusal) -> Void) -> Bool {
+        guard let refusal = inAppDrawRefusal(appHeld: inAppHeld, surface: surface) else { return false }
+        presentation.release()
+        TreebarsLogger.log("in-app: \(message.delivery_id) not shown, \(refusal.why); nothing spent")
+        noSurface(refusal)
+        return true
+    }
+
+    /**
      Claims the screen and hands the message to the app, and says whether the screen was claimed. `noSurface` runs
-     when the app turned out not to be active by the time the handing-over ran; nothing is spent then, and the caller
-     keeps what it needs to try again.
+     when the app turned out not to be active, or to be holding the screen (`holdInApp()`), by the time the
+     handing-over ran; nothing is spent then, and the caller keeps what it needs to try again.
      */
     @discardableResult
     private func presentInApp(
@@ -2812,7 +2826,7 @@ public final class Treebars {
         content: InAppContent,
         renderer: @escaping InAppRenderer,
         session: String?,
-        noSurface: @escaping () -> Void
+        noSurface: @escaping (InAppDrawRefusal) -> Void
     ) async -> Bool {
         // Claimed before anything is spent or reported, and in one step with the check: see `PresentationSlot`.
         guard presentation.claim() else {
@@ -2822,14 +2836,18 @@ public final class Treebars {
 
         /*
          * Asked once more on the thread that draws, and spent only after: an app that went inactive in between would
-         * otherwise have a message reported as seen that nobody saw, with nothing able to show it again.
+         * otherwise have a message reported as seen that nobody saw, with nothing able to show it again — and one that
+         * began holding the screen would have it drawn over what it holds the screen for.
          */
-        guard await inAppSurfaceReady() else {
-            presentation.release()
-            TreebarsLogger.log("in-app: \(message.delivery_id) not shown, no screen to draw on; nothing spent")
-            noSurface()
-            return true
+        let refused = await MainActor.run { () -> Bool in
+            #if canImport(UIKit)
+            let surface = UIApplication.shared.applicationState == .active
+            #else
+            let surface = true
+            #endif
+            return self.refusedAtDraw(message, surface: surface, noSurface: noSurface)
         }
+        if refused { return true }
         TreebarsLogger.log("in-app: showing \(message.delivery_id)")
 
         inApp.recordDisplay(message, session: session)
@@ -2922,9 +2940,10 @@ public final class Treebars {
      and of Android's `presentHtml`. Counted as displayed when the page says it is running (`onShown`), not when the
      WebView is made: a page that never runs (`render_error`) is not a display and spends nothing but its report. A
      body over 64 KiB whose fetch never landed is `asset_download`. `noSurface` runs, and nothing is spent, when the app
-     turned out not to be showing a scene by the time the drawing ran.
+     turned out not to be showing a scene, or to be holding the screen (`holdInApp()`), by the time the drawing ran — which
+     is after the files are had, and a fetch is long enough for a lock screen to come up.
      */
-    private func presentHtml(_ message: InAppMessage, content: InAppContent, noSurface: @escaping () -> Void) async -> Bool {
+    private func presentHtml(_ message: InAppMessage, content: InAppContent, noSurface: @escaping (InAppDrawRefusal) -> Void) async -> Bool {
         #if canImport(UIKit)
         // Held until the host says the message ended, which it does on every path: see `PresentationSlot`.
         guard presentation.claim(untilReleased: true) else {
@@ -2947,8 +2966,9 @@ public final class Treebars {
             return false
         }
         let tokens = inApp.tokensFor(message, dark: await MainActor.run { Self.appearsDark() })
-        let drawing: Bool = await MainActor.run {
-            guard UIApplication.shared.applicationState == .active, let scene = InAppHtmlHost.activeScene() else { return false }
+        await MainActor.run {
+            let scene = UIApplication.shared.applicationState == .active ? InAppHtmlHost.activeScene() : nil
+            guard !self.refusedAtDraw(message, surface: scene != nil, noSurface: noSurface), let scene else { return }
             TreebarsLogger.log("in-app: drawing \(message.delivery_id) (markup)")
             let sdk = HtmlBridge(core: self, message: message)
             // How long the page took to run and show, from here; and whether this is the process's first WKWebView.
@@ -2981,12 +3001,6 @@ public final class Treebars {
             sdk.host = host
             self.htmlHost = host
             host.show(in: scene)
-            return true
-        }
-        if !drawing {
-            presentation.release()
-            TreebarsLogger.log("in-app: \(message.delivery_id) not shown, no screen to draw on; nothing spent")
-            noSurface()
         }
         return true
         #else
@@ -3003,9 +3017,9 @@ public final class Treebars {
      after the phone went dark is planned dark. The screen is held until the host says the message ended, as the HTML
      host's is (`claim(untilReleased:)`): this SDK reports every ending itself, so the renderer's 30-second ceiling would
      only let the next message be drawn over one somebody is still reading. `noSurface` runs, and nothing is spent, when
-     the app turned out not to be showing a scene by the time the drawing ran.
+     the app turned out not to be showing a scene, or to be holding the screen (`holdInApp()`), by the time the drawing ran.
      */
-    private func presentNative(_ message: InAppMessage, content: InAppContent, session: String?, noSurface: @escaping () -> Void) async -> Bool {
+    private func presentNative(_ message: InAppMessage, content: InAppContent, session: String?, noSurface: @escaping (InAppDrawRefusal) -> Void) async -> Bool {
         #if canImport(UIKit)
         guard presentation.claim(untilReleased: true) else {
             TreebarsLogger.log("in-app: \(message.delivery_id) not shown, another message took the screen first")
@@ -3013,7 +3027,8 @@ public final class Treebars {
         }
         let fallback = inApp.projectTokens()
         let outcome: NativeOutcome = await MainActor.run {
-            guard UIApplication.shared.applicationState == .active, let scene = InAppHtmlHost.activeScene() else { return .noScreen }
+            let scene = UIApplication.shared.applicationState == .active ? InAppHtmlHost.activeScene() : nil
+            guard !self.refusedAtDraw(message, surface: scene != nil, noSurface: noSurface), let scene else { return .refused }
             let env = InAppRenderEnv(
                 appearance: scene.traitCollection.userInterfaceStyle == .dark ? "dark" : "light",
                 platform: "ios",
@@ -3047,12 +3062,8 @@ public final class Treebars {
             return .drawn
         }
         switch outcome {
-        case .drawn:
-            return true
-        case .noScreen:
-            presentation.release()
-            TreebarsLogger.log("in-app: \(message.delivery_id) not shown, no screen to draw on; nothing spent")
-            noSurface()
+        case .drawn, .refused:
+            // Refused at the draw, the slot is already let go and `noSurface` told (`refusedAtDraw`).
             return true
         case .notOverlay:
             presentation.release()
@@ -3065,7 +3076,7 @@ public final class Treebars {
     }
 
     private enum NativeOutcome {
-        case drawn, noScreen, notOverlay
+        case drawn, refused, notOverlay
     }
 
     /**

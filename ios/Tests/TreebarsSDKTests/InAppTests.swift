@@ -613,6 +613,13 @@ final class DelayedInAppLoopTests: XCTestCase {
     private final class Fake {
         var waiting = true
         var heldFor = 0
+        /// Held by the app (`holdInApp()`) until the clock reaches `releaseAt`.
+        var appHeld = false
+        var releaseAt: Int?
+        var presentedWhileAppHeld = 0
+        /// The app's hold begins during the next draw, after the look that chose to draw: a lock screen coming up while
+        /// the message's files are fetched.
+        var holdAtDraw = false
         var blocked: String?
         /// Set when the clock reaches this tick: a cap closing mid-wait.
         var blockAt: (tick: Int, reason: String)?
@@ -627,21 +634,35 @@ final class DelayedInAppLoopTests: XCTestCase {
                 look: {
                     let held = self.heldFor > 0
                     if held { self.heldFor -= 1 }
-                    return delayedInAppStep(blocked: self.blocked, hasRenderer: true, screenHeld: held)
+                    return delayedInAppStep(appHeld: self.appHeld, blocked: self.blocked, hasRenderer: true, screenHeld: held)
                 },
                 present: {
+                    if self.appHeld { self.presentedWhileAppHeld += 1 }
                     if self.claimRefusals > 0 {
                         self.claimRefusals -= 1
                         return false
                     }
-                    self.presented += 1
-                    return true
+                    // As the SDK's draws are: the slot claimed, then the draw's last question, which a hold that began
+                    // since the look refuses — saying it claimed the screen all the same.
+                    return await drawnUnlessRefused { refused in
+                        if self.holdAtDraw {
+                            self.holdAtDraw = false
+                            self.appHeld = true
+                        }
+                        if let refusal = inAppDrawRefusal(appHeld: self.appHeld, surface: true) {
+                            refused(refusal)
+                            return true
+                        }
+                        self.presented += 1
+                        return true
+                    }
                 },
                 finish: { self.waiting = false },
                 report: { self.reports.append($0) },
                 sleep: {
                     self.ticks += 1
                     if let blockAt = self.blockAt, blockAt.tick == self.ticks { self.blocked = blockAt.reason }
+                    if self.releaseAt == self.ticks { self.appHeld = false }
                     // A runaway loop fails the test instead of hanging it.
                     if self.ticks > 50 { self.waiting = false }
                 }
@@ -667,6 +688,51 @@ final class DelayedInAppLoopTests: XCTestCase {
         XCTAssertEqual(fake.presented, 0)
         XCTAssertEqual(fake.reports, ["min_gap"])
         XCTAssertEqual(fake.ticks, 2)
+        XCTAssertFalse(fake.waiting)
+    }
+
+    /**
+     The app held the screen (`holdInApp()`) after the trigger fired and before the delay ended — a lock screen coming up.
+     The message is not drawn while held, however many looks that takes, nor spent or reported; it is drawn on the first
+     look after `releaseInApp()`.
+     */
+    func testADelayedMessageStartedBeforeAHoldWaitsAndIsDrawnAfterRelease() async {
+        let fake = Fake()
+        fake.appHeld = true
+        fake.releaseAt = 5
+        await fake.run()
+        XCTAssertEqual(fake.presentedWhileAppHeld, 0)
+        XCTAssertEqual(fake.ticks, 5)
+        XCTAssertEqual(fake.presented, 1)
+        XCTAssertEqual(fake.reports, [])
+        XCTAssertFalse(fake.waiting)
+    }
+
+    /// A cap that closes while the app holds the screen is judged once it is released, not reported mid-hold.
+    func testACapClosingDuringAHoldIsReportedOnlyAfterRelease() async {
+        let fake = Fake()
+        fake.appHeld = true
+        fake.releaseAt = 3
+        fake.blockAt = (tick: 1, reason: "min_gap")
+        await fake.run()
+        XCTAssertEqual(fake.presented, 0)
+        XCTAssertEqual(fake.reports, ["min_gap"])
+        XCTAssertEqual(fake.ticks, 3)
+    }
+
+    /**
+     The hold began after the look chose to draw and before the draw itself. The draw is refused, and the message is not
+     let go as if it had been shown: the loop waits out the hold, reports nothing, and draws it after release.
+     */
+    func testAHoldThatBeginsAtTheDrawIsWaitedOutAndDrawnAfterRelease() async {
+        let fake = Fake()
+        fake.holdAtDraw = true
+        fake.releaseAt = 4
+        await fake.run()
+        XCTAssertEqual(fake.presentedWhileAppHeld, 0)
+        XCTAssertEqual(fake.ticks, 4)
+        XCTAssertEqual(fake.presented, 1)
+        XCTAssertEqual(fake.reports, [])
         XCTAssertFalse(fake.waiting)
     }
 
@@ -749,5 +815,41 @@ final class DelayedInAppLoopTests: XCTestCase {
         XCTAssertEqual(clickValues(link), ["utm_source": "in_app", "value": "app://sale?utm_source=in_app"])
         XCTAssertEqual(clickValues(InAppButton(label: "Keys", action: "custom", value: nil, data: ["coupon": "SPRING"])), ["coupon": "SPRING"])
         XCTAssertEqual(clickValues(InAppButton(label: "Cart", action: "deep_link", value: "app://cart")), ["value": "app://cart"])
+    }
+}
+
+/**
+ The draw's last question (`inAppDrawRefusal`), asked on the main thread as a message is drawn: after the slot is
+ claimed and a markup body's files are had, which is long enough for an app's lock screen to come up. A hold that
+ begins after the message was chosen must still stop the draw, so the hold is asked here whatever the screen says.
+ */
+final class InAppDrawRefusalTests: XCTestCase {
+    func testAHoldThatBeganAfterTheMessageWasChosenStopsTheDraw() {
+        XCTAssertEqual(inAppDrawRefusal(appHeld: true, surface: true), .heldByApp)
+    }
+
+    /// Held with no screen as well says it was held: the log, and the trigger kept for the release, say why truthfully.
+    func testTheHoldIsAskedBeforeTheScreen() {
+        XCTAssertEqual(inAppDrawRefusal(appHeld: true, surface: false), .heldByApp)
+        XCTAssertEqual(inAppDrawRefusal(appHeld: false, surface: false), .noScreen)
+        XCTAssertEqual(InAppDrawRefusal.heldByApp.why, "held by the app")
+        XCTAssertEqual(InAppDrawRefusal.noScreen.why, "no screen to draw on")
+    }
+
+    func testNeitherDraws() {
+        XCTAssertNil(inAppDrawRefusal(appHeld: false, surface: true))
+    }
+
+    /// A delayed message's draw is presented only when it drew: a refused draw claims the screen and is still not shown.
+    func testARefusedDrawIsNotPresentedThoughItClaimedTheScreen() async {
+        let refused = await drawnUnlessRefused { refuse in
+            refuse(.heldByApp)
+            return true
+        }
+        XCTAssertFalse(refused)
+        let drawn = await drawnUnlessRefused { _ in true }
+        XCTAssertTrue(drawn)
+        let lostTheSlot = await drawnUnlessRefused { _ in false }
+        XCTAssertFalse(lostTheSlot)
     }
 }

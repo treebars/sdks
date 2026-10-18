@@ -1574,7 +1574,8 @@ object Treebars {
     /**
      * Draws no in-app message until [releaseInApp]: for a screen the app shows over everything — a lock screen, a
      * passcode, a checkout it must not lose — that no message may cover. A trigger that fires while held is kept and
-     * answered on release, as one that fires with no screen is. A message already on screen stays.
+     * answered on release, as one that fires with no screen is, and a message already waiting out its display delay
+     * waits on and is drawn after release. A message already on screen stays.
      */
     @JvmStatic
     fun holdInApp() {
@@ -2121,7 +2122,9 @@ object Treebars {
 
             // One at a time: two overlays at once is two messages nobody reads. False when another
             // consideration claimed the screen first; this message stays queued, unspent.
-            val noSurface = { holdTrigger(eventName, properties, dimensions, "the screen went before the message could be drawn") }
+            // Refused at the draw — the app held the screen, or it went — the trigger is kept as it is above, and
+            // answered on release or on the next resume.
+            val noSurface: (InAppDrawRefusal) -> Unit = { holdTrigger(eventName, properties, dimensions, it.why) }
             if (drawsItself(content)) return presentHtml(message, content, store, noSurface)
             // A standard body is the app's renderer's when it registered one, and the SDK's own plan's otherwise.
             val draw = renderer ?: return presentNative(message, store, noSurface)
@@ -2133,8 +2136,8 @@ object Treebars {
     /**
      * A delayed message whose delay is up, or which is waiting for the screen.
      *
-     * A message whose delay ends while another holds the screen is not refused and dropped — which
-     * for a `session_start + 10s` message would put it off to the next session. It waits for the
+     * A message whose delay ends while another holds the screen, or while the app holds it ([holdInApp]), is not
+     * refused and dropped — which for a `session_start + 10s` message would put it off to the next session. It waits for the
      * screen, looking again every [DELAYED_IN_APP_RETRY_MS], and asks the caps again each time
      * (`delayedInAppStep`): shown once the other message is answered or its hold lapses, or reported
      * as not shown when a cap closes on it meanwhile — the minimum gap, typically, since the other
@@ -2146,6 +2149,8 @@ object Treebars {
         DelayedInAppLoop(
             schedule = { delayMs, tick -> mainHandler.postDelayed({ tick() }, delayMs) },
             stillWaiting = { delayedDelivery == message.deliveryId },
+            // The app holds the screen ([holdInApp]): waits, and is drawn on the first look after release.
+            appHeld = { inAppHeld },
             blockedBy = { inAppBlockedBy(message, content, store) },
             // Always something: a markup body is the WebView host's and a standard one the app's renderer's or, with
             // none, the SDK's own. `no_renderer` is a drop this core cannot reach.
@@ -2159,8 +2164,9 @@ object Treebars {
             },
             // Another consideration can still claim the slot between the look and the claim; then it waits again.
             present = {
-                val again: () -> Unit = {
-                    // The screen went between the look and the draw: wait for it again, unspent.
+                val again: (InAppDrawRefusal) -> Unit = {
+                    // The screen went, or the app held it, between the look and the draw: wait again, unspent — every
+                    // look asks the hold, so this waits it out.
                     delayedDelivery = message.deliveryId
                     mainHandler.postDelayed({ presentDelayed(message, content, store) }, DELAYED_IN_APP_RETRY_MS)
                 }
@@ -2289,16 +2295,29 @@ object Treebars {
     }
 
     /**
+     * [inAppDrawRefusal], asked on the main thread as the message is drawn — [surface] read first, then the hold, so a
+     * hold that begins while the surface is asked is still caught. Refused, the slot is let go, nothing is spent, and
+     * [noSurface] is told why, on the main thread too, where [releaseInApp] answers what was kept.
+     */
+    private fun refusedAtDraw(message: InAppMessage, surface: Boolean, noSurface: (InAppDrawRefusal) -> Unit): Boolean {
+        val refusal = inAppDrawRefusal(appHeld = inAppHeld, surface = surface) ?: return false
+        presentation.release()
+        TreebarsLogger.log("in-app: ${message.deliveryId} not shown, ${refusal.why}; nothing spent")
+        noSurface(refusal)
+        return true
+    }
+
+    /**
      * Claims the screen and hands the message to the app, and says whether the screen was claimed. [noSurface] runs,
-     * on the main thread, when the screen turned out to have gone by the time the handing-over ran; nothing is spent
-     * then, and the caller keeps what it needs to try again.
+     * on the main thread, when the screen turned out to have gone, or the app to be holding it ([holdInApp]), by the
+     * time the handing-over ran; nothing is spent then, and the caller keeps what it needs to try again.
      */
     private fun presentInApp(
         message: InAppMessage,
         content: InAppContent,
         renderer: InAppRenderer,
         store: InAppStore,
-        noSurface: () -> Unit,
+        noSurface: (InAppDrawRefusal) -> Unit,
     ): Boolean {
         // Claimed before anything is spent or reported, and in one step with the check: see [PresentationSlot].
         if (!presentation.claim()) {
@@ -2320,16 +2339,12 @@ object Treebars {
          * The spend is inside the post too. The surface is asked once more here, on the thread that
          * draws, and the message is recorded as displayed only when it is handed to something that
          * can show it — so a screen that goes in between, or a renderer that cannot attach, leaves
-         * the message unspent rather than reported as seen by nobody. The trigger match and the caps
+         * the message unspent rather than reported as seen by nobody. The app's hold is asked again
+         * with it, so one that began in between is not drawn over. The trigger match and the caps
          * above stay off the main thread; this is two preference writes.
          */
         mainHandler.post {
-            if (!inAppSurfaceReady(draw)) {
-                presentation.release()
-                TreebarsLogger.log("in-app: ${message.deliveryId} not shown, no screen to draw on; nothing spent")
-                noSurface()
-                return@post
-            }
+            if (refusedAtDraw(message, inAppSurfaceReady(draw), noSurface)) return@post
             TreebarsLogger.log("in-app: showing ${message.deliveryId}")
             store.recordDisplay(message, sessions.currentId())
             /*
@@ -2379,21 +2394,16 @@ object Treebars {
      * Claims the screen and draws a standard body itself, from its render plan, for an app that registered no renderer.
      * Held until the host says the message ended, as the markup host's claim is: it reports every ending itself, and a
      * person still reading a form's thanks must not have the next message drawn over them. [noSurface] runs, and nothing
-     * is spent, when the screen went before the draw or the window could not attach.
+     * is spent, when the screen went before the draw, the app held it ([holdInApp]), or the window could not attach.
      */
-    private fun presentNative(message: InAppMessage, store: InAppStore, noSurface: () -> Unit): Boolean {
+    private fun presentNative(message: InAppMessage, store: InAppStore, noSurface: (InAppDrawRefusal) -> Unit): Boolean {
         if (!presentation.claim(untilReleased = true)) {
             TreebarsLogger.log("in-app: ${message.deliveryId} not shown, another message took the screen first")
             return false
         }
         mainHandler.post {
             val activity = TreebarsPush.resumedActivity()
-            if (activity == null) {
-                presentation.release()
-                TreebarsLogger.log("in-app: ${message.deliveryId} not shown, no screen to draw on; nothing spent")
-                noSurface()
-                return@post
-            }
+            if (refusedAtDraw(message, activity != null, noSurface) || activity == null) return@post
             // The environment as it is now, on the screen it will be drawn on: dark or light, phone or tablet.
             val plan = inAppRenderPlan(message.raw, inAppRenderEnvFor(activity.resources.configuration, store.tokens))
             if (plan !is InAppRenderPlan.Overlay) {
@@ -2422,7 +2432,7 @@ object Treebars {
             if (!appeared) {
                 closeNative(host)
                 TreebarsLogger.log("in-app: ${message.deliveryId} not shown, the window would not attach; nothing spent")
-                noSurface()
+                noSurface(InAppDrawRefusal.NO_SCREEN)
             }
         }
         return true
@@ -2540,7 +2550,7 @@ object Treebars {
      * a WebView that cannot be made (`webview_unavailable`) or a page that never runs (`render_error`) is not a display
      * and spends nothing but its report. A body over 64 KiB whose fetch never landed is `asset_download`.
      */
-    private fun presentHtml(message: InAppMessage, content: InAppContent, store: InAppStore, noSurface: () -> Unit): Boolean {
+    private fun presentHtml(message: InAppMessage, content: InAppContent, store: InAppStore, noSurface: (InAppDrawRefusal) -> Unit): Boolean {
         // Held until the host says the message ended, which it does on every path: see [PresentationSlot].
         if (!presentation.claim(untilReleased = true)) {
             TreebarsLogger.log("in-app: ${message.deliveryId} not shown, another message took the screen first")
@@ -2558,15 +2568,13 @@ object Treebars {
         return true
     }
 
-    /** The markup body's drawing, on the main thread, with its document prepared ([preparedMarkup]). */
-    private fun drawHtml(message: InAppMessage, content: InAppContent, store: InAppStore, noSurface: () -> Unit, prepared: String?) {
+    /**
+     * The markup body's drawing, on the main thread, with its document prepared ([preparedMarkup]). The screen and the
+     * app's hold are asked here, after the preparing, because a fetch is long enough for a lock screen to come up.
+     */
+    private fun drawHtml(message: InAppMessage, content: InAppContent, store: InAppStore, noSurface: (InAppDrawRefusal) -> Unit, prepared: String?) {
         val activity = TreebarsPush.resumedActivity()
-        if (activity == null) {
-            presentation.release()
-            TreebarsLogger.log("in-app: ${message.deliveryId} not shown, no screen to draw on; nothing spent")
-            noSurface()
-            return
-        }
+        if (refusedAtDraw(message, activity != null, noSurface) || activity == null) return
         if (content.html.isNullOrEmpty() || prepared == null) {
             presentation.release()
             // A large body whose fetch never landed, or a file the body needs that is gone or could not be had.

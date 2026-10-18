@@ -1574,15 +1574,44 @@ internal sealed class DelayedInApp {
 }
 
 /**
- * The decision, apart from the handler that runs it. The screen is asked first, so a message
- * waiting behind another is judged by the caps as they stand once the screen is free rather than
- * while the other is still up; then the caps, as the immediate path asks them; then the renderer.
+ * The decision, apart from the handler that runs it. The app's hold and the screen are asked first, so a
+ * message waiting behind either is judged by the caps as they stand once it is free rather than while it
+ * is not; then the caps, as the immediate path asks them; then the renderer.
+ *
+ * The app's hold ([Treebars.holdInApp]) is a wait, never a drop: a message that started its delay before the hold has
+ * waited it out by the time it looks, so it keeps its place, unspent, and is drawn on its first look after
+ * [Treebars.releaseInApp]. Not handed to the release's replay of held triggers instead, as an immediate message is —
+ * its trigger fired before the hold, and answering it again would start the delay over from the release. Required, so
+ * no look can leave it out.
  */
-internal fun delayedInAppStep(blocked: String?, hasRenderer: Boolean, screenHeld: Boolean): DelayedInApp = when {
-    screenHeld -> DelayedInApp.Wait
+internal fun delayedInAppStep(appHeld: Boolean, blocked: String?, hasRenderer: Boolean, screenHeld: Boolean): DelayedInApp = when {
+    appHeld || screenHeld -> DelayedInApp.Wait
     blocked != null -> DelayedInApp.Drop(blocked.takeIf { it != "done" })
     !hasRenderer -> DelayedInApp.Drop("no_renderer")
     else -> DelayedInApp.Present
+}
+
+/** Why an overlay that has claimed the screen is not drawn after all ([inAppDrawRefusal]), in the words the log says it in. */
+internal enum class InAppDrawRefusal(val why: String) {
+    /** The app holds the screen ([Treebars.holdInApp]). */
+    HELD_BY_APP("held by the app"),
+    /** No Activity in front, or a renderer that cannot attach. */
+    NO_SCREEN("no screen to draw on"),
+}
+
+/**
+ * The draw's last question, asked on the main thread as the message is drawn: after the slot is claimed, and for a
+ * markup body after its files are had, which can mean fetching them. Null to draw. The app's hold
+ * ([Treebars.holdInApp]) is asked first, and asked here although every path asked it before choosing the message,
+ * because it can begin in between — a lock screen that comes up while a message's files are fetched would otherwise
+ * have the message drawn over it. Either refusal spends nothing and lets the slot go, and the caller keeps what it
+ * needs to try again: the immediate path its trigger, answered on release or on the next resume, and a delayed message
+ * its wait, which waits out a hold.
+ */
+internal fun inAppDrawRefusal(appHeld: Boolean, surface: Boolean): InAppDrawRefusal? = when {
+    appHeld -> InAppDrawRefusal.HELD_BY_APP
+    !surface -> InAppDrawRefusal.NO_SCREEN
+    else -> null
 }
 
 /**
@@ -1598,6 +1627,7 @@ internal fun delayedInAppStep(blocked: String?, hasRenderer: Boolean, screenHeld
 internal class DelayedInAppLoop(
     private val schedule: (delayMs: Long, tick: () -> Unit) -> Unit,
     private val stillWaiting: () -> Boolean,
+    private val appHeld: () -> Boolean,
     private val blockedBy: () -> String?,
     private val hasRenderer: () -> Boolean,
     private val screenHeld: () -> Boolean,
@@ -1607,7 +1637,7 @@ internal class DelayedInAppLoop(
 ) {
     fun tick() {
         if (!stillWaiting()) return
-        when (val step = delayedInAppStep(blockedBy(), hasRenderer(), screenHeld())) {
+        when (val step = delayedInAppStep(appHeld(), blockedBy(), hasRenderer(), screenHeld())) {
             is DelayedInApp.Wait -> schedule(DELAYED_IN_APP_RETRY_MS, ::tick)
             is DelayedInApp.Drop -> {
                 finish()

@@ -1950,9 +1950,13 @@ class TreebarsWeb {
     const display = message.content.in_app?.display;
     const on = typeof window === 'undefined' ? 'load' : (display?.on ?? 'load');
     const fire = () => {
-      // Its moment came while another message held the screen, or while the tab was hidden: look again in a second,
-      // still the one waiting.
-      if (this.screenHeld() || pageHidden()) {
+      /*
+       * Its moment came while another message held the screen, while the page held it (`holdInApp`), or while the tab
+       * was hidden: look again in a second, still the one waiting, unspent. A hold is waited out rather than left to
+       * `releaseInApp` to offer again: the event that started this wait came before the hold, and offering it again
+       * would start the delay over.
+       */
+      if (this.inAppHeld || this.screenHeld() || pageHidden()) {
         const timer = setTimeout(fire, 1000);
         this.pendingDisplay = { deliveryId: message.delivery_id, cancel: () => clearTimeout(timer) };
         return;
@@ -2963,8 +2967,8 @@ class TreebarsWeb {
    */
   /**
    * Draws no in-app message until `releaseInApp()`: for something the page shows over everything — a passcode, a
-   * checkout it must not lose — that no message may cover. Nothing is spent while held; a message already on screen
-   * stays.
+   * checkout it must not lose — that no message may cover. Nothing is spent while held; a message already waiting for
+   * its moment — a delay, a scroll depth — waits on and is drawn after release, and a message already on screen stays.
    */
   holdInApp(): void {
     this.inAppHeld = true;

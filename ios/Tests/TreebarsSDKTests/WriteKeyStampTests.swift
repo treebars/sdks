@@ -108,12 +108,20 @@ final class WriteKeyStampTests: XCTestCase {
 
     // A delayed message whose delay ends while another holds the screen waits, rather than being dropped.
     func testADelayedMessageWaitsForTheScreenAndIsReportedWhenRefused() {
-        XCTAssertEqual(delayedInAppStep(blocked: nil, hasRenderer: true, screenHeld: true), .wait)
-        XCTAssertEqual(delayedInAppStep(blocked: "min_gap", hasRenderer: true, screenHeld: true), .wait)
-        XCTAssertEqual(delayedInAppStep(blocked: nil, hasRenderer: true, screenHeld: false), .present)
-        XCTAssertEqual(delayedInAppStep(blocked: "min_gap", hasRenderer: true, screenHeld: false), .drop("min_gap"))
-        XCTAssertEqual(delayedInAppStep(blocked: "done", hasRenderer: true, screenHeld: false), .drop(nil))
-        XCTAssertEqual(delayedInAppStep(blocked: nil, hasRenderer: false, screenHeld: false), .drop("no_renderer"))
+        XCTAssertEqual(delayedInAppStep(appHeld: false, blocked: nil, hasRenderer: true, screenHeld: true), .wait)
+        XCTAssertEqual(delayedInAppStep(appHeld: false, blocked: "min_gap", hasRenderer: true, screenHeld: true), .wait)
+        XCTAssertEqual(delayedInAppStep(appHeld: false, blocked: nil, hasRenderer: true, screenHeld: false), .present)
+        XCTAssertEqual(delayedInAppStep(appHeld: false, blocked: "min_gap", hasRenderer: true, screenHeld: false), .drop("min_gap"))
+        XCTAssertEqual(delayedInAppStep(appHeld: false, blocked: "done", hasRenderer: true, screenHeld: false), .drop(nil))
+        XCTAssertEqual(delayedInAppStep(appHeld: false, blocked: nil, hasRenderer: false, screenHeld: false), .drop("no_renderer"))
+    }
+
+    // Held by the app (`holdInApp()`): a wait before anything else, so a cap is judged once it is released.
+    func testADelayedMessageWaitsWhileTheAppHoldsTheScreen() {
+        XCTAssertEqual(delayedInAppStep(appHeld: true, blocked: nil, hasRenderer: true, screenHeld: false), .wait)
+        XCTAssertEqual(delayedInAppStep(appHeld: true, blocked: "min_gap", hasRenderer: true, screenHeld: false), .wait)
+        XCTAssertEqual(delayedInAppStep(appHeld: true, blocked: nil, hasRenderer: false, screenHeld: false), .wait)
+        XCTAssertEqual(delayedInAppStep(appHeld: true, blocked: nil, hasRenderer: true, screenHeld: true), .wait)
     }
 
     // The direction survives decoding AND the re-encode the store and the bridge do; absent stays absent.
