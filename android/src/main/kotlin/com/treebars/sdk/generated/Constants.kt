@@ -75,6 +75,16 @@ internal object TreebarsConstants {
     const val CAMPAIGN_ID_KEY = "treebars_campaign_id"
     const val IN_APP_BUTTON_INDEX_KEY = "button_index"
     const val IN_APP_BUTTON_LABEL_KEY = "button_label"
+    /** App actions: what onAction records, the name and payload it accepts, and how long an action waits for a handler. */
+    const val APP_ACTION_EVENT = "app_action"
+    const val APP_ACTION_NAME_KEY = "app_action"
+    const val APP_ACTION_HANDLED_KEY = "handled"
+    const val APP_ACTION_SOURCE_KEY = "source"
+    const val APP_ACTION_NAVIGATE = "navigate"
+    const val APP_ACTION_NAME_PATTERN = "^[a-z][a-z0-9_.]{0,63}$"
+    const val APP_ACTION_PAYLOAD_MAX_BYTES = 4096
+    const val APP_ACTION_HOLD_MS = 30000L
+    const val APP_ACTION_HOLD_MAX = 8
     /** How many actions an Android notification draws; the SDK stops there. */
     const val PUSH_ANDROID_ACTION_SLOTS = 3
     const val PUSH_PERMISSION_LINK = "treebars://push-permission"
@@ -92,6 +102,7 @@ internal object TreebarsConstants {
     const val RICH_PUSH_BUTTON_ID_KEY = "treebars_button_id"
     const val RICH_PUSH_TEMPLATE_KEY = "treebars_template"
     const val RICH_PUSH_BACKGROUND_KEY = "treebars_background"
+    const val RICH_PUSH_ACTION_KEY = "treebars_action"
     const val RICH_PUSH_SYNC_KEY = "treebars_sync"
 
     /*
@@ -111,7 +122,7 @@ internal object TreebarsConstants {
     /** Our click id's parameter, read out of the URL that opened the app. */
     const val ACQUISITION_CLICK_ID_PARAM = "tbrs_click_id"
 
-    const val SDK_VERSION = "0.10.1"
+    const val SDK_VERSION = "0.11.0"
     const val SDK_NAME = "treebars-android"
     const val DEVICE_ID_PREFIX = "dev_"
 
@@ -138,6 +149,7 @@ internal object TreebarsConstants {
         "in_app_dismissed",
         "in_app_form_submitted",
         "in_app_failed",
+        "app_action",
         "sms_received",
         "whatsapp_received",
         "notification_read",

@@ -77,6 +77,16 @@ enum TreebarsConstants {
     static let campaignIdKey = "treebars_campaign_id"
     static let inAppButtonIndexKey = "button_index"
     static let inAppButtonLabelKey = "button_label"
+    /// App actions: what onAction records, the name and payload it accepts, and how long an action waits for a handler.
+    static let appActionEvent = "app_action"
+    static let appActionNameKey = "app_action"
+    static let appActionHandledKey = "handled"
+    static let appActionSourceKey = "source"
+    static let appActionNavigate = "navigate"
+    static let appActionNamePattern = "^[a-z][a-z0-9_.]{0,63}$"
+    static let appActionPayloadMaxBytes = 4096
+    static let appActionHold: TimeInterval = 30
+    static let appActionHoldMax = 8
     static let pushPermissionLink = "treebars://push-permission"
 
     /* A push the SDK draws: its data keys, as Treebars sends them. */
@@ -92,6 +102,7 @@ enum TreebarsConstants {
     static let richPushButtonIdKey = "treebars_button_id"
     static let richPushTemplateKey = "treebars_template"
     static let richPushBackgroundKey = "treebars_background"
+    static let richPushActionKey = "treebars_action"
     static let richPushSyncKey = "treebars_sync"
 
     /*
@@ -110,7 +121,7 @@ enum TreebarsConstants {
     static let maxLinkValueLength = 256
     static let deferredDeepLinkWindowMs: Int64 = 24 * 60 * 60 * 1000
 
-    static let sdkVersion = "0.10.1"
+    static let sdkVersion = "0.11.0"
     static let sdkName = "treebars-ios"
     static let deviceIdPrefix = "dev_"
 
@@ -137,6 +148,7 @@ enum TreebarsConstants {
         "in_app_dismissed",
         "in_app_form_submitted",
         "in_app_failed",
+        "app_action",
         "sms_received",
         "whatsapp_received",
         "notification_read",

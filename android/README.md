@@ -9,7 +9,7 @@ From Maven Central, in your app's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.treebars:sdk-android:0.10.1")
+    implementation("com.treebars:sdk-android:0.11.0")
 }
 ```
 
@@ -28,6 +28,23 @@ Treebars.identify("user_123", mapOf("email" to "ada@example.com"))
 ```
 
 Your write key is on the dashboard's Data → Setup page, which shows this snippet with the key filled in.
+
+## App actions
+
+A tap on an in-app message's button, on a push or on one of its buttons can fire a named action with a small JSON
+payload, which your app subscribes to by name. Handlers run on the main thread:
+
+```kotlin
+val subscription = Treebars.onAction("add_to_cart") { action ->
+    cart.add(action.payload["sku"] as String, (action.payload["qty"] as Number).toInt())
+}
+Treebars.onAction("navigate") { action -> openScreen(action.payload["screen"] as String) } // "Open an app screen"
+subscription.cancel()
+```
+
+A name is lower-case letters, digits, dots and underscores. An action fired before anything subscribed to it waits a
+few seconds for the first handler that does — so the push tap that started the app reaches the screen that subscribes once it is built. Each action is recorded as the `app_action` event with
+whether a handler took it — never its payload — so the dashboard can show a button that found nothing listening.
 
 ## Remote config
 

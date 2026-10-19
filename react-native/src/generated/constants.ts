@@ -85,6 +85,18 @@ export const CAMPAIGN_ID_KEY = 'treebars_campaign_id';
 /** Which element of an in-app message was pressed, on in_app_clicked. */
 export const IN_APP_BUTTON_INDEX_KEY = 'button_index';
 export const IN_APP_BUTTON_LABEL_KEY = 'button_label';
+/** App actions: what `onAction` records, the name and payload it accepts, and how long an action waits for a handler. */
+export const APP_ACTIONS = {
+  event: 'app_action',
+  nameKey: 'app_action',
+  handledKey: 'handled',
+  sourceKey: 'source',
+  navigate: 'navigate',
+  namePattern: '^[a-z][a-z0-9_.]{0,63}$',
+  payloadMaxBytes: 4096,
+  holdMs: 30000,
+  holdMax: 8,
+} as const;
 /** The window events this SDK dispatches: `e.detail` is `{ name, data }`. */
 export const WEB_EVENTS = {
   automated: 'TREEBARS_AUTOMATED_EVENTS',
@@ -119,7 +131,7 @@ export const ACQUISITION = {
 /** Play's cap on the referrer it hands back, so a page cannot build one the store will truncate. */
 export const MAX_REFERRER_LENGTH = 1000;
 
-export const SDK_VERSION = '0.10.1';
+export const SDK_VERSION = '0.11.0';
 export const SDK_NAME = 'treebars-react-native';
 export const DEVICE_ID_PREFIX = 'dev_';
 
@@ -149,6 +161,7 @@ export const RESERVED_EVENT_NAMES = [
   'in_app_dismissed',
   'in_app_form_submitted',
   'in_app_failed',
+  'app_action',
   'sms_received',
   'whatsapp_received',
   'notification_read',

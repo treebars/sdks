@@ -134,6 +134,9 @@ internal interface BridgeSdk {
      * a refusal — `not_available` for a pool the message does not name or that is gone, `offline` when it could not ask.
      */
     fun claimReward(pool: String, deliveryId: String, answer: (Map<String, Any?>) -> Unit)
+
+    /** An app action from this message, for the app's `onAction` handlers: once its click has been recorded. */
+    fun appAction(name: String, payload: Map<String, Any?>)
 }
 
 /**
@@ -165,7 +168,10 @@ internal class BridgeDisplay(
         synced.keys().asSequence().associateWith { synced.opt(it) }.toMutableMap()
     }
 
-    private class PendingClick(val fields: LinkedHashMap<String, Any?>, val then: MutableList<() -> Unit>, var leads: Boolean)
+    private class PendingClick(val fields: LinkedHashMap<String, Any?>, val then: MutableList<() -> Unit>, var leads: Boolean) {
+        /** Handed to the app's click listener and never recorded: an app action's payload. */
+        var toldValues: Map<String, Any?>? = null
+    }
 
     private fun names(array: JSONArray?): Set<String> = (0 until (array?.length() ?: 0)).mapNotNull { array!!.optString(it).takeIf { name -> name.isNotEmpty() } }.toSet()
 
@@ -200,12 +206,13 @@ internal class BridgeDisplay(
      * handler's calls cross the bridge one after another within a millisecond or two; [CLICK_WINDOW_MS] waits for the
      * rest. What the press leads to runs after it is recorded and flushed.
      */
-    private fun click(fields: Map<String, Any?>, then: (() -> Unit)? = null, leads: Boolean = false) {
+    private fun click(fields: Map<String, Any?>, then: (() -> Unit)? = null, leads: Boolean = false, toldValues: Map<String, Any?>? = null) {
         val current = pending ?: PendingClick(LinkedHashMap<String, Any?>().apply { screen?.let { put(TreebarsBridge.KEY_SCREEN, it) } }, mutableListOf(), false).also {
             pending = it
             later(CLICK_WINDOW_MS) { flushClick() }
         }
         current.fields.putAll(fields)
+        toldValues?.let { current.toldValues = it }
         then?.let { current.then.add(it) }
         if (leads) current.leads = true
     }
@@ -217,7 +224,7 @@ internal class BridgeDisplay(
         sdk.track("in_app_clicked", properties)
         val action = done.fields["action"] as? String ?: "click"
         @Suppress("UNCHECKED_CAST")
-        val values = done.fields["values"] as? Map<String, Any?> ?: emptyMap()
+        val values = done.fields["values"] as? Map<String, Any?> ?: done.toldValues ?: emptyMap()
         sdk.clicked(action, values, done.fields)
         if (done.leads) sdk.spent()
         if (done.then.isNotEmpty()) sdk.flush()
@@ -344,7 +351,11 @@ internal class BridgeDisplay(
             val screenName = (args.opt(0) as? String)?.trim().orEmpty()
             if (screenName.isEmpty()) answer(refuse("invalid_value"))
             else {
-                click(mapOf(TreebarsBridge.KEY_DESTINATION to screenName, "action" to "navigate", "values" to objectFrom(args.opt(1)) + ("screen" to screenName)))
+                val props = objectFrom(args.opt(1))
+                click(
+                    mapOf(TreebarsBridge.KEY_DESTINATION to screenName, "action" to "navigate", "values" to props + ("screen" to screenName)),
+                    then = { sdk.appAction(TreebarsConstants.APP_ACTION_NAVIGATE, mapOf("screen" to screenName, "props" to props)) },
+                )
                 answer(OK)
             }
         },
@@ -386,6 +397,25 @@ internal class BridgeDisplay(
             answer(if (number.isNotEmpty() && sdk.sms(number, args.opt(1) as? String)) OK else refuse("invalid_value"))
         },
         "share" to { args, _, answer -> answer(if (sdk.share(args.opt(0)?.toString().orEmpty())) OK else refuse("unsupported")) },
+        "appAction" to { args, _, answer ->
+            val name = args.opt(0) as? String
+            val payload = payloadFrom(args.opt(1))
+            when {
+                name == null || !AppActions.NAME.matches(name) -> answer(refuse("invalid_name"))
+                payload == null -> answer(refuse("invalid_value"))
+                payload.second > TreebarsConstants.APP_ACTION_PAYLOAD_MAX_BYTES -> answer(refuse("too_large"))
+                else -> {
+                    // Recorded with its name and never its payload, which can carry a person's own ids; the app's click
+                    // listener hears both.
+                    click(
+                        mapOf("action" to "app_action", TreebarsConstants.APP_ACTION_NAME_KEY to name),
+                        then = { sdk.appAction(name, payload.first) },
+                        toldValues = mapOf(TreebarsConstants.APP_ACTION_NAME_KEY to name) + payload.first,
+                    )
+                    answer(OK)
+                }
+            }
+        },
         "customAction" to { args, _, answer ->
             click(mapOf("action" to "custom", "values" to objectFrom(args.opt(0))))
             answer(OK)
@@ -566,6 +596,20 @@ internal class BridgeDisplay(
         }
 
         /** An object from a bridge argument: an object as it is, a JSON string parsed, anything else nothing. */
+        /**
+         * An app action's payload as the page sent it, with its size as JSON: nothing is empty, a JSON string is parsed,
+         * and anything but an object — a list, a number, text that is not JSON — is null, which the call refuses.
+         */
+        fun payloadFrom(value: Any?): Pair<Map<String, Any?>, Int>? {
+            val json = when (value) {
+                null, JSONObject.NULL -> JSONObject()
+                is JSONObject -> value
+                is String -> runCatching { JSONObject(value) }.getOrNull()?.takeIf { value.trim().startsWith("{") } ?: return null
+                else -> return null
+            }
+            return toMap(json) to json.toString().replace("\\/", "/").toByteArray(Charsets.UTF_8).size
+        }
+
         fun objectFrom(value: Any?): Map<String, Any?> = when (value) {
             is JSONObject -> toMap(value)
             is String -> runCatching { toMap(JSONObject(value)) }.getOrDefault(emptyMap())

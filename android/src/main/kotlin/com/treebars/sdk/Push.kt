@@ -450,7 +450,36 @@ object TreebarsPush {
         val media = data[TreebarsConstants.RICH_PUSH_MEDIA_KEY]?.let { runCatching { JSONObject(it) }.getOrNull() }
         // A sound or a video cannot play in an Android notification; tapping it plays it.
         if (media != null && media.optString("kind") != "gif") return JSONObject().put("type", "rich_landing").put("url", media.optString("url"))
+        // What tapping the notification itself does — an app action, a screen — over the deep link an older SDK opens.
+        tapAction(data)?.let { return it }
         return data[TreebarsConstants.RICH_PUSH_DEEP_LINK_KEY]?.takeIf { it.isNotEmpty() }?.let { JSONObject().put("type", "deep_link").put("url", it) }
+    }
+
+    /** The push's own tap action (`treebars_action`), when it carries one. */
+    internal fun tapAction(data: Map<String, String>): JSONObject? =
+        data[TreebarsConstants.RICH_PUSH_ACTION_KEY]?.let { runCatching { JSONObject(it) }.getOrNull() }
+
+    /**
+     * An app action or a screen, to the app's `onAction` handlers, sourced to this push. True when it was one: a named
+     * action that is not an action name, or a screen with no name, is nothing.
+     */
+    internal fun fireFromPush(action: JSONObject, data: Map<String, String>): Boolean {
+        val source = AppActionSource("push", data[TreebarsConstants.CAMPAIGN_ID_KEY]?.takeIf { it.isNotEmpty() }, data[TreebarsConstants.DELIVERY_ID_KEY]?.takeIf { it.isNotEmpty() })
+        val fired = when (action.optString("type")) {
+            "app_action" -> {
+                val name = action.optString("name")
+                if (!AppActions.NAME.matches(name)) return false
+                AppAction(name, action.optJSONObject("payload")?.let { BridgeDisplay.toMap(it) } ?: emptyMap(), source)
+            }
+            "navigate" -> {
+                val screen = action.optString("screen").takeIf { it.isNotEmpty() } ?: return false
+                val props = action.optJSONObject("params")?.let { BridgeDisplay.toMap(it) } ?: emptyMap()
+                AppAction(TreebarsConstants.APP_ACTION_NAVIGATE, mapOf("screen" to screen, "props" to props), source)
+            }
+            else -> return false
+        }
+        Treebars.fireAppAction(fired)
+        return true
     }
 
     /** Reports the tap — the notification opened, and which button — before anything leaves the app. */
@@ -477,7 +506,7 @@ object TreebarsPush {
     }
 
     /** What opens something: a link, a page, the dialler, the share sheet, a screen of the app, or the app's own handler. */
-    internal fun performInForeground(activity: Activity, action: JSONObject?) {
+    internal fun performInForeground(activity: Activity, action: JSONObject?, data: Map<String, String> = emptyMap()) {
         if (action == null) {
             launchIntent(activity)?.let { runCatching { activity.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
             return
@@ -487,9 +516,14 @@ object TreebarsPush {
             "deep_link", "rich_landing" -> action.optString("url").takeIf { it.isNotEmpty() }?.let { Intent(Intent.ACTION_VIEW, Uri.parse(it)) }
             "call" -> Intent(Intent.ACTION_DIAL, Uri.parse("tel:${action.optString("phone")}"))
             "share" -> Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, action.optString("text")), null)
-            "navigate", "custom" -> {
-                val values = if (type == "navigate") mapOf("screen" to action.optString("screen")) + stringMap(action.optJSONObject("params"))
-                else stringMap(action.optJSONObject("data"))
+            "navigate", "custom", "app_action" -> {
+                // A screen and an app action reach the app's onAction handlers too; `custom` only the listener below.
+                if (type != "custom") fireFromPush(action, data)
+                val values = when (type) {
+                    "navigate" -> mapOf("screen" to action.optString("screen")) + stringMap(action.optJSONObject("params"))
+                    "app_action" -> stringMap(action.optJSONObject("payload")) + (TreebarsConstants.APP_ACTION_NAME_KEY to action.optString("name"))
+                    else -> stringMap(action.optJSONObject("data"))
+                }
                 val handler = listener
                 if (handler != null) {
                     runCatching { handler.onAction(type, values) }
@@ -543,7 +577,7 @@ class TreebarsPushActivity : Activity() {
         val card = intent.getIntExtra(TreebarsPush.EXTRA_CARD, 0)
         TreebarsPush.reportTap(this, data, kind, button)
         cancel(this, data)
-        TreebarsPush.performInForeground(this, TreebarsPush.actionOf(data, kind, button, card))
+        TreebarsPush.performInForeground(this, TreebarsPush.actionOf(data, kind, button, card), data)
         finish()
     }
 }

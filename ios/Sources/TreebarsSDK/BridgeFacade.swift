@@ -477,6 +477,37 @@ public final class TreebarsBridge: NSObject {
         return try? JSONSerialization.jsonObject(with: data)
     }
 
+    /*
+     `onAction`'s subscriptions, one native subscription each, by the id JavaScript calls them back with. The core keeps
+     the subscriptions and the hold — this only carries an action across as JSON.
+     */
+    private static let appActionLock = NSLock()
+    nonisolated(unsafe) private static var appActionSubscriptions: [Int: AppActionSubscription] = [:]
+
+    @objc(subscribeAppAction:name:sink:)
+    public static func subscribeAppAction(_ subscription: Int, name: String?, sink: @escaping @Sendable (String) -> Void) {
+        let handler: AppActionHandler = { action in
+            let source: [String: Any] = ["kind": action.source.kind, "campaign_id": action.source.campaignId ?? NSNull(), "message_id": action.source.messageId ?? NSNull()]
+            let payload: Any = JSONSerialization.isValidJSONObject(action.payload) ? action.payload : [String: Any]()
+            let event: [String: Any] = ["name": "appAction", "data": ["id": subscription, "action": ["name": action.name, "payload": payload, "source": source]]]
+            guard let data = try? JSONSerialization.data(withJSONObject: event), let text = String(data: data, encoding: .utf8) else { return }
+            sink(text)
+        }
+        let made = name.map { Treebars.onAction($0, handler) } ?? Treebars.onAction(handler)
+        appActionLock.lock()
+        let previous = appActionSubscriptions.updateValue(made, forKey: subscription)
+        appActionLock.unlock()
+        previous?.cancel()
+    }
+
+    @objc(unsubscribeAppAction:)
+    public static func unsubscribeAppAction(_ subscription: Int) {
+        appActionLock.lock()
+        let made = appActionSubscriptions.removeValue(forKey: subscription)
+        appActionLock.unlock()
+        made?.cancel()
+    }
+
     @objc(setEventsSubscribed:sink:)
     public static func setEventsSubscribed(_ namesJson: String, sink: (@Sendable (String) -> Void)?) -> TreebarsBridgeFailure? {
         guard let data = namesJson.data(using: .utf8), let list = try? JSONDecoder().decode([String].self, from: data) else {

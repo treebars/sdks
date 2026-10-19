@@ -1,5 +1,6 @@
 import { BRIDGE_EVENTS, BRIDGE_EVENT_KEYS, BRIDGE_LIMITS, BRIDGE_PREVIEW_WRITES, BRIDGE_RESERVED_TRAITS, BRIDGE_VERSION, type BridgeHostMethod } from './generated/bridge';
-import { IN_APP_BUTTON_INDEX_KEY, RESERVED_EVENT_NAMES } from './generated/constants';
+import { APP_ACTION_NAME, payloadBytes } from './app-actions';
+import { APP_ACTIONS, IN_APP_BUTTON_INDEX_KEY, RESERVED_EVENT_NAMES } from './generated/constants';
 import { inAppReceipt, readInAppHtmlAction, type InAppMessage } from './in-app';
 
 /*
@@ -40,6 +41,8 @@ export interface BridgeSdk {
    * for anything else — each only once a 429, a 503 or no answer has been retried (`reward-claim.ts`).
    */
   claimReward(pool: string, deliveryId: string): Promise<Record<string, unknown>>;
+  /** An app action from this message, for the page's `onAction` handlers: once its click has been recorded. */
+  appAction(name: string, payload: Record<string, unknown>): void;
 }
 
 export type BridgeOpenVia = 'openDeepLink' | 'openWebURL' | 'openRichLanding' | '_link' | '_link_new';
@@ -79,6 +82,22 @@ function objectFrom(value: unknown): Record<string, unknown> {
     }
   }
   return {};
+}
+
+/**
+ * An app action's payload as the page sent it: nothing is `{}`, a JSON string is parsed, and anything but an object —
+ * an array, a number, text that is not JSON — is null, which the call refuses.
+ */
+function payloadFrom(value: unknown): Record<string, unknown> | null {
+  if (value === undefined || value === null) return {};
+  if (typeof value === 'object') return Array.isArray(value) ? null : (value as Record<string, unknown>);
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** A widget id as the template gave it: `0` stays `"0"`, nothing stays nothing. */
@@ -137,6 +156,8 @@ function toast(message: string): void {
 
 interface PendingClick {
   fields: Record<string, unknown>;
+  /** Said to the page's click listener and never recorded: an app action's payload. */
+  told: Record<string, unknown>;
   then: Array<() => void>;
   leads: boolean;
 }
@@ -189,13 +210,14 @@ export class BridgeDisplay {
    * with the element and the destination both; the page's messages from one handler all arrive before this turn's
    * timer. What the press leads to runs after it is recorded and flushed.
    */
-  private click(fields: Record<string, unknown>, then?: () => void, leads = false): void {
+  private click(fields: Record<string, unknown>, then?: () => void, leads = false, told?: Record<string, unknown>): void {
     if (!this.pending) {
       // The screen it was pressed on, taken now: the press may be what moves the flow on before this turn ends.
-      this.pending = { fields: this.screen ? { [BRIDGE_EVENT_KEYS.screen]: this.screen } : {}, then: [], leads: false };
+      this.pending = { fields: this.screen ? { [BRIDGE_EVENT_KEYS.screen]: this.screen } : {}, told: {}, then: [], leads: false };
       setTimeout(() => this.flushClick(), 0);
     }
     Object.assign(this.pending.fields, fields);
+    if (told) Object.assign(this.pending.told, told);
     if (then) this.pending.then.push(then);
     if (leads) this.pending.leads = true;
   }
@@ -205,7 +227,7 @@ export class BridgeDisplay {
     this.pending = null;
     if (!pending) return;
     this.sdk.track('in_app_clicked', { ...inAppReceipt(this.message), ...pending.fields });
-    this.sdk.announceClicked({ ...inAppReceipt(this.message), ...pending.fields });
+    this.sdk.announceClicked({ ...inAppReceipt(this.message), ...pending.fields, ...pending.told });
     if (pending.leads) this.sdk.spent();
     if (pending.then.length > 0) this.sdk.flush();
     for (const action of pending.then) action();
@@ -301,8 +323,24 @@ export class BridgeDisplay {
 
     navigateToScreen: (args) => {
       if (typeof args[0] !== 'string' || !args[0].trim()) return refuse('invalid_value');
-      // The web has no app screens: the page's own router hears it, with the key-values, on TREEBARS_AUTOMATED_EVENTS.
-      this.click({ [BRIDGE_EVENT_KEYS.destination]: args[0], action: 'navigate', values: objectFrom(args[1]) });
+      // The web has no app screens: the page's router hears it as the `navigate` action, and on its click event.
+      const screen = args[0].trim();
+      const props = objectFrom(args[1]);
+      this.click({ [BRIDGE_EVENT_KEYS.destination]: screen, action: 'navigate', values: { ...props, screen } }, () =>
+        this.sdk.appAction(APP_ACTIONS.navigate, { screen, props }),
+      );
+      return OK;
+    },
+    appAction: (args) => {
+      const name = args[0];
+      if (typeof name !== 'string' || !APP_ACTION_NAME.test(name)) return refuse('invalid_name');
+      const payload = payloadFrom(args[1]);
+      if (!payload) return refuse('invalid_value');
+      if (payloadBytes(payload) > APP_ACTIONS.payloadMaxBytes) return refuse('too_large');
+      // Recorded with its name and never its payload, which can carry a person's own ids; the page's click event hears both.
+      this.click({ action: 'app_action', [APP_ACTIONS.nameKey]: name }, () => this.sdk.appAction(name, payload), false, {
+        values: { [APP_ACTIONS.nameKey]: name, ...payload },
+      });
       return OK;
     },
     openDeepLink: (args) => {

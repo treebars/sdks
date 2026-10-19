@@ -1660,6 +1660,8 @@ public final class Treebars {
          * before the call is the same one after it.
          */
         guard let signedOutUserId = shared.userId else { return }
+        // An action still waiting for a handler was the previous person's tap.
+        DispatchQueue.main.async { MainActor.assumeIsolated { appActions.clear() } }
         shared.userId = nil
         shared.userSignature = nil
         // The config answers that depended on the account go now, before the next ones arrive.
@@ -3325,6 +3327,10 @@ public final class Treebars {
             then { await core.enqueue(eventName: name, properties: properties) }
         }
 
+        func appAction(_ name: String, payload: [String: Any]) {
+            Treebars.fireAppAction(AppAction(name: name, payload: payload, source: AppActionSource(kind: "in_app", campaignId: message.campaign_id, messageId: message.delivery_id)))
+        }
+
         /*
          Asked off the main actor and answered back on it, where the display lives. Asked again after a 429, a 503 or no
          answer, within a few seconds: a repeated claim is answered as the first one was, so asking again cannot claim
@@ -3970,5 +3976,80 @@ public final class Treebars {
             }
         }
         #endif
+    }
+}
+
+// MARK: - App actions
+
+/// One subscription made from another thread: subscribed on the main actor, in order, and cancelled the same way.
+private final class AppActionSubscriptionBox: @unchecked Sendable {
+    var inner: AppActionSubscription?
+    var cancelled = false
+}
+
+extension Treebars {
+    /// The app's `onAction` handlers and the actions waiting for one (`AppActions.swift`).
+    @MainActor static let appActions = AppActions(
+        track: { name, properties in Treebars.track(name, properties: properties) },
+        later: { seconds, work in
+            let item = DispatchWorkItem { MainActor.assumeIsolated(work) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: item)
+            return item
+        },
+        cancel: { ($0 as? DispatchWorkItem)?.cancel() },
+        log: { TreebarsLogger.log("app actions: \($0)") }
+    )
+
+    /**
+     Subscribes to an app action: a named action and its payload, fired from a tap — "Run an app action" or "Open an app
+     screen" on an element of an in-app message, a push or one of its buttons.
+
+     ```swift
+     Treebars.onAction("add_to_cart") { action in cart.add(action.payload["sku"] as? String) }
+     Treebars.onAction("navigate") { action in router.open(action.payload["screen"] as? String, action.payload["props"]) }
+     ```
+
+     The handler runs on the main actor with the action's name, its payload and where it came from. Every handler
+     subscribed to the name runs. An action fired before anything subscribed to it — the tap that opened the app, a
+     message drawn before its screen was built — waits a few seconds for a handler, so subscribing in a view's
+     `onAppear` is not too late. Whether a handler took it is recorded (`app_action`, with `handled`); the payload never
+     is. Keep the returned subscription to `cancel()` it. A name that is not lower-case letters, digits, dots and
+     underscores subscribes nothing.
+     */
+    @discardableResult
+    public static func onAction(_ name: String, _ handler: @escaping AppActionHandler) -> AppActionSubscription {
+        guard AppActions.isName(name) else {
+            TreebarsLogger.log("onAction: \"\(name)\" is not an action name; nothing was subscribed")
+            return AppActionSubscription {}
+        }
+        return subscribe(name, handler)
+    }
+
+    /// Subscribes to every app action, whatever its name: see the other `onAction`.
+    @discardableResult
+    public static func onAction(_ handler: @escaping AppActionHandler) -> AppActionSubscription {
+        subscribe(nil, handler)
+    }
+
+    private static func subscribe(_ name: String?, _ handler: @escaping AppActionHandler) -> AppActionSubscription {
+        if Thread.isMainThread { return MainActor.assumeIsolated { appActions.on(name, handler) } }
+        let box = AppActionSubscriptionBox()
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated { if !box.cancelled { box.inner = appActions.on(name, handler) } }
+        }
+        return AppActionSubscription {
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    box.cancelled = true
+                    box.inner?.cancel()
+                }
+            }
+        }
+    }
+
+    /// An action from a message, a push or a card, to the app's handlers, on the main actor.
+    static func fireAppAction(_ action: AppAction, record: Bool = true) {
+        if Thread.isMainThread { MainActor.assumeIsolated { appActions.fire(action, record: record) } }
+        else { DispatchQueue.main.async { MainActor.assumeIsolated { appActions.fire(action, record: record) } } }
     }
 }

@@ -129,6 +129,7 @@ final class InAppHtmlBridgeTests: XCTestCase {
         var events: [(String, [String: Any])] = []
         var traits: [[String: Any]] = []
         var opened: [[String]] = []
+        var actions: [[Any]] = []
         var dismissedCount = 0
         var spentCount = 0
         var clickedCount = 0
@@ -139,6 +140,8 @@ final class InAppHtmlBridgeTests: XCTestCase {
         init(rewards: [String: Any] = [:]) {
             self.rewards = rewards
         }
+
+        func appAction(_ name: String, payload: [String: Any]) { actions.append([name, payload]) }
 
         func claimReward(_ pool: String, deliveryID: String, _ answer: @escaping ([String: Any]) -> Void) {
             answer(rewards[pool] as? [String: Any] ?? BridgeDisplay.refuse("not_available"))
@@ -206,6 +209,7 @@ final class InAppHtmlBridgeTests: XCTestCase {
         if let count = spec["event_count"] as? Int { XCTAssertEqual(sdk.events.count, count, "\(name): event count") }
         if let expected = spec["traits"] { XCTAssertEqual(json(plain(sdk.traits)), json(plain(expected)), "\(name): traits") }
         if let expected = spec["opened"] { XCTAssertEqual(json(plain(sdk.opened)), json(plain(expected)), "\(name): opened") }
+        if let expected = spec["actions"] { XCTAssertEqual(json(plain(sdk.actions)), json(plain(expected)), "\(name): actions") }
         if let count = spec["closes"] as? Int { XCTAssertEqual(closes, count, "\(name): closes") }
         if let count = spec["dismissed"] as? Int { XCTAssertEqual(sdk.dismissedCount, count, "\(name): dismissed") }
         if let count = spec["spent"] as? Int { XCTAssertEqual(sdk.spentCount, count, "\(name): spent") }

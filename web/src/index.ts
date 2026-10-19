@@ -74,6 +74,7 @@ import {
 } from './on-site';
 import { safeGet, safeSet } from './storage';
 import { BridgeDisplay } from './bridge-calls';
+import { APP_ACTION_NAME, AppActions, type AppActionHandler } from './app-actions';
 import type { FrameMode } from './bridge-host';
 import {
   NotificationStore,
@@ -274,6 +275,7 @@ import { BATCH_SIZE, CONFIG_READY_TIMEOUT_MS, CONTEXT_SETTLE_MS, DEFAULT_BACKEND
 const LEAVING_EVENTS = new Set<string>([DEFAULT_EVENTS.APP_BACKGROUND, DEFAULT_EVENTS.SESSION_END]);
 
 export type { TreebarsWebConfig, EventProperties } from './types';
+export type { AppAction, AppActionHandler, AppActionSource } from './app-actions';
 export type {
   InAppBodyMode,
   InAppButton,
@@ -490,6 +492,11 @@ class TreebarsWeb {
    * modal may be drawn over them and neither waits for the other.
    */
   private readonly nudges = new Map<string, () => void>();
+  /** The page's `onAction` handlers and the actions waiting for one (`app-actions.ts`). */
+  private readonly appActions = new AppActions({
+    track: (name, properties) => this.track(name, properties as EventProperties),
+    log: (line) => this.log(line),
+  });
   /**
    * Of those, the ones drawn and not yet on screen: a nudge is counted when shown, and three drawn by one event are
    * three before any of them reports, so the nudge caps count these too. Every way a slot is freed clears one.
@@ -1372,6 +1379,8 @@ class TreebarsWeb {
     this.pendingDisplay = null;
     this.freeScreen();
     this.closeNudges();
+    // An action still waiting for a handler was the previous person's tap.
+    this.appActions.clear();
     /*
      * And the notification centre, for the same reason: a history belongs to the person,
      * not the browser. The device secret and the device id still survive — see above.
@@ -2250,6 +2259,9 @@ class TreebarsWeb {
       },
       dismissed: () => this.freeFor(message),
       flush: () => undefined,
+      // Handed to the page's handlers, so a preview shows what the app does, and never recorded.
+      appAction: (name, payload) =>
+        this.appActions.fire({ name, payload, source: { kind: 'in_app', campaign_id: message.campaign_id ?? null, message_id: message.delivery_id } }, false),
     };
   }
 
@@ -2287,6 +2299,8 @@ class TreebarsWeb {
       flush: () => void this.flush(),
       log: (line) => this.log(line),
       claimReward: (pool, deliveryId) => this.claimReward(pool, deliveryId),
+      appAction: (name, payload) =>
+        this.appActions.fire({ name, payload, source: { kind: 'in_app', campaign_id: message.campaign_id ?? null, message_id: message.delivery_id } }),
     };
   }
 
@@ -2928,6 +2942,33 @@ class TreebarsWeb {
       },
       options,
     );
+  }
+
+  /**
+   * Subscribes to an app action: a named action and its payload, fired from a tap in an in-app message — "Run an app
+   * action" or "Open an app screen" in the message's editor, or `treebars.appAction(name, payload)` from its own script.
+   *
+   * ```js
+   * const stop = treebars.onAction('add_to_cart', ({ payload }) => cart.add(payload.sku, payload.qty));
+   * treebars.onAction('navigate', ({ payload }) => router.push(payload.screen, payload.props));
+   * treebars.onAction((action) => console.log(action.name, action.payload)); // every action
+   * ```
+   *
+   * The handler receives `{ name, payload, source }`, where `source` says which message it came from. Every handler
+   * subscribed to the name runs, and every one subscribed to all actions. An action fired before anything subscribed to
+   * it waits a few seconds for a handler, so subscribing after the first message is drawn is not too late. Whether a
+   * handler took it is recorded (`app_action`, with `handled`), so the dashboard can say how often a message's button
+   * found nothing listening; the payload never is. Returns a function that unsubscribes.
+   */
+  onAction(name: string, handler: AppActionHandler): () => void;
+  onAction(handler: AppActionHandler): () => void;
+  onAction(nameOrHandler: string | AppActionHandler, handler?: AppActionHandler): () => void {
+    if (typeof nameOrHandler === 'function') return this.appActions.on(null, nameOrHandler);
+    if (typeof nameOrHandler !== 'string' || !APP_ACTION_NAME.test(nameOrHandler) || typeof handler !== 'function') {
+      console.warn(`[treebars] onAction needs an action name (lower-case letters, digits, dots and underscores) and a function; "${String(nameOrHandler)}" was not subscribed.`);
+      return () => undefined;
+    }
+    return this.appActions.on(nameOrHandler, handler);
   }
 
   /**
@@ -3624,6 +3665,7 @@ class TreebarsWeb {
     this.pendingDisplay = null;
     this.freeScreen();
     this.closeNudges();
+    this.appActions.clear();
     this.started = false;
   }
 }

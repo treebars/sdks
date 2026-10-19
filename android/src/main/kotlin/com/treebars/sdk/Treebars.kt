@@ -271,6 +271,14 @@ object Treebars {
      */
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    /** The app's [onAction] handlers and the actions waiting for one (`AppActions.kt`). Main thread only. */
+    private val appActions = AppActions(
+        track = { name, properties -> track(name, properties) },
+        later = { ms, work -> Runnable(work).also { mainHandler.postDelayed(it, ms) } },
+        cancelLater = { runnable -> mainHandler.removeCallbacks(runnable as Runnable) },
+        log = { TreebarsLogger.log("app actions: $it") },
+    )
+
     /**
      * What to call this SDK on the wire, when a wrapper is the thing an integrator installed.
      *
@@ -1310,6 +1318,53 @@ object Treebars {
     @JvmStatic
     fun resetInAppContext() {
         appContexts = emptySet()
+    }
+
+    /**
+     * Subscribes to an app action: a named action and its payload, fired from a tap — "Run an app action" or "Open an
+     * app screen" on an element of an in-app message, a push or one of its buttons.
+     *
+     * ```kotlin
+     * Treebars.onAction("add_to_cart") { action -> cart.add(action.payload["sku"] as String) }
+     * Treebars.onAction("navigate") { action -> router.open(action.payload["screen"] as String, action.payload["props"]) }
+     * ```
+     *
+     * The handler runs on the main thread with the action's name, its payload and where it came from. Every handler
+     * subscribed to the name runs. An action fired before anything subscribed to it — the tap that opened the app, a
+     * message drawn before its screen was built — waits a few seconds for a handler, so subscribing in `onCreate` is not
+     * too late. Whether a handler took it is recorded (`app_action`, with `handled`); the payload never is. A name that
+     * is not lower-case letters, digits, dots and underscores subscribes nothing.
+     */
+    @JvmStatic
+    fun onAction(name: String, handler: AppActionHandler): AppActionSubscription {
+        if (!AppActions.NAME.matches(name)) {
+            TreebarsLogger.log("onAction: \"$name\" is not an action name; nothing was subscribed")
+            return AppActionSubscription {}
+        }
+        return subscribe(name, handler)
+    }
+
+    /** Subscribes to every app action, whatever its name: see the other [onAction]. */
+    @JvmStatic
+    fun onAction(handler: AppActionHandler): AppActionSubscription = subscribe(null, handler)
+
+    private fun subscribe(name: String?, handler: AppActionHandler): AppActionSubscription {
+        if (Looper.myLooper() == Looper.getMainLooper()) return appActions.on(name, handler)
+        // From another thread it subscribes on the main one, in order, and cancels the same way.
+        var inner: AppActionSubscription? = null
+        var cancelled = false
+        mainHandler.post { if (!cancelled) inner = appActions.on(name, handler) }
+        return AppActionSubscription {
+            mainHandler.post {
+                cancelled = true
+                inner?.cancel()
+            }
+        }
+    }
+
+    /** An action from a message, a push or a card, to the app's handlers, on the main thread. */
+    internal fun fireAppAction(action: AppAction, record: Boolean = true) {
+        if (Looper.myLooper() == Looper.getMainLooper()) appActions.fire(action, record) else mainHandler.post { appActions.fire(action, record) }
     }
 
     /**
@@ -2647,6 +2702,9 @@ object Treebars {
             return BridgeDisplay.OK
         }
 
+        override fun appAction(name: String, payload: Map<String, Any?>) =
+            fireAppAction(AppAction(name, payload, AppActionSource("in_app", message.campaignId, message.deliveryId)))
+
         override fun requestPushPermission(answer: (String) -> Unit) {
             val manager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
             val enabled = { manager?.areNotificationsEnabled() == true }
@@ -3512,6 +3570,8 @@ object Treebars {
     fun trackNotificationOpened(data: Map<String, String>) {
         val properties = openedProperties(data) ?: return
         track("notification_opened", properties)
+        // What tapping it does beyond opening the app — an app action, a screen — to the app's onAction handlers.
+        TreebarsPush.tapAction(data)?.let { TreebarsPush.fireFromPush(it, data) }
         // Flushed rather than batched: this runs as the app is being brought up, which
         // is exactly when the process is most likely to be killed again.
         flush()
@@ -3686,6 +3746,8 @@ object Treebars {
          */
         // Before initialize nobody can be signed in, and there is no storage to clear.
         if (writeKey == null) return
+        // An action still waiting for a handler was the previous person's tap.
+        mainHandler.post { appActions.clear() }
         val signedOutUserId = userId
         /*
          * `identified_user` is history and deliberately stays — it is what `previous_user_id`

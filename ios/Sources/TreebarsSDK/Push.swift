@@ -95,6 +95,8 @@ enum PushParts {
             return all.indices.contains(button) ? all[button]["action"] as? [String: Any] : nil
         }
         if let card = cards(info).first?["action"] as? [String: Any] { return card }
+        // What tapping the notification itself does — an app action, a screen — over the deep link an older SDK opens.
+        if let tap = object(info[TreebarsConstants.richPushActionKey]) { return tap }
         if let link = info[TreebarsConstants.richPushDeepLinkKey] as? String, !link.isEmpty { return ["type": "deep_link", "url": link] }
         return nil
     }
@@ -180,12 +182,13 @@ extension Treebars {
         trackNotificationOpened(userInfo: opened)
         // Opening, sharing and the app's own handler are UI, so they happen on the main actor whatever called this.
         let action = PushParts.action(info, button: button).map(ActionBox.init)
-        Task { @MainActor in perform(action?.value) }
+        let source = AppActionSource(kind: "push", campaignId: (info[campaignIdKey] as? String).flatMap { $0.isEmpty ? nil : $0 }, messageId: deliveryId)
+        Task { @MainActor in perform(action?.value, source: source) }
         return true
     }
 
     @MainActor
-    private static func perform(_ action: [String: Any]?) {
+    private static func perform(_ action: [String: Any]?, source: AppActionSource) {
         guard let action, let type = action["type"] as? String else { return }
         let text = { (key: String) in action[key] as? String ?? "" }
         switch type {
@@ -205,6 +208,19 @@ extension Treebars {
         case "navigate":
             var values = (action["params"] as? [String: String]) ?? [:]
             values["screen"] = text("screen")
+            deliverAction(type, values)
+            // A screen reaches the app's onAction handlers too, as the built-in `navigate` action.
+            if !text("screen").isEmpty {
+                fireAppAction(AppAction(name: TreebarsConstants.appActionNavigate, payload: ["screen": text("screen"), "props": action["params"] as? [String: Any] ?? [:]], source: source))
+            }
+        case "app_action":
+            let name = text("name")
+            guard AppActions.isName(name) else { break }
+            let payload = action["payload"] as? [String: Any] ?? [:]
+            fireAppAction(AppAction(name: name, payload: payload, source: source))
+            // And the push handler set before app actions existed, with the payload as text, as a custom action's keys are.
+            var values = payload.mapValues(jsText)
+            values[TreebarsConstants.appActionNameKey] = name
             deliverAction(type, values)
         case "custom":
             deliverAction(type, (action["data"] as? [String: String]) ?? [:])

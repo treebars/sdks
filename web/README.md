@@ -121,6 +121,20 @@ waiting for this browser and draws them itself, in a shadow root, so your page's
 
   A site that allows no outside frame shows no HTML message, and the campaign's report says its frame was blocked.
 
+## App actions
+
+A button in an in-app message can fire a named action with a small JSON payload, which your page subscribes to by name:
+
+```ts
+const stop = treebars.onAction('add_to_cart', ({ payload }) => cart.add(payload.sku, payload.qty));
+treebars.onAction('navigate', ({ payload }) => router.push(payload.screen)); // "Open an app screen"
+treebars.onAction((action) => console.log(action.name, action.payload, action.source)); // every action
+```
+
+A name is lower-case letters, digits, dots and underscores. An action fired before anything subscribed to it waits a
+few seconds for the first handler that does. Each action is recorded as the `app_action` event with
+whether a handler took it — never its payload — so the dashboard can show a button that found nothing listening.
+
 ## Web push
 
 Serve `treebars-sw.js` from this package at your site's root (`https://yoursite.com/treebars-sw.js`), or

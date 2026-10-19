@@ -1,0 +1,597 @@
+{
+  "_about": "Cases every Treebars SDK runs against its own implementation, shared so that the SDKs cannot disagree. Generated; do not edit.",
+  "cases": [
+    {
+      "name": "a handler for the name takes it at once, and is recorded as handled",
+      "steps": [
+        {
+          "on": "add_to_cart",
+          "id": "cart"
+        },
+        {
+          "fire": {
+            "name": "add_to_cart",
+            "payload": {
+              "sku": "TRS-001",
+              "qty": 2
+            },
+            "source": {
+              "kind": "in_app",
+              "campaign_id": "c-1",
+              "message_id": "d-1"
+            }
+          }
+        }
+      ],
+      "delivered": [
+        [
+          "cart",
+          "add_to_cart",
+          {
+            "sku": "TRS-001",
+            "qty": 2
+          }
+        ]
+      ],
+      "events": [
+        [
+          "app_action",
+          {
+            "app_action": "add_to_cart",
+            "handled": true,
+            "source": "in_app",
+            "treebars_campaign_id": "c-1",
+            "treebars_delivery_id": "d-1"
+          }
+        ]
+      ]
+    },
+    {
+      "name": "every handler that asked for it runs, the named and the catch-all, in the order they subscribed, recorded once",
+      "steps": [
+        {
+          "on": null,
+          "id": "all"
+        },
+        {
+          "on": "add_to_cart",
+          "id": "cart"
+        },
+        {
+          "on": "wishlist.add",
+          "id": "wish"
+        },
+        {
+          "fire": {
+            "name": "add_to_cart",
+            "payload": {},
+            "source": {
+              "kind": "in_app",
+              "campaign_id": "c-1",
+              "message_id": "d-1"
+            }
+          }
+        }
+      ],
+      "delivered": [
+        [
+          "all",
+          "add_to_cart",
+          {}
+        ],
+        [
+          "cart",
+          "add_to_cart",
+          {}
+        ]
+      ],
+      "events": [
+        [
+          "app_action",
+          {
+            "app_action": "add_to_cart",
+            "handled": true,
+            "source": "in_app",
+            "treebars_campaign_id": "c-1",
+            "treebars_delivery_id": "d-1"
+          }
+        ]
+      ]
+    },
+    {
+      "name": "an action nothing asked for yet is held, and the first handler for it within the hold receives it",
+      "steps": [
+        {
+          "on": "wishlist.add",
+          "id": "wish"
+        },
+        {
+          "fire": {
+            "name": "navigate",
+            "payload": {
+              "screen": "Product",
+              "props": {
+                "id": "42"
+              }
+            },
+            "source": {
+              "kind": "push",
+              "campaign_id": "c-9"
+            }
+          }
+        },
+        {
+          "advance": 4000
+        },
+        {
+          "on": "navigate",
+          "id": "nav"
+        },
+        {
+          "on": "navigate",
+          "id": "later"
+        }
+      ],
+      "delivered": [
+        [
+          "nav",
+          "navigate",
+          {
+            "screen": "Product",
+            "props": {
+              "id": "42"
+            }
+          }
+        ]
+      ],
+      "events": [
+        [
+          "app_action",
+          {
+            "app_action": "navigate",
+            "handled": true,
+            "source": "push",
+            "treebars_campaign_id": "c-9"
+          }
+        ]
+      ]
+    },
+    {
+      "name": "a catch-all subscribed later takes what is held, oldest first",
+      "steps": [
+        {
+          "fire": {
+            "name": "a.one",
+            "payload": {
+              "n": 1
+            },
+            "source": {
+              "kind": "in_app",
+              "campaign_id": null,
+              "message_id": "d-1"
+            }
+          }
+        },
+        {
+          "fire": {
+            "name": "a.two",
+            "payload": {
+              "n": 2
+            },
+            "source": {
+              "kind": "in_app",
+              "campaign_id": null,
+              "message_id": "d-1"
+            }
+          }
+        },
+        {
+          "on": null,
+          "id": "all"
+        }
+      ],
+      "delivered": [
+        [
+          "all",
+          "a.one",
+          {
+            "n": 1
+          }
+        ],
+        [
+          "all",
+          "a.two",
+          {
+            "n": 2
+          }
+        ]
+      ],
+      "events": [
+        [
+          "app_action",
+          {
+            "app_action": "a.one",
+            "handled": true,
+            "source": "in_app",
+            "treebars_delivery_id": "d-1"
+          }
+        ],
+        [
+          "app_action",
+          {
+            "app_action": "a.two",
+            "handled": true,
+            "source": "in_app",
+            "treebars_delivery_id": "d-1"
+          }
+        ]
+      ]
+    },
+    {
+      "name": "held past the hold, it is let go and recorded as not handled; a handler after that gets nothing",
+      "steps": [
+        {
+          "fire": {
+            "name": "add_to_cart",
+            "payload": {
+              "sku": "X"
+            },
+            "source": {
+              "kind": "in_app",
+              "campaign_id": "c-1",
+              "message_id": "d-1"
+            }
+          }
+        },
+        {
+          "advance": 29999
+        },
+        {
+          "advance": 1
+        },
+        {
+          "on": "add_to_cart",
+          "id": "cart"
+        }
+      ],
+      "delivered": [],
+      "events": [
+        [
+          "app_action",
+          {
+            "app_action": "add_to_cart",
+            "handled": false,
+            "source": "in_app",
+            "treebars_campaign_id": "c-1",
+            "treebars_delivery_id": "d-1"
+          }
+        ]
+      ]
+    },
+    {
+      "name": "more than eight held lets the oldest go first, recorded as not handled",
+      "steps": [
+        {
+          "fire": {
+            "name": "tap.one",
+            "payload": {},
+            "source": {
+              "kind": "in_app",
+              "message_id": "d-1"
+            }
+          }
+        },
+        {
+          "fire": {
+            "name": "tap.two",
+            "payload": {},
+            "source": {
+              "kind": "in_app",
+              "message_id": "d-1"
+            }
+          }
+        },
+        {
+          "fire": {
+            "name": "tap.three",
+            "payload": {},
+            "source": {
+              "kind": "in_app",
+              "message_id": "d-1"
+            }
+          }
+        },
+        {
+          "fire": {
+            "name": "tap.four",
+            "payload": {},
+            "source": {
+              "kind": "in_app",
+              "message_id": "d-1"
+            }
+          }
+        },
+        {
+          "fire": {
+            "name": "tap.five",
+            "payload": {},
+            "source": {
+              "kind": "in_app",
+              "message_id": "d-1"
+            }
+          }
+        },
+        {
+          "fire": {
+            "name": "tap.six",
+            "payload": {},
+            "source": {
+              "kind": "in_app",
+              "message_id": "d-1"
+            }
+          }
+        },
+        {
+          "fire": {
+            "name": "tap.seven",
+            "payload": {},
+            "source": {
+              "kind": "in_app",
+              "message_id": "d-1"
+            }
+          }
+        },
+        {
+          "fire": {
+            "name": "tap.eight",
+            "payload": {},
+            "source": {
+              "kind": "in_app",
+              "message_id": "d-1"
+            }
+          }
+        },
+        {
+          "fire": {
+            "name": "tap.nine",
+            "payload": {},
+            "source": {
+              "kind": "in_app",
+              "message_id": "d-1"
+            }
+          }
+        },
+        {
+          "on": "tap.one",
+          "id": "first"
+        },
+        {
+          "on": "tap.nine",
+          "id": "ninth"
+        }
+      ],
+      "delivered": [
+        [
+          "ninth",
+          "tap.nine",
+          {}
+        ]
+      ],
+      "events": [
+        [
+          "app_action",
+          {
+            "app_action": "tap.one",
+            "handled": false,
+            "source": "in_app",
+            "treebars_delivery_id": "d-1"
+          }
+        ],
+        [
+          "app_action",
+          {
+            "app_action": "tap.nine",
+            "handled": true,
+            "source": "in_app",
+            "treebars_delivery_id": "d-1"
+          }
+        ]
+      ]
+    },
+    {
+      "name": "a cancelled handler is asked nothing, so the action waits for the next",
+      "steps": [
+        {
+          "on": "add_to_cart",
+          "id": "gone"
+        },
+        {
+          "off": "gone"
+        },
+        {
+          "off": "gone"
+        },
+        {
+          "fire": {
+            "name": "add_to_cart",
+            "payload": {},
+            "source": {
+              "kind": "in_app",
+              "campaign_id": "c-1",
+              "message_id": "d-1"
+            }
+          }
+        },
+        {
+          "on": "add_to_cart",
+          "id": "back"
+        }
+      ],
+      "delivered": [
+        [
+          "back",
+          "add_to_cart",
+          {}
+        ]
+      ],
+      "events": [
+        [
+          "app_action",
+          {
+            "app_action": "add_to_cart",
+            "handled": true,
+            "source": "in_app",
+            "treebars_campaign_id": "c-1",
+            "treebars_delivery_id": "d-1"
+          }
+        ]
+      ]
+    },
+    {
+      "name": "a handler that throws still received it, and the next handler still runs",
+      "steps": [
+        {
+          "on": "add_to_cart",
+          "id": "boom",
+          "throws": true
+        },
+        {
+          "on": "add_to_cart",
+          "id": "fine"
+        },
+        {
+          "fire": {
+            "name": "add_to_cart",
+            "payload": {},
+            "source": {
+              "kind": "in_app",
+              "campaign_id": "c-1",
+              "message_id": "d-1"
+            }
+          }
+        }
+      ],
+      "delivered": [
+        [
+          "boom",
+          "add_to_cart",
+          {}
+        ],
+        [
+          "fine",
+          "add_to_cart",
+          {}
+        ]
+      ],
+      "events": [
+        [
+          "app_action",
+          {
+            "app_action": "add_to_cart",
+            "handled": true,
+            "source": "in_app",
+            "treebars_campaign_id": "c-1",
+            "treebars_delivery_id": "d-1"
+          }
+        ]
+      ]
+    },
+    {
+      "name": "a preview's action reaches the app and is never recorded, held or not",
+      "steps": [
+        {
+          "on": "add_to_cart",
+          "id": "cart"
+        },
+        {
+          "fire": {
+            "name": "add_to_cart",
+            "payload": {
+              "sku": "P"
+            },
+            "source": {
+              "kind": "in_app",
+              "campaign_id": "c-1",
+              "message_id": "d-1"
+            }
+          },
+          "record": false
+        },
+        {
+          "fire": {
+            "name": "nobody.listens",
+            "payload": {},
+            "source": {
+              "kind": "in_app",
+              "campaign_id": "c-1",
+              "message_id": "d-1"
+            }
+          },
+          "record": false
+        },
+        {
+          "advance": 30000
+        }
+      ],
+      "delivered": [
+        [
+          "cart",
+          "add_to_cart",
+          {
+            "sku": "P"
+          }
+        ]
+      ],
+      "events": []
+    },
+    {
+      "name": "a card's action names its source, and an action handled from the hold is not let go again",
+      "steps": [
+        {
+          "fire": {
+            "name": "open.order",
+            "payload": {
+              "order": "o-7"
+            },
+            "source": {
+              "kind": "card",
+              "campaign_id": "c-4",
+              "message_id": "d-4"
+            }
+          }
+        },
+        {
+          "advance": 1000
+        },
+        {
+          "on": "open.order",
+          "id": "orders"
+        },
+        {
+          "advance": 30000
+        }
+      ],
+      "delivered": [
+        [
+          "orders",
+          "open.order",
+          {
+            "order": "o-7"
+          }
+        ]
+      ],
+      "events": [
+        [
+          "app_action",
+          {
+            "app_action": "open.order",
+            "handled": true,
+            "source": "card",
+            "treebars_campaign_id": "c-4",
+            "treebars_delivery_id": "d-4"
+          }
+        ]
+      ]
+    }
+  ]
+}

@@ -3,6 +3,24 @@
 Every release of the Treebars SDKs carries one version number across Android, iOS, React Native and
 the web. Releases before 0.9.0 are not described here.
 
+## 0.11.0
+
+- **App actions: `treebars.onAction(name, handler)`.** A button in an in-app message can now fire a named action with a
+  small JSON payload — `add_to_cart` with `{ sku, qty }` — and the page subscribes to it by name. `onAction(handler)`
+  subscribes to every action, and both return a function that unsubscribes. The handler receives
+  `{ name, payload, source }`, where `source` names the message.
+- **`navigate` is the one name Treebars fires itself**, with `{ screen, props }`, for a message's "Open an app screen".
+  `navigateToScreen` in a message now fires it too.
+- **An action nothing has subscribed to yet waits a few seconds** for the first handler that does, so subscribing after
+  the first message is drawn is not too late.
+- **Whether a handler took it is recorded** as the `app_action` event, with `app_action` (the name), `handled`, `source`
+  and the message. The payload is never recorded. A preview's actions reach the page and are not recorded.
+- **The in-app bridge is version 3**: `treebars.appAction(name, payload)`, for a message's own script. A name that is
+  not lower-case letters, digits, dots and underscores, or a payload over 4 KB, is refused by name.
+
+Nothing a page already calls has changed. A message's `custom` button still reaches `TREEBARS_ONSITE_MESSAGE_CLICKED`
+as before, and on a page with an earlier version an app action button does too, with the name and payload as keys.
+
 ## 0.10.1
 
 - **`holdInApp()` now holds a message that was already waiting for its moment** — a delay, a scroll depth or the

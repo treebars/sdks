@@ -475,6 +475,29 @@ RCT_EXPORT_MODULE()
   resolve(nil);
 }
 
+- (void)subscribeAppAction:(double)subscription
+                      name:(NSString *)name
+                   resolve:(RCTPromiseResolveBlock)resolve
+                    reject:(RCTPromiseRejectBlock)reject
+{
+  __weak __typeof(self) weakSelf = self;
+  [TreebarsBridge subscribeAppAction:(NSInteger)subscription name:name sink:^(NSString *event) {
+    __typeof(self) strongSelf = weakSelf;
+    if ([strongSelf canEmit]) {
+      [strongSelf emitOnTreebarsEvent:event];
+    }
+  }];
+  resolve(nil);
+}
+
+- (void)unsubscribeAppAction:(double)subscription
+                     resolve:(RCTPromiseResolveBlock)resolve
+                      reject:(RCTPromiseRejectBlock)reject
+{
+  [TreebarsBridge unsubscribeAppAction:(NSInteger)subscription];
+  resolve(nil);
+}
+
 - (void)requestPushPermission:(BOOL)provisional
                       resolve:(RCTPromiseResolveBlock)resolve
                        reject:(RCTPromiseRejectBlock)reject

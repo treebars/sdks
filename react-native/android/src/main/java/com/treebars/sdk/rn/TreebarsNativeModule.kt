@@ -371,6 +371,31 @@ class TreebarsNativeModule(reactContext: ReactApplicationContext) :
     guarded(name) { emitOnTreebarsEvent(JSONObject().put("name", name).put("data", data).toString()) }
   }
 
+  /*
+   * `onAction`'s subscriptions, one native subscription each, by the id JavaScript calls them back with. The core keeps
+   * the subscriptions and the hold — this only carries an action across as JSON.
+   */
+  private val appActionSubscriptions = java.util.concurrent.ConcurrentHashMap<Int, com.treebars.sdk.AppActionSubscription>()
+
+  override fun subscribeAppAction(subscription: Double, name: String?, promise: Promise) {
+    val id = subscription.toInt()
+    val handler = com.treebars.sdk.AppActionHandler { action ->
+      val source = JSONObject().put("kind", action.source.kind)
+        .put("campaign_id", action.source.campaignId ?: JSONObject.NULL)
+        .put("message_id", action.source.messageId ?: JSONObject.NULL)
+      val json = JSONObject().put("name", action.name).put("payload", JSONObject.wrap(action.payload) ?: JSONObject()).put("source", source)
+      emitEvent("appAction", JSONObject().put("id", id).put("action", json))
+    }
+    val made = if (name == null) Treebars.onAction(handler) else Treebars.onAction(name, handler)
+    appActionSubscriptions.put(id, made)?.cancel()
+    promise.resolve(null)
+  }
+
+  override fun unsubscribeAppAction(subscription: Double, promise: Promise) {
+    appActionSubscriptions.remove(subscription.toInt())?.cancel()
+    promise.resolve(null)
+  }
+
   override fun setEventsSubscribed(namesJson: String, promise: Promise) {
     val names = runCatching { org.json.JSONArray(namesJson) }.getOrNull()
       ?.let { list -> (0 until list.length()).map { list.optString(it) }.toSet() }

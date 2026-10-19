@@ -4,6 +4,24 @@ Every release of the Treebars SDKs carries one version number across Android, iO
 the web, and this package runs the Android and iOS SDKs of the same version. Releases before 0.9.0 are
 not described here.
 
+## 0.11.0
+
+Requires `com.treebars:sdk-android` and the `TreebarsSDK` pod at 0.11.0, which this package names.
+
+- **App actions: `treebars.onAction(name, handler)`.** A tap on an in-app message's button, on a push or on one of its
+  buttons can now fire a named action with a small JSON payload — `add_to_cart` with `{ sku, qty }` — and the app
+  subscribes to it by name. `onAction(handler)` subscribes to every action; both return a function that unsubscribes,
+  and both are safe before `init()`. The handler receives `{ name, payload, source }`.
+- **`navigate` is the one name Treebars fires itself**, with `{ screen, props }` — subscribe once and hand it to the
+  navigator.
+- **An action fired before anything subscribed waits a few seconds** in the native SDK, so the push tap that started
+  the app reaches a handler subscribed from a screen's effect.
+- **Whether a handler took it is recorded** as the `app_action` event, with the name, `handled`, `source` and the
+  message. The payload is never recorded.
+- **Breaking, for TypeScript only: the type `AppAction` is now the app action.** What `setEventListener`'s
+  `pushClicked`, `inAppCampaignClicked` and `inAppCampaignCustomAction` receive is called `ClickedAction`, with the same
+  shape as before. Code that named the old type needs the new name; nothing at run time changed.
+
 ## 0.10.1
 
 Requires `com.treebars:sdk-android` and the `TreebarsSDK` pod at 0.10.1, which this package names.

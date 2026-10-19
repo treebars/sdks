@@ -1522,6 +1522,382 @@
           }
         ]
       ]
+    },
+    {
+      "name": "an app action reaches the app by name, and its payload is never recorded",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [],
+          "traits": []
+        },
+        "stored": {}
+      },
+      "steps": [
+        {
+          "call": "appAction",
+          "args": [
+            "add_to_cart",
+            {
+              "sku": "TRS-001",
+              "qty": 2,
+              "gift": false
+            }
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "turn": true
+        },
+        {
+          "call": "appAction",
+          "args": [
+            "cart.open",
+            "{\"tab\":\"saved\"}"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "turn": true
+        },
+        {
+          "call": "appAction",
+          "args": [
+            "cart.empty"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "turn": true
+        }
+      ],
+      "events": [
+        [
+          "in_app_clicked",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "action": "app_action",
+            "app_action": "add_to_cart"
+          }
+        ],
+        [
+          "in_app_clicked",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "action": "app_action",
+            "app_action": "cart.open"
+          }
+        ],
+        [
+          "in_app_clicked",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "action": "app_action",
+            "app_action": "cart.empty"
+          }
+        ]
+      ],
+      "actions": [
+        [
+          "add_to_cart",
+          {
+            "sku": "TRS-001",
+            "qty": 2,
+            "gift": false
+          }
+        ],
+        [
+          "cart.open",
+          {
+            "tab": "saved"
+          }
+        ],
+        [
+          "cart.empty",
+          {}
+        ]
+      ],
+      "clicked": 3
+    },
+    {
+      "name": "an app action with a name that is not one, a payload that is not an object, or one over 4 KB is refused and records nothing",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [],
+          "traits": []
+        },
+        "stored": {}
+      },
+      "steps": [
+        {
+          "call": "appAction",
+          "args": [
+            "Add To Cart",
+            {}
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "invalid_name"
+          }
+        },
+        {
+          "call": "appAction",
+          "args": [
+            "",
+            {}
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "invalid_name"
+          }
+        },
+        {
+          "call": "appAction",
+          "args": [
+            42
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "invalid_name"
+          }
+        },
+        {
+          "call": "appAction",
+          "args": [
+            "9lives"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "invalid_name"
+          }
+        },
+        {
+          "call": "appAction",
+          "args": [
+            "cart.add",
+            "[1,2]"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "invalid_value"
+          }
+        },
+        {
+          "call": "appAction",
+          "args": [
+            "cart.add",
+            "not json"
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "invalid_value"
+          }
+        },
+        {
+          "call": "appAction",
+          "args": [
+            "cart.add",
+            [
+              1,
+              2
+            ]
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "invalid_value"
+          }
+        },
+        {
+          "call": "appAction",
+          "args": [
+            "cart.add",
+            {
+              "blob": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ],
+          "answer": {
+            "ok": false,
+            "reason": "too_large"
+          }
+        },
+        {
+          "turn": true
+        }
+      ],
+      "events": [],
+      "actions": [],
+      "clicked": 0
+    },
+    {
+      "name": "opening a screen of the app is the navigate action, with the screen and its props",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [],
+          "traits": []
+        },
+        "stored": {}
+      },
+      "steps": [
+        {
+          "call": "navigateToScreen",
+          "args": [
+            "Product",
+            {
+              "id": "42"
+            }
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "turn": true
+        },
+        {
+          "call": "navigateToScreen",
+          "args": [
+            "Cart"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "turn": true
+        }
+      ],
+      "events": [
+        [
+          "in_app_clicked",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "destination": "Product",
+            "action": "navigate",
+            "values": {
+              "id": "42",
+              "screen": "Product"
+            }
+          }
+        ],
+        [
+          "in_app_clicked",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "destination": "Cart",
+            "action": "navigate",
+            "values": {
+              "screen": "Cart"
+            }
+          }
+        ]
+      ],
+      "actions": [
+        [
+          "navigate",
+          {
+            "screen": "Product",
+            "props": {
+              "id": "42"
+            }
+          }
+        ],
+        [
+          "navigate",
+          {
+            "screen": "Cart",
+            "props": {}
+          }
+        ]
+      ],
+      "clicked": 2
+    },
+    {
+      "name": "an app action pressed with a tracked element is one click carrying both, then reaches the app",
+      "message": {
+        "delivery_id": "d-1",
+        "campaign_id": "c-1",
+        "declared": {
+          "events": [],
+          "traits": []
+        },
+        "stored": {}
+      },
+      "steps": [
+        {
+          "call": "trackClick",
+          "args": [
+            "add"
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "appAction",
+          "args": [
+            "add_to_cart",
+            {
+              "sku": "A"
+            }
+          ],
+          "answer": {
+            "ok": true
+          }
+        },
+        {
+          "call": "dismissMessage",
+          "args": [],
+          "answer": {
+            "ok": true
+          }
+        }
+      ],
+      "events": [
+        [
+          "in_app_clicked",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1",
+            "element": "add",
+            "action": "app_action",
+            "app_action": "add_to_cart"
+          }
+        ],
+        [
+          "in_app_dismissed",
+          {
+            "treebars_delivery_id": "d-1",
+            "treebars_campaign_id": "c-1"
+          }
+        ]
+      ],
+      "actions": [
+        [
+          "add_to_cart",
+          {
+            "sku": "A"
+          }
+        ]
+      ],
+      "clicked": 1,
+      "dismissed": 1,
+      "closes": 1
     }
   ]
 }

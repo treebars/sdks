@@ -110,6 +110,16 @@ export interface Spec extends TurboModule {
    */
   setEventsSubscribed(namesJson: string): Promise<void>;
 
+  /**
+   * Subscribes `subscription` to an app action — `name`, or every action when null — in the native core, which calls back
+   * through `onTreebarsEvent` as `{ name: 'appAction', data: { id, action } }`. The core holds an action nothing has
+   * subscribed to yet, so the tap that opened the app reaches a subscription made once JavaScript is running.
+   */
+  subscribeAppAction(subscription: number, name: string | null): Promise<void>;
+
+  /** Cancels `subscription`. */
+  unsubscribeAppAction(subscription: number): Promise<void>;
+
   // ---------------------------------------------------------------------------------------
   // Queue telemetry, for an app's own debug screen
   // ---------------------------------------------------------------------------------------

@@ -3,6 +3,27 @@
 Every release of the Treebars SDKs carries one version number across Android, iOS, React Native and
 the web. Releases before 0.9.0 are not described here.
 
+## 0.11.0
+
+- **App actions: `Treebars.onAction(name) { action -> … }`.** A tap on an in-app message's button, on a push or on one
+  of its buttons can now fire a named action with a small JSON payload — `add_to_cart` with `{ sku, qty }` — and the app
+  subscribes to it by name, on the main thread. `onAction { … }` subscribes to every action, and both return an
+  `AppActionSubscription` to `cancel()`. The handler receives `AppAction(name, payload, source)`.
+- **`navigate` is the one name Treebars fires itself**, with `{ screen, props }`: a message's "Open an app screen", a
+  push's "Open a screen" and `navigateToScreen` in a message all fire it, beside the click listeners that already
+  heard them.
+- **A push can carry its own tap action** (`treebars_action`): an app action or a screen, run when the notification
+  itself is tapped, before its deep link.
+- **An action nothing has subscribed to yet waits a few seconds** for the first handler that does — the push tap that
+  started the app reaches the screen that subscribes once it is built.
+- **Whether a handler took it is recorded** as the `app_action` event, with `app_action` (the name), `handled`, `source`
+  and the message. The payload is never recorded. A preview's actions reach the app and are not recorded.
+- **The in-app bridge is version 3**: `treebars.appAction(name, payload)`, for a message's own script. A name that is
+  not lower-case letters, digits, dots and underscores, or a payload over 4 KB, is refused by name.
+
+Nothing an app already calls has changed: `setClickActionListener` and the push listener still hear every tap they did,
+and an app action as well, with the name under `app_action` among its values.
+
 ## 0.10.1
 
 - **`Treebars.holdInApp()` now holds a message that was already waiting out its display delay.** A message whose

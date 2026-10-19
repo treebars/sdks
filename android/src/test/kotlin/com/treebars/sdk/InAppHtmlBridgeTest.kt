@@ -77,6 +77,7 @@ class InAppHtmlBridgeTest {
         val events = mutableListOf<Pair<String, Map<String, Any?>>>()
         val traits = mutableListOf<Map<String, Any?>>()
         val opened = mutableListOf<List<String>>()
+        val actions = mutableListOf<Pair<String, Map<String, Any?>>>()
         var dismissed = 0
         var spent = 0
         var clicked = 0
@@ -116,6 +117,9 @@ class InAppHtmlBridgeTest {
         // The server's answers a case names (`rewards`); a pool it does not name is refused.
         override fun claimReward(pool: String, deliveryId: String, answer: (Map<String, Any?>) -> Unit) =
             answer(rewards?.optJSONObject(pool)?.let { BridgeDisplay.toMap(it) } ?: BridgeDisplay.refuse("not_available"))
+        override fun appAction(name: String, payload: Map<String, Any?>) {
+            actions.add(name to payload)
+        }
     }
 
     private fun run(spec: JSONObject) {
@@ -147,6 +151,9 @@ class InAppHtmlBridgeTest {
         if (spec.has("event_count")) assertEquals("$name: event count", spec.getInt("event_count"), sdk.events.size)
         spec.optJSONArray("traits")?.let { assertEquals("$name: traits", plain(it), plain(JSONArray(sdk.traits.map { trait -> JSONObject.wrap(trait) }))) }
         spec.optJSONArray("opened")?.let { assertEquals("$name: opened", plain(it), plain(JSONArray(sdk.opened.map { pair -> JSONArray(pair) }))) }
+        spec.optJSONArray("actions")?.let { expected ->
+            assertEquals("$name: actions", plain(expected), plain(sdk.actions.map { (action, payload) -> listOf(action, payload) }))
+        }
         if (spec.has("closes")) assertEquals("$name: closes", spec.getInt("closes"), closes)
         if (spec.has("dismissed")) assertEquals("$name: dismissed", spec.getInt("dismissed"), sdk.dismissed)
         if (spec.has("spent")) assertEquals("$name: spent", spec.getInt("spent"), sdk.spent)

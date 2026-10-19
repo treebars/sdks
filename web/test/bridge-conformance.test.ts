@@ -39,6 +39,8 @@ interface Case {
   opened?: [string, string][];
   /** What the server answers `claimReward` with, per pool; absent, every pool is refused. */
   rewards?: Record<string, Record<string, unknown>>;
+  /** Every app action handed to the app, as [name, payload]. */
+  actions?: [string, Record<string, unknown>][];
   closes?: number;
   dismissed?: number;
   spent?: number;
@@ -54,6 +56,7 @@ describe('what each call means', () => {
     const events: [string, Record<string, unknown>][] = [];
     const traits: Record<string, unknown>[] = [];
     const opened: [string, string][] = [];
+    const actions: [string, Record<string, unknown>][] = [];
     const count = { closes: 0, dismissed: 0, spent: 0, clicked: 0 };
     const sdk: BridgeSdk = {
       track: (name, properties) => events.push([name, properties]),
@@ -71,6 +74,7 @@ describe('what each call means', () => {
       log: () => {},
       // The server's answers a case names (`rewards`); a pool it does not name is one the server refuses.
       claimReward: async (pool) => spec.rewards?.[pool] ?? { ok: false, reason: 'not_available' },
+      appAction: (name, payload) => actions.push([name, payload]),
     };
     const message: InAppMessage = {
       delivery_id: spec.message.delivery_id,
@@ -94,6 +98,7 @@ describe('what each call means', () => {
     if (spec.event_count !== undefined) expect(events).toHaveLength(spec.event_count);
     if (spec.traits) expect(traits).toEqual(spec.traits);
     if (spec.opened) expect(opened).toEqual(spec.opened);
+    if (spec.actions) expect(JSON.parse(JSON.stringify(actions))).toEqual(spec.actions);
     for (const key of ['closes', 'dismissed', 'spent', 'clicked'] as const) if (spec[key] !== undefined) expect(count[key], key).toBe(spec[key]);
   });
 });

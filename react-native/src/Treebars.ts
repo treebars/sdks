@@ -3,6 +3,7 @@ import { CONFIG_READY_TIMEOUT_MS, DEFAULT_BACKEND_URL } from './generated/consta
 import type { InAppButton, InAppMessage, InAppTokens } from './InApp';
 import Native from './NativeTreebars';
 import type {
+  AppAction,
   ConfigAttributes,
   EventProperties,
   NotificationChannel,
@@ -105,6 +106,9 @@ export class TreebarsSDK {
   private deepLinkListener: ((path: string) => void) | null = null;
   /** `setEventListener`'s listeners, by event. */
   private eventListeners = new Map<TreebarsEventName, Set<(payload: never) => void>>();
+  /** `onAction`'s handlers, by the id the native core calls them back with, and what each subscribed to. */
+  private appActionHandlers = new Map<number, { name: string | null; handler: (action: AppAction) => void }>();
+  private nextAppAction = 1;
   /** `onConfigChange`'s listeners. Kept here: the native side tells this layer, and this layer tells them. */
   private configListeners = new Set<() => void>();
 
@@ -208,6 +212,8 @@ export class TreebarsSDK {
        * deferred deep link the native SDK is holding reaches its listener.
        */
       if (this.eventListeners.size > 0) await native.setEventsSubscribed(json([...this.eventListeners.keys()]));
+      // And every onAction made before init, which the native core then hands what it held.
+      for (const [id, { name }] of this.appActionHandlers) await native.subscribeAppAction(id, name);
       if (this.deepLinkListener) await native.setDeferredDeepLinkSubscribed(true);
       /*
        * And the notification centre's watchers: a bell mounted in a child subscribes before this
@@ -244,7 +250,12 @@ export class TreebarsSDK {
     });
 
     native.onTreebarsEvent((payload: string) => {
-      const event = parse<{ name: TreebarsEventName; data: unknown }>(payload, 'an event');
+      const event = parse<{ name: TreebarsEventName | 'appAction'; data: unknown }>(payload, 'an event');
+      if (event.name === 'appAction') {
+        const { id, action } = event.data as { id: number; action: AppAction };
+        this.appActionHandlers.get(id)?.handler(action);
+        return;
+      }
       // Copied before calling: a listener that unsubscribes itself would otherwise change the set mid-loop.
       for (const listener of [...(this.eventListeners.get(event.name) ?? [])]) (listener as (data: unknown) => void)(event.data);
     });
@@ -482,6 +493,34 @@ export class TreebarsSDK {
       if (!current?.delete(listener as (payload: never) => void)) return;
       if (current.size === 0) this.eventListeners.delete(name);
       this.syncEventSubscriptions();
+    };
+  }
+
+  /**
+   * Subscribes to an app action: a named action and its payload, fired from a tap — "Run an app action" or "Open an app
+   * screen" on an element of an in-app message, a push or one of its buttons. With only a handler, every action.
+   *
+   * ```ts
+   * treebars.onAction('add_to_cart', ({ payload }) => cart.add(payload.sku as string));
+   * treebars.onAction('navigate', ({ payload }) => navigation.navigate(payload.screen as string, payload.props as object));
+   * ```
+   *
+   * Every handler subscribed to the name runs. An action fired before anything subscribed to it — the tap that opened
+   * the app — is held by the native SDK for a few seconds, so subscribing from a screen's effect is not too late; whether
+   * a handler took it is recorded. Returns the unsubscribe; safe before `init()`.
+   */
+  onAction(name: string, handler: (action: AppAction) => void): () => void;
+  onAction(handler: (action: AppAction) => void): () => void;
+  onAction(nameOrHandler: string | ((action: AppAction) => void), handler?: (action: AppAction) => void): () => void {
+    const name = typeof nameOrHandler === 'string' ? nameOrHandler : null;
+    const call = typeof nameOrHandler === 'function' ? nameOrHandler : handler;
+    if (!call) return () => undefined;
+    const id = this.nextAppAction++;
+    this.appActionHandlers.set(id, { name, handler: call });
+    void this.ready?.then(() => this.module().subscribeAppAction(id, name));
+    return () => {
+      if (!this.appActionHandlers.delete(id)) return;
+      void this.ready?.then(() => this.module().unsubscribeAppAction(id));
     };
   }
 

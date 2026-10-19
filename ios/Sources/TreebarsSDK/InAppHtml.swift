@@ -137,6 +137,8 @@ protocol BridgeSdk: AnyObject {
     /// The server's answer to `claimReward(pool)` for this message: `{ won, prize?, code?, empty? }`, or
     /// a refusal — `not_available` for a pool the message does not name or that is gone, `offline` when it could not ask.
     func claimReward(_ pool: String, deliveryID: String, _ answer: @escaping ([String: Any]) -> Void)
+    /// An app action from this message, for the app's `onAction` handlers: once its click has been recorded.
+    func appAction(_ name: String, payload: [String: Any])
 }
 
 // MARK: - JSON as the page sends it
@@ -235,6 +237,8 @@ final class BridgeDisplay {
 
     private final class PendingClick {
         var fields: [String: Any]
+        /// Handed to the app's click listener and never recorded: an app action's payload.
+        var toldValues: [String: Any]?
         var then: [() -> Void] = []
         var leads = false
 
@@ -287,7 +291,7 @@ final class BridgeDisplay {
      handler's calls cross the bridge one after another within a millisecond or two; `clickWindowMs` waits for the rest.
      What the press leads to runs after it is recorded and flushed.
      */
-    private func click(_ fields: [String: Any], then: (() -> Void)? = nil, leads: Bool = false) {
+    private func click(_ fields: [String: Any], then: (() -> Void)? = nil, leads: Bool = false, toldValues: [String: Any]? = nil) {
         let current: PendingClick
         if let pending {
             current = pending
@@ -299,6 +303,7 @@ final class BridgeDisplay {
             later(Self.clickWindowMs) { [weak self] in self?.flushClick() }
         }
         current.fields.merge(fields) { _, new in new }
+        if let toldValues { current.toldValues = toldValues }
         if let then { current.then.append(then) }
         if leads { current.leads = true }
     }
@@ -309,7 +314,7 @@ final class BridgeDisplay {
         let properties = inAppReceipt(message).merging(done.fields) { _, new in new }
         sdk.track("in_app_clicked", properties)
         let action = done.fields["action"] as? String ?? "click"
-        let values = done.fields["values"] as? [String: Any] ?? [:]
+        let values = done.fields["values"] as? [String: Any] ?? done.toldValues ?? [:]
         sdk.clicked(action: action, values: values, fields: done.fields)
         if done.leads { sdk.spent() }
         if !done.then.isEmpty { sdk.flush() }
@@ -477,9 +482,24 @@ final class BridgeDisplay {
         table["navigateToScreen"] = { display, args, _, answer in
             let screen = (arg(args, 0) as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !screen.isEmpty else { return answer(refuse("invalid_value")) }
-            var values = object(arg(args, 1))
+            let props = object(arg(args, 1))
+            var values = props
             values["screen"] = screen
-            display.click([InAppBridge.keyDestination: screen, "action": "navigate", "values": values])
+            display.click([InAppBridge.keyDestination: screen, "action": "navigate", "values": values], then: { [weak display] in
+                display?.sdk.appAction(TreebarsConstants.appActionNavigate, payload: ["screen": screen, "props": props])
+            })
+            answer(ok)
+        }
+        table["appAction"] = { display, args, _, answer in
+            guard let name = arg(args, 0) as? String, AppActions.isName(name) else { return answer(refuse("invalid_name")) }
+            guard let payload = BridgeDisplay.appActionPayload(arg(args, 1)) else { return answer(refuse("invalid_value")) }
+            guard payload.bytes <= TreebarsConstants.appActionPayloadMaxBytes else { return answer(refuse("too_large")) }
+            // Recorded with its name and never its payload, which can carry a person's own ids; the delegate hears both.
+            var told = payload.object
+            told[TreebarsConstants.appActionNameKey] = name
+            display.click(["action": "app_action", TreebarsConstants.appActionNameKey: name], then: { [weak display] in
+                display?.sdk.appAction(name, payload: payload.object)
+            }, toldValues: told)
             answer(ok)
         }
         table["openDeepLink"] = { display, args, _, answer in display.open(args, via: "openDeepLink", leads: true, answer: answer) }
@@ -632,6 +652,25 @@ final class BridgeDisplay {
         if let number = jsonNumber(value) { return number.isFinite ? jsNumberText(number) : nil }
         guard let text = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
         return utf16Prefix(text, 128)
+    }
+
+    /**
+     An app action's payload as the page sent it, with its size as JSON: nothing is empty, a JSON string is parsed, and
+     anything but an object — a list, a number, text that is not JSON — is nil, which the call refuses.
+     */
+    static func appActionPayload(_ value: Any?) -> (object: [String: Any], bytes: Int)? {
+        let object: [String: Any]
+        switch value {
+        case nil, is NSNull: object = [:]
+        case let dictionary as [String: Any]: object = dictionary
+        case let text as String:
+            guard let data = text.data(using: .utf8), let parsed = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+            object = parsed
+        default: return nil
+        }
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object, options: [.withoutEscapingSlashes]) else { return nil }
+        return (object, data.count)
     }
 
     /// An object from a bridge argument: an object as it is, a JSON string parsed, anything else nothing.

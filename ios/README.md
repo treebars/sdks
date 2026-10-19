@@ -29,6 +29,23 @@ Treebars.identify("user_123", attributes: ["email": "ada@example.com"])
 
 Your write key is on the dashboard's Data → Setup page, which shows this snippet with the key filled in.
 
+## App actions
+
+A tap on an in-app message's button, on a push or on one of its buttons can fire a named action with a small JSON
+payload, which your app subscribes to by name. Handlers run on the main actor:
+
+```swift
+let subscription = Treebars.onAction("add_to_cart") { action in
+    cart.add(sku: action.payload["sku"] as? String, quantity: action.payload["qty"] as? Int ?? 1)
+}
+Treebars.onAction("navigate") { action in router.open(action.payload["screen"] as? String) } // "Open an app screen"
+subscription.cancel()
+```
+
+A name is lower-case letters, digits, dots and underscores. An action fired before anything subscribed to it waits a
+few seconds for the first handler that does — so the push tap that launched the app reaches the screen that subscribes once it is built. Each action is recorded as the `app_action` event with
+whether a handler took it — never its payload — so the dashboard can show a button that found nothing listening.
+
 ## Remote config
 
 Values your app reads by key and you change from the dashboard, without a release: a feature flag, a price, a headline.

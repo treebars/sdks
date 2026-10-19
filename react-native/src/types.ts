@@ -139,13 +139,23 @@ export interface UploadLog {
  * An in-app press of any other kind carries its action (`url`, `deep_link`, `track_event`, `set_attribute`, `click`)
  * and `{ value }`.
  */
-export interface AppAction {
+export interface ClickedAction {
   source: 'in_app' | 'push';
   type: string;
   values: Record<string, string>;
   delivery_id?: string;
   /** In-app only: which element was pressed, counting from 1 (`button_index`). */
   button_index?: number;
+}
+
+/**
+ * An app action, as `onAction`'s handler receives it: a named action and its payload, fired from a tap — an element of
+ * an in-app message, a push or one of its buttons. `navigate` is the built-in one, with `{ screen, props }`.
+ */
+export interface AppAction {
+  name: string;
+  payload: Record<string, unknown>;
+  source: { kind: 'in_app' | 'push' | 'card'; campaign_id?: string | null; message_id?: string | null };
 }
 
 /** A message, as the in-app lifecycle events name it. */
@@ -162,15 +172,15 @@ export interface InAppCampaignRef {
  */
 export interface TreebarsEvents {
   /** A push's "Open a screen" or its keys (a tap from a closed app is held until this is listened to). */
-  pushClicked: AppAction;
+  pushClicked: ClickedAction;
   /** A message was shown. */
   inAppCampaignShown: InAppCampaignRef;
   /** Every press in a message, after it is recorded. */
-  inAppCampaignClicked: AppAction;
+  inAppCampaignClicked: ClickedAction;
   /** A message was closed. */
   inAppCampaignDismissed: InAppCampaignRef;
   /** A button set to "Hand the app keys". */
-  inAppCampaignCustomAction: AppAction;
+  inAppCampaignCustomAction: ClickedAction;
   /** A self-handled message for the app to draw and report on. */
   inAppCampaignSelfHandled: import('./InApp').InAppMessage;
 }
