@@ -107,8 +107,24 @@ class PushOpensTest {
     }
 
     @Test
+    fun `a tap while the app is still starting is held for the listener it sets later, and nothing is opened`() {
+        // Initialised during a splash screen; the screen that listens comes after it, and the tap lands in between.
+        PushOpens.start(context)
+        tap(systemTap(TreebarsConstants.DELIVERY_ID_KEY to "d5", TreebarsConstants.RICH_PUSH_DEEP_LINK_KEY to "daleela://p/42"))
+        val launched = shadowOf(context as Application).nextStartedActivity
+        assertTrue("the app is launched, not the link", launched?.action != Intent.ACTION_VIEW)
+
+        TreebarsPush.setOpenListener { heard += it }
+        ShadowLooper.idleMainLooper()
+        assertEquals(listOf("daleela://p/42"), heard.map { it.link })
+        ShadowLooper.idleMainLooper(PushOpens.LAUNCH_WAIT_MS, TimeUnit.MILLISECONDS)
+        assertNull("claimed, so never opened by the system", shadowOf(context as Application).nextStartedActivity)
+    }
+
+    @Test
     fun `a warm tap with no listener opens its link at once, as an app that never listened expects`() {
         PushOpens.start(context)
+        ShadowLooper.idleMainLooper(PushOpens.LAUNCH_WAIT_MS, TimeUnit.MILLISECONDS)
         tap(systemTap(TreebarsConstants.DELIVERY_ID_KEY to "d4", TreebarsConstants.RICH_PUSH_DEEP_LINK_KEY to "daleela://d/7"))
         val opened = shadowOf(context as Application).nextStartedActivity
         assertEquals(Intent.ACTION_VIEW, opened?.action)

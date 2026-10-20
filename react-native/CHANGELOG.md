@@ -4,6 +4,12 @@ Every release of the Treebars SDKs carries one version number across Android, iO
 the web, and this package runs the Android and iOS SDKs of the same version. Releases before 0.9.0 are
 not described here.
 
+## 0.12.1
+
+- **A tap that launched the app is held until the app listens, however long its start takes.** 0.12.0 held it only
+  until the SDK was initialised, so an app that initialises during its splash screen and listens once its first screen
+  is up had the link opened by the system in between. It is now held for the whole launch wait after initialisation.
+
 ## 0.12.0
 
 - **`treebars.onPushOpened(open => …)`**: every tapped Treebars push, with its link to route the way the app routes any

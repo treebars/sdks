@@ -35,7 +35,7 @@ Pod::Spec.new do |s|
   #
   # Pinned exactly, as the Android half pins its core: a wrapper that floats against its core
   # is a version pair nobody can reproduce.
-  s.dependency "TreebarsSDK", "0.12.0"
+  s.dependency "TreebarsSDK", "0.12.1"
 
   # Where Xcode writes the Swift core's Objective-C face, which is the only way a `.mm` can
   # see it.

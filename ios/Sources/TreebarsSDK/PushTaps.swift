@@ -86,7 +86,8 @@ final class PushOpens: @unchecked Sendable {
     static let shared = PushOpens()
 
     /// How long a tap that launched the app waits, after `initialize`, for a handler before the SDK opens its link.
-    static let launchWaitSeconds: TimeInterval = 8
+    /// Replaceable for a test, which should not wait eight seconds.
+    nonisolated(unsafe) static var launchWaitSeconds: TimeInterval = 8
 
     /// How a link is opened when no handler routes it: the system. Replaceable for a test, which has no app to open.
     @MainActor static var openLink: (String) -> Void = { Treebars.openURL($0) }
@@ -95,6 +96,12 @@ final class PushOpens: @unchecked Sendable {
     private var handler: Treebars.PushOpenHandler?
     private var held: PushOpen?
     private var started = false
+    /// True until the launch wait after `initialize` is over. An app initialises the SDK early and subscribes once its
+    /// first screen is up — after a splash screen, a sign-in check — and the tap that launched it arrives in between, so
+    /// a tap with no handler is held for all of that, not only until `initialize`.
+    private var holding = true
+    /// Which run a launch wait belongs to: `reset` starts another, and a wait left over from the last one ends nothing.
+    private var run = 0
 
     func setHandler(_ handler: Treebars.PushOpenHandler?) {
         lock.lock()
@@ -106,12 +113,12 @@ final class PushOpens: @unchecked Sendable {
         Task { @MainActor in handler(pending) }
     }
 
-    /// A tap, resolved: to the handler; else held while the SDK is not started; else its link opened by the system.
+    /// A tap, resolved: to the handler; else held while the app is still starting; else its link opened by the system.
     @MainActor
     func deliver(_ open: PushOpen) {
         lock.lock()
         let current = handler
-        let waiting = current == nil && !started
+        let waiting = current == nil && holding
         if waiting { held = open }
         lock.unlock()
         if let current { current(open); return }
@@ -124,11 +131,17 @@ final class PushOpens: @unchecked Sendable {
         lock.lock()
         let first = !started
         started = true
+        let thisRun = run
         lock.unlock()
         guard first else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.launchWaitSeconds) { [weak self] in
             guard let self else { return }
             self.lock.lock()
+            guard self.run == thisRun else {
+                self.lock.unlock()
+                return
+            }
+            self.holding = false
             let unclaimed = self.handler == nil ? self.held : nil
             if unclaimed != nil { self.held = nil }
             self.lock.unlock()
@@ -142,6 +155,8 @@ final class PushOpens: @unchecked Sendable {
         handler = nil
         held = nil
         started = false
+        holding = true
+        run += 1
         lock.unlock()
     }
 }

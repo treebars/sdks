@@ -65,6 +65,13 @@ internal object PushOpens {
     private var listener: TreebarsPush.OpenListener? = null
     private var held: PushOpen? = null
     private var started = false
+
+    /**
+     * True until the launch wait after `initialize` is over. An app initialises the SDK early and listens once its first
+     * screen is up — after a splash screen, a sign-in check — and the tap that launched it arrives in between, so a tap
+     * with no listener is held for all of that, not only until `initialize`.
+     */
+    private var holding = true
     private val main = Handler(Looper.getMainLooper())
 
     @Synchronized
@@ -76,7 +83,7 @@ internal object PushOpens {
     }
 
     /**
-     * A tap, resolved. To the listener, with the app brought forward; else held while the SDK is not initialised, with
+     * A tap, resolved. To the listener, with the app brought forward; else held while the app is still starting, with
      * the app launched; else its link opened by the system — or the app, when nothing on this device opens the link.
      */
     fun deliver(activity: Activity, open: PushOpen, launch: Boolean = true) {
@@ -84,7 +91,7 @@ internal object PushOpens {
         val waiting: Boolean
         synchronized(this) {
             current = listener
-            waiting = current == null && !started
+            waiting = current == null && holding
             if (waiting) held = open
         }
         when {
@@ -106,6 +113,7 @@ internal object PushOpens {
         val app = context.applicationContext
         main.postDelayed({
             val unclaimed = synchronized(this) {
+                holding = false
                 val left = if (listener == null) held else null
                 if (left != null) held = null
                 left
@@ -120,6 +128,8 @@ internal object PushOpens {
         listener = null
         held = null
         started = false
+        holding = true
+        main.removeCallbacksAndMessages(null)
     }
 
     private fun deliverTo(listener: TreebarsPush.OpenListener, open: PushOpen) {

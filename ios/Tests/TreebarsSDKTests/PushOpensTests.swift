@@ -14,11 +14,13 @@ final class PushOpensTests: XCTestCase {
         opened = []
         heard = []
         PushOpens.openLink = { [weak self] in self?.opened.append($0) }
+        PushOpens.launchWaitSeconds = 0.3
     }
 
     override func tearDown() async throws {
         PushOpens.shared.reset()
         PushOpens.openLink = { Treebars.openURL($0) }
+        PushOpens.launchWaitSeconds = 8
     }
 
     private func settle() async {
@@ -50,8 +52,26 @@ final class PushOpensTests: XCTestCase {
         XCTAssertTrue(opened.isEmpty)
     }
 
-    func testAWarmTapWithNoHandlerOpensItsLinkAtOnce() {
+    func testATapWhileTheAppIsStillStartingIsHeldForTheHandlerItSetsLater() async {
+        // Initialised during a splash screen; the navigator that listens mounts after it, and the tap lands in between.
         PushOpens.shared.start()
+        PushOpens.shared.deliver(PushOpen(link: "daleela://p/42"))
+        XCTAssertTrue(opened.isEmpty, "not the system's while the app is still starting")
+        let handed = expectation(description: "handed over")
+        Treebars.onPushOpened { open in
+            self.heard.append(open)
+            handed.fulfill()
+        }
+        await fulfillment(of: [handed], timeout: 2)
+        XCTAssertEqual(heard.map(\.link), ["daleela://p/42"])
+        XCTAssertTrue(opened.isEmpty)
+    }
+
+    func testAWarmTapWithNoHandlerOpensItsLinkAtOnce() async {
+        PushOpens.shared.start()
+        let over = expectation(description: "the launch wait is over")
+        DispatchQueue.main.asyncAfter(deadline: .now() + PushOpens.launchWaitSeconds + 0.1) { over.fulfill() }
+        await fulfillment(of: [over], timeout: PushOpens.launchWaitSeconds + 5)
         PushOpens.shared.deliver(PushOpen(link: "daleela://d/7"))
         XCTAssertEqual(opened, ["daleela://d/7"])
         PushOpens.shared.deliver(PushOpen(link: nil))

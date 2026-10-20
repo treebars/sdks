@@ -3,6 +3,10 @@
 Every release of the Treebars SDKs carries one version number across Android, iOS, React Native and
 the web. Releases before 0.9.0 are not described here.
 
+## 0.12.1
+
+- No change of its own: released beside the other three, which share one version.
+
 ## 0.12.0
 
 - No change of its own: released beside the other three, which share one version. A message sent to show
