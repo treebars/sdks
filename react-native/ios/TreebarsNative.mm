@@ -102,6 +102,18 @@ static BOOL TreebarsRejected(TreebarsBridgeFailure *_Nullable failure, RCTPromis
  * indistinguishable from a real answer, which is exactly what this bridge refuses to give.
  * It costs the wrapper nothing: every method there awaits the same in-flight `init()`.
  */
+/**
+ * As the app loads, before it finishes launching: the core stands in front of whatever notification delegate the app
+ * or a notification library sets, so a tap on a Treebars push reaches it — the tap that launches the app included,
+ * which iOS hands only to a delegate in place by then. JavaScript starts far too late to do this, and an app writes no
+ * native code for it. A load-time constructor rather than `+load`, which the module macro already defines. Nothing else
+ * happens here; a delegate set later is wrapped as it is set.
+ */
+__attribute__((constructor)) static void TreebarsInstallPushTaps(void)
+{
+  [TreebarsBridge installPushTaps];
+}
+
 static BOOL TreebarsRejectedUnstarted(RCTPromiseRejectBlock reject)
 {
   if ([TreebarsBridge isStarted]) {

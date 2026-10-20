@@ -8,6 +8,7 @@ import type {
   EventProperties,
   NotificationChannel,
   NotificationPage,
+  PushOpen,
   TreebarsConfig,
   TreebarsEventName,
   TreebarsEvents,
@@ -476,6 +477,7 @@ export class TreebarsSDK {
    *
    * - `pushClicked`: a push's "Open a screen" action, or its keys. A tap that opened the app
    *   from closed is held by the native SDK until this is listened to.
+   * - `pushOpened`: every tapped push, with its link to route — see `onPushOpened`.
    * - `inAppCampaignShown`, `inAppCampaignClicked`, `inAppCampaignDismissed`: a message was
    *   shown, pressed, or closed.
    * - `inAppCampaignCustomAction`: a button set to "Hand the app keys" was pressed.
@@ -494,6 +496,32 @@ export class TreebarsSDK {
       if (current.size === 0) this.eventListeners.delete(name);
       this.syncEventSubscriptions();
     };
+  }
+
+  /**
+   * Every tapped Treebars push, in every state of the app — in front, in the background, or launched by the tap — with
+   * its link for the app to route the way it routes any link it is opened with. A tap that launched the app is held by
+   * the native SDK until this is listened to, so subscribing from a navigator that mounts after the splash screen is
+   * not too late. While anything listens, the SDK does not open the link itself; with nothing listening, it opens it
+   * with the system, as before. A screen or an app action the push names still reaches `onAction`.
+   *
+   * With React Navigation, a push's link joins the links the app is opened with:
+   *
+   * ```ts
+   * const linking = {
+   *   prefixes: ['yourapp://'],
+   *   subscribe(listener) {
+   *     const links = Linking.addEventListener('url', ({ url }) => listener(url));
+   *     const pushes = treebars.onPushOpened(({ link }) => link && listener(link));
+   *     return () => { links.remove(); pushes(); };
+   *   },
+   * };
+   * ```
+   *
+   * Returns the unsubscribe; safe before `init()`.
+   */
+  onPushOpened(listener: (open: PushOpen) => void): () => void {
+    return this.setEventListener('pushOpened', listener);
   }
 
   /**

@@ -158,6 +158,23 @@ export interface AppAction {
   source: { kind: 'in_app' | 'push' | 'card'; campaign_id?: string | null; message_id?: string | null };
 }
 
+/**
+ * A tapped Treebars push. `link` is the push's link exactly as it was written — `yourapp://orders/42`, or an https
+ * address the app opens — for the app to route the way it routes any link it is opened with; null for a push that only
+ * opens the app or runs an action (which reaches `onAction`).
+ */
+export interface PushOpen {
+  link: string | null;
+  /** The pressed button's id, or null for a tap on the notification itself. */
+  button_id: string | null;
+  delivery_id: string | null;
+  campaign_id: string | null;
+  /** A test sent from the dashboard: it acts like any push, and is never counted as opened. */
+  is_test: boolean;
+  /** The push's own data — the keys its author added — without the SDK's own. */
+  data: Record<string, string>;
+}
+
 /** A message, as the in-app lifecycle events name it. */
 export interface InAppCampaignRef {
   delivery_id: string;
@@ -173,6 +190,8 @@ export interface InAppCampaignRef {
 export interface TreebarsEvents {
   /** A push's "Open a screen" or its keys (a tap from a closed app is held until this is listened to). */
   pushClicked: ClickedAction;
+  /** Every tapped push, with its link for the app to route (a tap from a closed app is held until this is listened to). */
+  pushOpened: PushOpen;
   /** A message was shown. */
   inAppCampaignShown: InAppCampaignRef;
   /** Every press in a message, after it is recorded. */

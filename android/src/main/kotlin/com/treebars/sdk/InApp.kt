@@ -318,6 +318,11 @@ data class InAppTrigger(
     val filters: List<InAppFilter> = emptyList(),
     /** `push_click` only: the campaign whose push opened the app, or null for any push. */
     val campaignId: String? = null,
+    /**
+     * `immediate` only: drawn the moment it reaches this device, over whatever the person is doing, rather than at the
+     * next thing they do in the app.
+     */
+    val onArrival: Boolean = false,
 )
 
 data class InAppContent(
@@ -838,6 +843,7 @@ internal fun parseInAppContent(json: JSONObject): InAppContent {
             eventName = trigger.optString("event_name").takeIf { it.isNotEmpty() },
             filters = parseFilters(trigger),
             campaignId = trigger.optString("campaign_id").takeIf { it.isNotEmpty() },
+            onArrival = trigger.optBoolean("on_arrival", false),
         ),
         // `isNull` first: org.json hands back the string "null" for a JSON null.
         direction = if (json.isNull("direction")) null else json.optString("direction").takeIf { it.isNotEmpty() },

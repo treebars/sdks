@@ -21,7 +21,16 @@
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:taskAffinity=""
-            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <!--
+              A plain push the system drew opens here through its click_action, so its tap reaches the SDK rather
+              than the launcher. Still not exported: the notification's intent comes from this app's own process.
+            -->
+            <intent-filter>
+                <action android:name="com.treebars.sdk.PUSH_OPEN" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
         <receiver
             android:name="com.treebars.sdk.TreebarsPushReceiver"
             android:exported="false" />

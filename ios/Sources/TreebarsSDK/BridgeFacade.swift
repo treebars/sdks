@@ -532,7 +532,18 @@ public final class TreebarsBridge: NSObject {
         } else {
             Treebars.setPushActionHandler(nil)
         }
+        // Every tapped push, its link included: while JavaScript listens, the link is its to route.
+        if names.contains("pushOpened") {
+            Treebars.onPushOpened { open in emit("pushOpened", open.json) }
+        } else {
+            Treebars.onPushOpened(nil)
+        }
         return nil
+    }
+
+    /// Called as the wrapper loads, before the app finishes launching, so a tap that launches the app reaches the SDK.
+    @objc public static func installPushTaps() {
+        PushTaps.prepare()
     }
 
     /// The app's contexts, as a JSON list of names.

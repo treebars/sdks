@@ -753,6 +753,8 @@ object Treebars {
         // would be the natural order, but `track` launches its own coroutine either way; what matters is that the
         // receipt is sent at all, and that a `push_click` message sees it — held for a renderer if none is attached.
         for ((event, properties) in PendingPushReceipts.drain(appContext)) track(event, properties)
+        // A push that launched the app waits a few seconds more for the app's open listener, then its link is opened.
+        PushOpens.start(appContext)
         /*
          * Its own coroutine rather than a step in the one above, because the read binds to the
          * Play Store and may wait up to its ten-second bound — and nothing on the way up should
@@ -1696,7 +1698,7 @@ object Treebars {
                  * pressed Send test and is looking at the phone. Through the same draw as any event, so a screen
                  * missing or a hold keeps it for later; a test already shown is "done" and is not drawn again.
                  */
-                if (arrivedTest(response)) {
+                if (arrivedForNow(response)) {
                     val screen = currentScreen
                     drawInApp(EVENT_SCREEN_VIEW, if (screen != null) mapOf("screen_name" to screen) else emptyMap(), null, store)
                 }
@@ -1706,10 +1708,18 @@ object Treebars {
         }
     }
 
-    /** Whether a sync's answer carries a test send. */
-    private fun arrivedTest(response: JSONObject): Boolean {
+    /**
+     * Whether a sync's answer carries a message meant for now: a test send, which somebody is watching the phone for,
+     * or one sent to show the moment it arrives.
+     */
+    private fun arrivedForNow(response: JSONObject): Boolean {
         val messages = response.optJSONArray("messages") ?: return false
-        return (0 until messages.length()).any { messages.optJSONObject(it)?.optBoolean("test", false) == true }
+        return (0 until messages.length()).any { i ->
+            val message = messages.optJSONObject(i) ?: return@any false
+            val trigger = message.optJSONObject("content")?.optJSONObject("in_app")?.optJSONObject("trigger")
+            message.optBoolean("test", false) ||
+                (trigger?.optString("kind") == "immediate" && trigger.optBoolean("on_arrival", false))
+        }
     }
 
     /**
@@ -3569,6 +3579,8 @@ object Treebars {
     @JvmStatic
     fun trackNotificationOpened(data: Map<String, String>) {
         val properties = openedProperties(data) ?: return
+        // Once per push and button: the SDK reports a tap itself, and an app still reporting it too must not count two.
+        if (!firstOpen(properties)) return
         track("notification_opened", properties)
         // What tapping it does beyond opening the app — an app action, a screen — to the app's onAction handlers.
         TreebarsPush.tapAction(data)?.let { TreebarsPush.fireFromPush(it, data) }
@@ -3595,12 +3607,25 @@ object Treebars {
         return properties
     }
 
+    /** The opens already reported, by push and button: the last few, since a tap is reported within moments. */
+    private val reportedOpens = ArrayDeque<String>()
+
+    @Synchronized
+    private fun firstOpen(properties: Map<String, Any>): Boolean {
+        val key = "${properties[DELIVERY_ID_KEY]}|${properties[TreebarsConstants.RICH_PUSH_BUTTON_ID_KEY] ?: ""}"
+        if (key in reportedOpens) return false
+        reportedOpens.addLast(key)
+        while (reportedOpens.size > 16) reportedOpens.removeFirst()
+        return true
+    }
+
     /**
-     * A receipt from an SDK-drawn push, which may arrive in a process `initialize` has not reached yet: then it is
+     * A receipt from a push the SDK opened, which may arrive in a process `initialize` has not reached yet: then it is
      * kept, and `initialize` sends it — see [PendingPushReceipts].
      */
     internal fun pushReceipt(context: Context, opened: Boolean, data: Map<String, String>) {
         val properties = (if (opened) openedProperties(data) else dismissedProperties(data)) ?: return
+        if (opened && !firstOpen(properties)) return
         val event = if (opened) "notification_opened" else "push_dismissed"
         if (writeKey == null) {
             PendingPushReceipts.add(context.applicationContext, event, properties)

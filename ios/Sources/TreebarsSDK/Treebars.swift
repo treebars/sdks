@@ -423,6 +423,10 @@ public final class Treebars {
         }
         instance.writeKey = writeKey
         instance.linkHosts = Set(linkHosts.map(LinkResolve.normalizeHost).filter { !$0.isEmpty })
+        // In front of the app's notification delegate, if nothing installed it earlier, and the wait begins for the
+        // handler a push that launched the app is held for.
+        PushTaps.install()
+        PushOpens.shared.start()
         /*
          * What another write key left — its unsent events, its sealed batches, the session whose
          * `session_end` the next touch would send, the messages it fetched — dropped before the idle
@@ -1491,9 +1495,10 @@ public final class Treebars {
         }
 
         // Which of a push's buttons was pressed, when it was one.
-        if let button = userInfo[TreebarsConstants.richPushButtonIdKey] as? String, !button.isEmpty {
-            properties[TreebarsConstants.richPushButtonIdKey] = button
-        }
+        let button = (userInfo[TreebarsConstants.richPushButtonIdKey] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        if let button { properties[TreebarsConstants.richPushButtonIdKey] = button }
+        // Once per push and button: the SDK reports a tap itself, and an app still reporting it too must not count two.
+        guard HandledResponses.first("opened|\(deliveryId)|\(button ?? "")") else { return }
 
         // A tap that launched the app arrives before `initialize`, which would drop it: it is
         // kept and sent by `initialize` instead (`PendingPushReceipts`), as on Android.
@@ -2127,7 +2132,7 @@ public final class Treebars {
             return
         }
 
-        var arrivedTest = false
+        var arrivedForNow = false
         if !inApp.accept(response, askedAt: asked) {
             TreebarsLogger.log("in-app: dropped a sync asked for a previous sign-in")
         } else {
@@ -2136,15 +2141,18 @@ public final class Treebars {
                 // Nudges queued since the screen allowed them: asked for now, not at some later event.
                 await drawNudges(eventName: "screen_view", properties: currentScreen.map { ["screen_name": $0] } ?? [:], dimensions: nil)
             }
-            arrivedTest = response.messages.contains { $0.test == true }
+            arrivedForNow = response.messages.contains { message in
+                let trigger = message.content.in_app?.trigger
+                return message.test == true || (trigger?.kind == "immediate" && trigger?.on_arrival == true)
+            }
         }
         await warmForQueuedHtml()
         /*
          A test that just arrived is offered now, on the screen in front, rather than at the next event: somebody pressed
-         Send test and is looking at the phone. Through the same draw as any event, so a missing screen or a hold keeps it
-         for later; a test already shown is done and is not drawn again.
+         Send test and is looking at the phone. So is a message sent to show the moment it arrives. Through the same draw
+         as any event, so a missing screen or a hold keeps it for later; one already shown is done and is not drawn again.
          */
-        if arrivedTest {
+        if arrivedForNow {
             await drawInApp(eventName: "screen_view", properties: currentScreen.map { ["screen_name": $0] } ?? [:], dimensions: nil)
         }
     }

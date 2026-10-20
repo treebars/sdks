@@ -433,6 +433,10 @@ class TreebarsNativeModule(reactContext: ReactApplicationContext) :
         emitEvent("pushClicked", JSONObject().put("source", "push").put("type", type).put("values", JSONObject(values)))
       },
     )
+    // Every tapped push, its link included: while JavaScript listens, the link is its to route.
+    TreebarsPush.setOpenListener(
+      if ("pushOpened" !in names) null else TreebarsPush.OpenListener { open -> emitEvent("pushOpened", open.toJson()) },
+    )
     promise.resolve(null)
   }
 

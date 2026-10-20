@@ -599,6 +599,9 @@ public struct InAppTrigger: Codable, Sendable {
     public let filters: [InAppFilter]?
     /// `push_click` only: the campaign whose push opened the app, or nil for any push.
     public var campaign_id: String? = nil
+    /// `immediate` only: drawn the moment it reaches this device, over whatever the person is doing, rather than at the
+    /// next thing they do in the app.
+    public var on_arrival: Bool? = nil
 
     /*
      * Spelled out rather than synthesized, so that adding a field does not break every
@@ -612,13 +615,15 @@ public struct InAppTrigger: Codable, Sendable {
         screen_name: String? = nil,
         event_name: String? = nil,
         filters: [InAppFilter]? = nil,
-        campaign_id: String? = nil
+        campaign_id: String? = nil,
+        on_arrival: Bool? = nil
     ) {
         self.kind = kind
         self.screen_name = screen_name
         self.event_name = event_name
         self.filters = filters
         self.campaign_id = campaign_id
+        self.on_arrival = on_arrival
     }
 }
 
@@ -632,6 +637,7 @@ extension InAppTrigger {
         screen_name = container.tolerant(.screen_name)
         event_name = container.tolerant(.event_name)
         campaign_id = container.tolerant(.campaign_id)
+        on_arrival = container.tolerant(.on_arrival)
         /*
          * Absent or null is "no filter". Present and not a list is not "no filter" — it is a list this SDK
          * cannot read, and it matches nobody; decoded as nil it would draw the message for everybody.

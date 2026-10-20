@@ -47,7 +47,11 @@ export interface InAppTokens {
 }
 
 export type InAppTrigger =
-  | { kind: 'immediate' }
+  /**
+   * The next thing the person does on the page. `on_arrival` asks the apps to draw it the moment it reaches the device;
+   * a browser tab cannot be woken to fetch it, so here it is the same as without: the next page or event.
+   */
+  | { kind: 'immediate'; on_arrival?: boolean }
   | { kind: 'session_start' }
   | { kind: 'screen_view'; screen_name: string }
   | { kind: 'event'; event_name: string; filters?: InAppFilter[] }

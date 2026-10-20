@@ -100,6 +100,40 @@ enum PushParts {
         if let link = info[TreebarsConstants.richPushDeepLinkKey] as? String, !link.isEmpty { return ["type": "deep_link", "url": link] }
         return nil
     }
+
+    /// The link an action opens in the app, for `onPushOpened`: a deep link's address, and nothing else's.
+    static func link(_ action: [String: Any]?) -> String? {
+        guard let action, action["type"] as? String == "deep_link", let url = action["url"] as? String, !url.isEmpty else { return nil }
+        return url
+    }
+
+    /// The push's own data as its author wrote it: text values, without Apple's keys or the SDK's.
+    static func authored(_ info: [AnyHashable: Any]) -> [String: String] {
+        var out: [String: String] = [:]
+        for (key, value) in info {
+            guard let key = key as? String, let value = value as? String else { continue }
+            if key == "aps" || key.hasPrefix("treebars_") || key.hasPrefix("gcm.") || key.hasPrefix("google.") { continue }
+            if key == TreebarsConstants.richPushDeepLinkKey || key == "image_url" { continue }
+            out[key] = value
+        }
+        return out
+    }
+}
+
+/// The responses already acted on, so a response handed over twice — by the SDK's own delegate and by an app still
+/// forwarding it — opens its link once. The last few are enough: a response is handed over within moments.
+enum HandledResponses {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var seen: [String] = []
+
+    /// True the first time this key is seen.
+    static func first(_ key: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if seen.contains(key) { return false }
+        seen.append(key)
+        if seen.count > 16 { seen.removeFirst(seen.count - 16) }
+        return true
+    }
 }
 
 extension Treebars {
@@ -154,14 +188,17 @@ extension Treebars {
     }
 
     /// Everything a push's response means: the tap or button reported, a swipe-away reported, and the action
-    /// performed. Call it from `userNotificationCenter(_:didReceive:withCompletionHandler:)` in place of
-    /// `trackNotificationOpened` / `trackNotificationDismissed`, from any thread. Returns false for a push this SDK did
-    /// not send.
+    /// performed — a link to `onPushOpened`, a screen or an app action to `onAction`. The SDK calls it itself for
+    /// every Treebars push (see `installPushTaps`); an app that turned that off calls it from
+    /// `userNotificationCenter(_:didReceive:withCompletionHandler:)`, from any thread. Returns false for a push this SDK
+    /// did not send, and acts once on a response however often it is handed over.
     @discardableResult
     public static func handleNotificationResponse(_ response: UNNotificationResponse) -> Bool {
         let info = response.notification.request.content.userInfo
-        guard let deliveryId = info[deliveryIdKey] as? String, !deliveryId.isEmpty else { return false }
+        guard isTreebarsPush(info) else { return false }
         let identifier = response.actionIdentifier
+        guard HandledResponses.first(response.notification.request.identifier + "|" + identifier) else { return true }
+        let deliveryId = (info[deliveryIdKey] as? String).flatMap { $0.isEmpty ? nil : $0 }
         if identifier == UNNotificationDismissActionIdentifier {
             trackNotificationDismissed(userInfo: info)
             return true
@@ -169,21 +206,36 @@ extension Treebars {
         if identifier == "treebars.coupon" {
             let code = PushParts.options(info)["coupon_code"] as? String ?? ""
             Task { @MainActor in copy(code) }
-            if firstCouponCopy(deliveryId) { trackNotificationOpened(userInfo: info) }
+            if let deliveryId, firstCouponCopy(deliveryId) { trackNotificationOpened(userInfo: info) }
             return true
         }
         var button: Int?
         if identifier.hasPrefix("treebars.button.") { button = Int(identifier.dropFirst("treebars.button.".count)) }
 
         var opened = info
+        var buttonId: String?
         if let button, PushParts.buttons(info).indices.contains(button), let id = PushParts.buttons(info)[button]["id"] as? String {
             opened[TreebarsConstants.richPushButtonIdKey] = id
+            buttonId = id
         }
+        // A test from the dashboard carries no delivery, so this records nothing for it; the tap still acts.
         trackNotificationOpened(userInfo: opened)
         // Opening, sharing and the app's own handler are UI, so they happen on the main actor whatever called this.
         let action = PushParts.action(info, button: button).map(ActionBox.init)
-        let source = AppActionSource(kind: "push", campaignId: (info[campaignIdKey] as? String).flatMap { $0.isEmpty ? nil : $0 }, messageId: deliveryId)
-        Task { @MainActor in perform(action?.value, source: source) }
+        let campaignId = (info[campaignIdKey] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let source = AppActionSource(kind: "push", campaignId: campaignId, messageId: deliveryId)
+        let open = PushOpen(
+            link: PushParts.link(action?.value),
+            buttonId: buttonId,
+            deliveryId: deliveryId,
+            campaignId: campaignId,
+            isTest: (info[TreebarsConstants.richPushTestKey] as? String) == "1",
+            data: PushParts.authored(info)
+        )
+        Task { @MainActor in
+            perform(action?.value, source: source)
+            PushOpens.shared.deliver(open)
+        }
         return true
     }
 
@@ -192,10 +244,14 @@ extension Treebars {
         guard let action, let type = action["type"] as? String else { return }
         let text = { (key: String) in action[key] as? String ?? "" }
         switch type {
-        case "deep_link", "rich_landing":
-            open(text("url"))
+        case "deep_link":
+            // The link is `onPushOpened`'s to route — or the system's, when the app set no handler (`PushOpens`).
+            break
+        case "rich_landing":
+            // A web page, which the browser shows.
+            openURL(text("url"))
         case "call":
-            open("tel:\(text("phone").filter { !$0.isWhitespace })")
+            openURL("tel:\(text("phone").filter { !$0.isWhitespace })")
         case "copy":
             copy(text("text"))
         case "share":
@@ -230,7 +286,7 @@ extension Treebars {
     }
 
     @MainActor
-    private static func open(_ address: String) {
+    static func openURL(_ address: String) {
         #if canImport(UIKit)
         guard let url = URL(string: address) else { return }
         UIApplication.shared.open(url)

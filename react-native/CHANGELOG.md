@@ -4,6 +4,19 @@ Every release of the Treebars SDKs carries one version number across Android, iO
 the web, and this package runs the Android and iOS SDKs of the same version. Releases before 0.9.0 are
 not described here.
 
+## 0.12.0
+
+- **`treebars.onPushOpened(open => …)`**: every tapped Treebars push, with its link to route the way the app routes any
+  link it is opened with — in front, in the background, or launched by the tap. A tap that launched the app is held until
+  this is listened to. With React Navigation, add it to `linking.subscribe` beside `Linking`, and a push's link lands on
+  the same screen a link does. Nothing native to write on iOS or Android.
+- Every push tap on iOS reaches the SDK even where Firebase Messaging or another library is the notification delegate,
+  and a plain Android push opens the SDK's own activity, so neither needs `trackNotificationOpened` any more.
+- A Treebars push in the foreground is shown; a test from the dashboard acts when tapped.
+- **An in-app test, or a message sent to show "Immediately", appears on an open app within seconds.** On iOS the silent
+  push that brings it now reaches the SDK by itself — before, it went to Firebase Messaging and the message waited for a
+  relaunch. On Android, pass Firebase's data messages to `handleRemotePush`, as before.
+
 ## 0.11.0
 
 Requires `com.treebars:sdk-android` and the `TreebarsSDK` pod at 0.11.0, which this package names.

@@ -45,6 +45,21 @@ object TreebarsPush {
         fun onAction(type: String, values: Map<String, String>)
     }
 
+    /** Where every tapped Treebars push goes; see [PushOpen]. Called on the main thread. */
+    fun interface OpenListener {
+        fun onPushOpened(open: PushOpen)
+    }
+
+    /**
+     * Where every tapped Treebars push goes, in every state of the app.
+     *
+     * A push that opened the app from a dead process is held until a listener is set, so a listener set after the first
+     * screen is up — or from JavaScript — still receives it. With a listener, the SDK does not open the push's link
+     * itself: the listener routes it. Without one, the SDK opens the link with the system. Null removes the listener.
+     */
+    @JvmStatic
+    fun setOpenListener(listener: OpenListener?) = PushOpens.setListener(listener)
+
     private const val DEFAULT_CHANNEL = "treebars_default"
     private const val FETCH_TIMEOUT_MS = 8_000
     internal const val EXTRA_DATA = "treebars_push_data"
@@ -105,10 +120,30 @@ object TreebarsPush {
             runCatching { listener.onBackgroundUpdate(payload) }.onFailure { TreebarsLogger.log("push: background listener threw: $it") }
             return true
         }
-        if (data[TreebarsConstants.RICH_PUSH_RENDER_KEY] != "1") return false
+        if (data[TreebarsConstants.RICH_PUSH_RENDER_KEY] != "1") {
+            /*
+             * A plain Treebars push reaches the app's messaging service only while the app is in front — in the
+             * background the system draws it — and the system draws nothing then. So the SDK draws it, with the same tap
+             * as every other, unless the app's manifest turns that off: `com.treebars.sdk.show_push_in_foreground`
+             * false under `<application>`. Its title and body ride in the data for exactly this.
+             */
+            if (!isTreebarsPush(data) || !showsPushInForeground(context)) return false
+            if (data[TreebarsConstants.RICH_PUSH_TITLE_KEY].isNullOrEmpty() && data[TreebarsConstants.RICH_PUSH_BODY_KEY].isNullOrEmpty()) return false
+            post(context.applicationContext, data, card = 0)
+            return true
+        }
         post(context.applicationContext, data, card = 0)
         return true
     }
+
+    /** Whether this data is a push this SDK sent: a delivery's own, or a test from the dashboard. */
+    internal fun isTreebarsPush(data: Map<String, String>): Boolean =
+        !data[TreebarsConstants.DELIVERY_ID_KEY].isNullOrEmpty() || PushOpen.isTest(data)
+
+    internal const val SHOW_IN_FOREGROUND_META = "com.treebars.sdk.show_push_in_foreground"
+
+    private fun showsPushInForeground(context: Context): Boolean =
+        notificationMeta(context)?.takeIf { it.containsKey(SHOW_IN_FOREGROUND_META) }?.getBoolean(SHOW_IN_FOREGROUND_META) ?: true
 
     /** What a background update hands the app: its data, the delivery's attribution keys included. */
     fun interface BackgroundUpdateListener {
@@ -482,6 +517,13 @@ object TreebarsPush {
         return true
     }
 
+    /** The id of the button pressed, for a button's tap; null for the notification itself. */
+    internal fun buttonIdOf(data: Map<String, String>, kind: String, button: Int): String? {
+        if (kind != "button") return null
+        return data[TreebarsConstants.RICH_PUSH_BUTTONS_KEY]?.let { runCatching { JSONArray(it) }.getOrNull() }
+            ?.optJSONObject(button)?.optString("id")?.takeIf { it.isNotEmpty() }
+    }
+
     /** Reports the tap — the notification opened, and which button — before anything leaves the app. */
     internal fun reportTap(context: Context, data: Map<String, String>, kind: String, button: Int) {
         val opened = data.toMutableMap()
@@ -505,7 +547,31 @@ object TreebarsPush {
         return true
     }
 
-    /** What opens something: a link, a page, the dialler, the share sheet, a screen of the app, or the app's own handler. */
+    /**
+     * A tap on the notification or a button that opens something: the push's [PushOpen] to the app's open listener —
+     * its link routed by the app, or by the system when the app set no listener — and anything else it does.
+     */
+    internal fun performTap(activity: Activity, action: JSONObject?, data: Map<String, String>, buttonId: String?) {
+        val type = action?.optString("type").orEmpty()
+        val link = if (type == "deep_link") action?.optString("url")?.takeIf { it.isNotEmpty() } else null
+        val open = PushOpen(
+            link = link,
+            buttonId = buttonId,
+            deliveryId = data[TreebarsConstants.DELIVERY_ID_KEY]?.takeIf { it.isNotEmpty() },
+            campaignId = data[TreebarsConstants.CAMPAIGN_ID_KEY]?.takeIf { it.isNotEmpty() },
+            isTest = PushOpen.isTest(data),
+            data = PushOpen.authored(data),
+        )
+        // A link and a plain tap are the open listener's; everything else does what it always did, and is reported too.
+        if (action == null || type == "deep_link" || type == "") {
+            PushOpens.deliver(activity, open)
+            return
+        }
+        performInForeground(activity, action, data)
+        PushOpens.deliver(activity, open.copy(link = null), launch = false)
+    }
+
+    /** What opens something: a page, the dialler, the share sheet, a screen of the app, or the app's own handler. */
     internal fun performInForeground(activity: Activity, action: JSONObject?, data: Map<String, String> = emptyMap()) {
         if (action == null) {
             launchIntent(activity)?.let { runCatching { activity.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
@@ -527,7 +593,8 @@ object TreebarsPush {
                 val handler = listener
                 if (handler != null) {
                     runCatching { handler.onAction(type, values) }
-                    null
+                    // The app comes forward to do it: a tap from the background used to leave it there.
+                    launchIntent(activity)
                 } else {
                     pendingAction = type to values
                     launchIntent(activity)?.apply { values.forEach { (key, value) -> putExtra(key, value) } }
@@ -567,18 +634,30 @@ object TreebarsPush {
 /**
  * Opened by a push's tap or by a button that opens something. Launched straight from the notification — Android 12
  * forbids starting an activity from a receiver a notification started — and finishes at once; it never draws.
+ *
+ * Two doors: a notification the SDK drew names this activity, with the push's data in one extra; a plain push the
+ * system drew opens it through its `click_action` (`TreebarsConstants.PUSH_OPEN_ACTION`, declared in the SDK's manifest),
+ * with the push's data as the intent's own extras. So every tap on a Treebars push reaches the SDK, whoever drew it.
  */
 class TreebarsPushActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val data = TreebarsPush.dataOf(intent)
-        val kind = intent.getStringExtra(TreebarsPush.EXTRA_KIND).orEmpty()
+        val data = TreebarsPush.dataOf(intent).ifEmpty { extrasOf(intent) }
+        val kind = intent.getStringExtra(TreebarsPush.EXTRA_KIND)?.takeIf { it.isNotEmpty() } ?: "tap"
         val button = intent.getIntExtra(TreebarsPush.EXTRA_BUTTON, -1)
         val card = intent.getIntExtra(TreebarsPush.EXTRA_CARD, 0)
+        // A test from the dashboard carries no delivery, so this records nothing for it; the tap still acts.
         TreebarsPush.reportTap(this, data, kind, button)
         cancel(this, data)
-        TreebarsPush.performInForeground(this, TreebarsPush.actionOf(data, kind, button, card), data)
+        TreebarsPush.performTap(this, TreebarsPush.actionOf(data, kind, button, card), data, TreebarsPush.buttonIdOf(data, kind, button))
         finish()
+    }
+
+    /** A system-drawn push's data, which Firebase puts on the intent as text extras. */
+    private fun extrasOf(intent: android.content.Intent): Map<String, String> {
+        val extras = intent.extras ?: return emptyMap()
+        @Suppress("DEPRECATION")
+        return extras.keySet().mapNotNull { key -> (extras.get(key) as? String)?.let { key to it } }.toMap()
     }
 }
 

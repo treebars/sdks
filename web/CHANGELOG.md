@@ -3,6 +3,11 @@
 Every release of the Treebars SDKs carries one version number across Android, iOS, React Native and
 the web. Releases before 0.9.0 are not described here.
 
+## 0.12.0
+
+- No change of its own: released beside the other three, which share one version. A message sent to show
+  "Immediately" shows at the next page or event, as before — nothing can wake a browser tab.
+
 ## 0.11.0
 
 - **App actions: `treebars.onAction(name, handler)`.** A button in an in-app message can now fire a named action with a

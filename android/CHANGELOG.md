@@ -3,6 +3,25 @@
 Every release of the Treebars SDKs carries one version number across Android, iOS, React Native and
 the web. Releases before 0.9.0 are not described here.
 
+## 0.12.0
+
+- **Every tap on a Treebars push reaches the SDK, and `TreebarsPush.setOpenListener { open -> … }` receives it** with
+  the push's link (`PushOpen.link`), the pressed button, the delivery and the author's data — whether the app was in front,
+  in the background or not running. A tap that launched the app is held until a listener is set. With a listener the SDK
+  does not open the link itself; without one it opens it with the system, as before.
+- **A plain push — one the system draws — now opens the SDK's own `TreebarsPushActivity`** through its `click_action`,
+  declared in the SDK's manifest, so its tap is handled exactly as a push the SDK drew. Nothing to add to the app's own
+  activities; `trackNotificationOpened` is no longer needed for it, and an open reported twice counts once.
+- **A Treebars push that arrives while the app is in front is drawn** when the app passes it to `TreebarsPush.handle`, as
+  it already does for rich pushes. `com.treebars.sdk.show_push_in_foreground` set to false under `<application>` turns
+  that off.
+- **A test sent from the dashboard acts when tapped** — its link opened, its action run — and is never recorded.
+- **A screen or an app action from a push brings the app forward** with an action listener set, where it used to stay
+  in the background; and a link nothing on the device opens launches the app instead of doing nothing.
+- **A message sent from the dashboard to show "Immediately" is drawn the moment it arrives**, over whatever is on screen,
+  as a test send already was (`InAppTrigger.onArrival`). The app's messaging service hands the silent push that brings it
+  to `TreebarsPush.handle`, as it does every Treebars push.
+
 ## 0.11.0
 
 - **App actions: `Treebars.onAction(name) { action -> … }`.** A tap on an in-app message's button, on a push or on one

@@ -3,6 +3,25 @@
 Every release of the Treebars SDKs carries one version number across Android, iOS, React Native and
 the web. Releases before 0.9.0 are not described here.
 
+## 0.12.0
+
+- **Every tap on a Treebars push reaches the SDK, with no delegate code in the app.** The SDK stands in front of whatever
+  notification delegate the app or a notification library sets, answers its own pushes, and passes every other
+  notification through unchanged. `TreebarsHandlesPushTaps` set to NO in Info.plist turns that off, for an app that
+  forwards responses to `handleNotificationResponse` itself.
+- **`Treebars.onPushOpened { open in … }`** receives every tap with the push's link (`PushOpen.link`), the pressed
+  button, the delivery and the author's data, in every state of the app. A tap that launched the app is held until a
+  handler is set. With a handler the SDK does not open the link itself; without one it opens it with the system.
+- **A Treebars push that arrives while the app is in front is shown as a banner.** `TreebarsShowsPushInForeground` set to
+  NO in Info.plist leaves that to the app's own delegate.
+- **A test sent from the dashboard acts when tapped** and is never recorded; an open reported twice counts once.
+- `installPushTaps()` puts the SDK in front of the delegate before `initialize`, for an app that initialises late.
+- **A message sent from the dashboard to show "Immediately" is drawn the moment it arrives**, over whatever is on screen,
+  as a test send already was (`InAppTrigger.on_arrival`).
+- **The silent push that tells the SDK a message is waiting reaches it with no app code**: the SDK answers it on the app
+  delegate and passes every other remote notification to what was there before. A test or an "Immediately" message now
+  appears on an open app within seconds, where an app that did not forward the push saw it only after a relaunch.
+
 ## 0.11.0
 
 - **App actions: `Treebars.onAction("add_to_cart") { action in … }`.** A tap on an in-app message's button, on a push or

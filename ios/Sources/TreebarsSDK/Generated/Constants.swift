@@ -104,6 +104,7 @@ enum TreebarsConstants {
     static let richPushBackgroundKey = "treebars_background"
     static let richPushActionKey = "treebars_action"
     static let richPushSyncKey = "treebars_sync"
+    static let richPushTestKey = "treebars_test"
 
     /*
      * The handoff and the destination it carries. Android reads its pair out of the Play referrer;
@@ -121,7 +122,7 @@ enum TreebarsConstants {
     static let maxLinkValueLength = 256
     static let deferredDeepLinkWindowMs: Int64 = 24 * 60 * 60 * 1000
 
-    static let sdkVersion = "0.11.0"
+    static let sdkVersion = "0.12.0"
     static let sdkName = "treebars-ios"
     static let deviceIdPrefix = "dev_"
 

@@ -20,6 +20,26 @@ await treebars.identify('user_123', { email: 'ada@example.com' });
 
 Your write key is on the dashboard's Data → Setup page, which shows this snippet with the key filled in.
 
+## Push taps
+
+Every tap on a Treebars push reaches the SDK by itself — in front, in the background, or when the tap starts the app —
+with nothing native to write on iOS or Android. Route a tapped push's link where your app routes the links it is opened
+with, and the push lands on the same screen a link does. With React Navigation:
+
+```ts
+const linking = {
+  prefixes: ['yourapp://'],
+  subscribe(listener: (url: string) => void) {
+    const links = Linking.addEventListener('url', ({ url }) => listener(url));
+    const pushes = treebars.onPushOpened(({ link }) => link && listener(link));
+    return () => { links.remove(); pushes(); };
+  },
+};
+```
+
+A tap that started the app is held until you listen. While anything listens, the SDK does not open the link itself;
+with nothing listening, it opens it with the system. A Treebars push that arrives while the app is open is shown.
+
 ## App actions
 
 A tap on an in-app message's button, on a push or on one of its buttons can fire a named action with a small JSON
