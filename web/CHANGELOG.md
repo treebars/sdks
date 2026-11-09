@@ -3,6 +3,17 @@
 Every release of the Treebars SDKs carries one version number across Android, iOS, React Native and
 the web. Releases before 0.9.0 are not described here.
 
+## 0.12.2
+
+- **Five more networks' click ids are read as an ad click:** Snapchat (`ScCid`), Microsoft Advertising (`msclkid`),
+  LinkedIn (`li_fat_id`), X (`twclid`) and Reddit (`rdt_cid`), beside Google's, Meta's and TikTok's. Each is kept on
+  the page view's address, where any other query parameter is removed before it is sent.
+- **The push a session was opened from is named on what follows it.** Every `in_app_*` event after a
+  `notification_opened` in the same session carries `treebars_source_delivery_id`, and an in-app message can be set to
+  show only after its own push is opened ("Only from the notification"). An older SDK never shows such a message.
+- **An HTML in-app message's frame takes the light colour scheme its document declares**, so a browser no longer paints
+  an opaque backdrop behind it in a dark page.
+
 ## 0.12.1
 
 - No change of its own: released beside the other three, which share one version.

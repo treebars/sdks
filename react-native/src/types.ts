@@ -66,12 +66,13 @@ export interface TreebarsConfig {
   auto_track_sessions?: boolean;
   /**
    * Whether this install may report how it arrived: the Play Install Referrer on Android, Apple's
-   * AdServices answer on iOS, each sent once per new install. **Default false.**
+   * AdServices answer on iOS, each sent once per new install. **Default true.**
    *
-   * The native SDKs do the reading; this only carries the answer across. Nothing here shows a
-   * prompt — an app that asks for consent passes the result here, or to
-   * `setAcquisitionConsent()` once it has one, and nothing is lost by waiting. `true` here grants;
-   * only the setter withdraws.
+   * The native SDKs do the reading; this only carries the answer across. Neither read shows a
+   * prompt, and without them no install can be credited to the link or ad that brought it. An app
+   * under a consent regime that wants agreement first passes `false`, then calls
+   * `setAcquisitionConsent(true)` once its person agrees — nothing is lost by waiting. An answer
+   * given through the setter outranks this one, before or after `init()`.
    */
   acquisition_consent?: boolean;
   /**

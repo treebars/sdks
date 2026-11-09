@@ -244,7 +244,11 @@ public final class Treebars {
     private var firstSeenAt: String?
     private var firstLaunch = false
 
-    private var acquisitionConsent = false
+    /// The app's own answer, through `setAcquisitionConsent(_:)`. It outranks `initialize`'s in either order.
+    private var acquisitionConsentAnswer: Bool?
+    /// `initialize`'s `acquisitionConsent`: on unless the app passed `false`.
+    private var acquisitionConsentDefault = true
+    private var acquisitionConsent: Bool { acquisitionConsentAnswer ?? acquisitionConsentDefault }
     private var acquisition: AcquisitionCapture?
     /// Off unless the host app asked: reading a pasteboard it did not write spends Apple's prompt.
     private var deferredHandoff = false
@@ -325,8 +329,8 @@ public final class Treebars {
        - inAppPollInterval: Seconds between in-app syncs while the app stays open; zero turns the poll off.
        - adopt: Values a wrapper such as the React Native SDK hands down from its own store, written only
          where this SDK holds nothing yet.
-       - acquisitionConsent: Whether this install may ask Apple's AdServices how it arrived. Off by
-         default; `setAcquisitionConsent(_:)` can grant it later.
+       - acquisitionConsent: Whether this install may ask Apple's AdServices how it arrived. On by
+         default; pass `false` to wait for `setAcquisitionConsent(_:)`.
        - deferredHandoff: Whether the first launch of a new install reads the click a Treebars link left
          on the pasteboard, which makes iOS show its "Allow Paste" alert once. Off by default.
        - linkHosts: The app's associated domains for Universal Links: the only hosts `handleLink` asks
@@ -369,15 +373,17 @@ public final class Treebars {
         adopt: Adoption = Adoption(),
         /**
          Whether this install may ask Apple how it arrived — the AdServices answer, sent once as
-         `apple_ads_attribution`. **Off unless the host app says otherwise.**
+         `apple_ads_attribution`. **On unless the host app says otherwise.**
 
-         AdServices needs no tracking permission and this never shows a prompt; the gate is for the
-         consent regimes that want agreement before anything about an install's origin is read. An
-         app with a prompt passes the answer here, or to `setAcquisitionConsent(_:)` once it has
-         one, and nothing is lost by waiting: the answer is owed from the first launch and asked
-         for whenever consent arrives. `true` here grants; only the setter withdraws.
+         AdServices needs no tracking permission and this never shows a prompt, and without it no
+         install can be credited to the link or ad that brought it — not by Apple, not by a link's
+         handoff, not by a match on the network. So it is on. An app under a consent regime that
+         wants agreement before anything about an install's origin is read passes `false`, then
+         `setAcquisitionConsent(true)` once its person agrees; nothing is lost by waiting, because
+         the answer is owed from the first launch and asked for whenever consent arrives. An answer
+         given through the setter outranks this parameter, before or after `initialize`.
          */
-        acquisitionConsent: Bool = false,
+        acquisitionConsent: Bool = true,
         /**
          Read the click id a Treebars link handed to this device across the App Store, on the first
          launch of a new install and only with acquisition consent.
@@ -451,9 +457,9 @@ public final class Treebars {
         instance.env = env
         instance.autoTrackLifecycle = autoTrackLifecycle
         instance.autoTrackSessions = autoTrackSessions
-        // Grant-only: a `setAcquisitionConsent(_:)` made before this call must not be undone by a
-        // parameter nobody passed. Withdrawing is the setter's job alone.
-        if acquisitionConsent { instance.acquisitionConsent = true }
+        // The default, which an answer through `setAcquisitionConsent(_:)` outranks whenever it came: an app
+        // that asked its person before initialising is never overruled by a parameter it did not pass.
+        instance.acquisitionConsentDefault = acquisitionConsent
         adopt.apply()
         // Identity keys an older version of this SDK kept in `UserDefaults` are removed: a backup would
         // carry them to another phone, and nothing reads them.
@@ -853,7 +859,7 @@ public final class Treebars {
     /// Withdrawing stops a trade that has not happened; it cannot recall an answer already sent,
     /// which is an erasure request's job rather than this switch's.
     public static func setAcquisitionConsent(_ granted: Bool) {
-        shared.acquisitionConsent = granted
+        shared.acquisitionConsentAnswer = granted
         if granted, shared.writeKey != nil {
             Task { await shared.settleAcquisition() }
         }
@@ -1492,6 +1498,10 @@ public final class Treebars {
         var properties: [String: Any] = [deliveryIdKey: deliveryId]
         if let campaignId = userInfo[campaignIdKey] as? String, !campaignId.isEmpty {
             properties[campaignIdKey] = campaignId
+        }
+        // The message a companion push was sent beside, which that message's "Only from the notification" trigger reads.
+        if let companion = userInfo[TreebarsConstants.companionOfKey] as? String, !companion.isEmpty {
+            properties[TreebarsConstants.companionOfKey] = companion
         }
 
         // Which of a push's buttons was pressed, when it was one.
@@ -2551,7 +2561,8 @@ public final class Treebars {
             for message in inApp.list() {
                 guard let content = message.content.in_app, content.surface == "overlay", content.display?.self_handled == true else { continue }
                 guard inAppTriggerMatches(content.trigger, eventName: eventName, properties: properties,
-                                          screenName: currentScreen, dimensions: dimensions) else { continue }
+                                          screenName: currentScreen, dimensions: dimensions,
+                                          deliveryId: message.delivery_id) else { continue }
                 guard inAppBlockedBy(message, content: content, session: session) == nil else { continue }
                 TreebarsLogger.log("in-app: \(message.delivery_id) is self-handled; handed to the app")
                 await MainActor.run { delegate.selfHandledInAppTriggered(message) }
@@ -2628,7 +2639,7 @@ public final class Treebars {
              */
             guard inAppTriggerMatches(content.trigger, eventName: eventName,
                                       properties: properties, screenName: currentScreen,
-                                      dimensions: dimensions) else {
+                                      dimensions: dimensions, deliveryId: message.delivery_id) else {
                 TreebarsLogger.log(
                     "in-app: \(message.delivery_id) trigger \(content.trigger.kind) "
                         + "does not match '\(eventName)'"
@@ -3108,7 +3119,7 @@ public final class Treebars {
             guard nudgeSlots.hasRoom else { return }
             guard let content = message.content.in_app, content.surface == "overlay", isNudge(message), Self.drawsItself(content) else { continue }
             guard place.position.admits(content.position), !nudgeSlots.holds(message.delivery_id) else { continue }
-            guard inAppTriggerMatches(content.trigger, eventName: eventName, properties: properties, screenName: currentScreen, dimensions: dimensions) else { continue }
+            guard inAppTriggerMatches(content.trigger, eventName: eventName, properties: properties, screenName: currentScreen, dimensions: dimensions, deliveryId: message.delivery_id) else { continue }
             if let blocked = inAppBlockedBy(message, content: content, session: session) {
                 if blocked != "done" { await reportInAppFailure(message, reason: blocked) }
                 continue
@@ -3680,7 +3691,7 @@ public final class Treebars {
 
         let event = build(
             eventName: eventName,
-            properties: properties,
+            properties: withPushSource(eventName, properties, sessionId: advance.sessionId),
             sessionId: advance.sessionId,
             screen: screen,
             userIdOverride: userIdOverride
@@ -3690,6 +3701,27 @@ public final class Treebars {
         eventDimensions = Self.stampedDimensions(event)
 
         await announceQueued(appended)
+    }
+
+    /// The push this session was opened from: its delivery and the session it opened. Read inside `enqueue`, in order.
+    private var pushSource: (delivery: String, session: String)?
+
+    /// The push this session was opened from, on every in-app event that follows it in the same session, as
+    /// `treebars_source_delivery_id`: what lets a report follow a person from a push to the message they then saw. A
+    /// later push opened in the same session replaces it, and a new session forgets it: an open tomorrow was not caused
+    /// by a push today. An event that already names a source keeps its own.
+    private func withPushSource(_ eventName: String, _ properties: [String: Any], sessionId: String) -> [String: Any] {
+        if eventName == "notification_opened" {
+            if let delivery = properties[TreebarsConstants.deliveryIdKey] as? String, !delivery.isEmpty {
+                pushSource = (delivery, sessionId)
+            }
+            return properties
+        }
+        guard eventName.hasPrefix("in_app_"), properties[TreebarsConstants.sourceDeliveryIdKey] == nil,
+              let source = pushSource, source.session == sessionId else { return properties }
+        var stamped = properties
+        stamped[TreebarsConstants.sourceDeliveryIdKey] = source.delivery
+        return stamped
     }
 
     /// Which screen an event is stamped with: the one current when the app logged it, or, for an event this SDK

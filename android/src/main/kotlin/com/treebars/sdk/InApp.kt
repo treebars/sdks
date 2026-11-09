@@ -950,6 +950,8 @@ fun inAppTriggerMatches(
     properties: Map<String, Any?>,
     screenName: String?,
     dimensions: Map<String, Any?>? = null,
+    /** The message's own delivery, which a `companion_push` trigger looks for on the push that was opened. */
+    deliveryId: String? = null,
 ): Boolean = when (trigger.kind) {
     "immediate" -> true
     "session_start" -> eventName == "session_start" || eventName == "app_open"
@@ -960,6 +962,9 @@ fun inAppTriggerMatches(
     // The app opened from a push — any push, or one campaign's.
     "push_click" -> eventName == "notification_opened" &&
         (trigger.campaignId == null || properties[TreebarsConstants.CAMPAIGN_ID_KEY] == trigger.campaignId)
+    // "Only from the notification": its own push and no other — the one that names this message.
+    "companion_push" -> eventName == "notification_opened" && deliveryId != null &&
+        properties[TreebarsConstants.COMPANION_OF_KEY] == deliveryId
     // An unrecognised kind fails closed: showing a message to people who do not qualify is
     // worse than showing it to nobody.
     else -> false

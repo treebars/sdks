@@ -75,6 +75,8 @@ enum TreebarsConstants {
 
     static let deliveryIdKey = "treebars_delivery_id"
     static let campaignIdKey = "treebars_campaign_id"
+    static let companionOfKey = "treebars_companion_of"
+    static let sourceDeliveryIdKey = "treebars_source_delivery_id"
     static let inAppButtonIndexKey = "button_index"
     static let inAppButtonLabelKey = "button_label"
     /// App actions: what onAction records, the name and payload it accepts, and how long an action waits for a handler.
@@ -122,7 +124,7 @@ enum TreebarsConstants {
     static let maxLinkValueLength = 256
     static let deferredDeepLinkWindowMs: Int64 = 24 * 60 * 60 * 1000
 
-    static let sdkVersion = "0.12.1"
+    static let sdkVersion = "0.12.2"
     static let sdkName = "treebars-ios"
     static let deviceIdPrefix = "dev_"
 

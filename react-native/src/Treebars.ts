@@ -447,8 +447,8 @@ export class TreebarsSDK {
    * the first launch after it, as a path like `/sale/summer` to route exactly as any other link
    * is routed. On Android the Play Install Referrer carries it. On iPhone the App Store carries
    * nothing, so the path arrives only when `deferred_handoff` is on — in the config and in the
-   * project's Acquisition settings. Both platforms need acquisition consent
-   * (`acquisition_consent` or `setAcquisitionConsent`).
+   * project's Acquisition settings. Both platforms read it only with acquisition consent, which is
+   * on unless the app turns it off (`acquisition_consent`, `setAcquisitionConsent`).
    *
    * **Called at most once per install**, and only while the install is younger than a day —
    * both decided in the native SDK. Without the first, every launch would reopen a sale somebody

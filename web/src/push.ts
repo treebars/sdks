@@ -1,5 +1,5 @@
 import { safeGet, safeSet } from './storage';
-import { DELIVERY_ID_KEY, CAMPAIGN_ID_KEY, RICH_PUSH_BUTTON_ID_KEY } from './generated/constants';
+import { DELIVERY_ID_KEY, CAMPAIGN_ID_KEY, COMPANION_OF_KEY, RICH_PUSH_BUTTON_ID_KEY } from './generated/constants';
 
 /*
  * Web push: subscribing this browser, asking first with a soft prompt, and reporting the notification a person clicked.
@@ -51,7 +51,7 @@ const PERMISSION_KEY = 'treebars.push.permission.v1';
 /** The subscription endpoint this browser last registered, and the worker path it was registered through. */
 const REGISTERED_KEY = 'treebars.push.registered.v1';
 /** The query parameters the service worker adds to the page it opens, and this reads back. */
-export const OPENED_PARAMS = { delivery: DELIVERY_ID_KEY, campaign: CAMPAIGN_ID_KEY, button: RICH_PUSH_BUTTON_ID_KEY } as const;
+export const OPENED_PARAMS = { delivery: DELIVERY_ID_KEY, campaign: CAMPAIGN_ID_KEY, button: RICH_PUSH_BUTTON_ID_KEY, companion: COMPANION_OF_KEY } as const;
 
 /** The permission as the other SDKs report it, so one report reads every platform. */
 function permissionName(value: NotificationPermission | 'unsupported'): string {
@@ -242,6 +242,8 @@ export class WebPush {
     if (campaign) properties[CAMPAIGN_ID_KEY] = campaign;
     const button = url.searchParams.get(OPENED_PARAMS.button);
     if (button) properties[RICH_PUSH_BUTTON_ID_KEY] = button;
+    const companion = url.searchParams.get(OPENED_PARAMS.companion);
+    if (companion) properties[COMPANION_OF_KEY] = companion;
     this.host.track('notification_opened', properties);
     for (const key of Object.values(OPENED_PARAMS)) url.searchParams.delete(key);
     history.replaceState(history.state, '', url.toString());

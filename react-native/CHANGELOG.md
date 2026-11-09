@@ -4,6 +4,12 @@ Every release of the Treebars SDKs carries one version number across Android, iO
 the web, and this package runs the Android and iOS SDKs of the same version. Releases before 0.9.0 are
 not described here.
 
+## 0.12.2
+
+- **Acquisition consent is on by default** on Android and iOS: `init` without `acquisition_consent` reads it as `true`.
+  An app under a consent regime passes `false` and calls `setAcquisitionConsent(true)` once its person agrees.
+- Carries the Android and iOS cores' 0.12.2: the push a session was opened from, and "Only from the notification".
+
 ## 0.12.1
 
 - **A tap that launched the app is held until the app listens, however long its start takes.** 0.12.0 held it only

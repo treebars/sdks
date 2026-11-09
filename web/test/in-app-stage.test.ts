@@ -138,9 +138,11 @@ describe('a stage message on a page', () => {
       const backgrounds = css.match(/background:[^;]*/g) ?? [];
       for (const background of backgrounds) expect(background, node.tagName).toMatch(/background:transparent/);
     }
-    // The frame says `color-scheme: normal`, or a dark page paints an opaque backdrop behind it.
+    // The frame says `color-scheme: light`, the scheme its document is drawn in, or a page that offers dark paints an
+    // opaque backdrop behind it. `normal` would take the page's scheme, not the document's.
     const frame = nodes().find((node) => node.tagName === 'iframe')!;
-    expect(frame.style.cssText).toContain('color-scheme:normal');
+    expect(frame.style.cssText).toContain('color-scheme:light');
+    expect(frame.getAttribute('srcdoc')).toContain(':root{color-scheme:normal;');
   });
 
   it('hands the page the insets a probe reads in this document, from the first byte', () => {

@@ -163,8 +163,8 @@ class TreebarsNativeModule(reactContext: ReactApplicationContext) :
       autoTrackSessions = config.optBoolean("auto_track_sessions", true),
       inAppPollIntervalMs = pollIntervalMs,
       adopt = adoption(config.optJSONObject("adopt")),
-      // Absent is false, the core's own default: consent is never assumed on anybody's behalf.
-      acquisitionConsent = config.optBoolean("acquisition_consent", false),
+      // Absent is true, the core's own default; an app that must ask first passes false.
+      acquisitionConsent = config.optBoolean("acquisition_consent", true),
       // The app's own App Link domains; absent asks nothing, the core's own default.
       linkHosts = config.optJSONArray("link_hosts")
         ?.let { hosts -> (0 until hosts.length()).mapNotNull { hosts.optString(it).takeIf(String::isNotBlank) } }

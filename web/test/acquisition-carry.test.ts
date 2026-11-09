@@ -61,7 +61,7 @@ beforeEach(() => {
   storage = memoryStorage();
   vi.stubGlobal('window', {
     localStorage: storage,
-    location: { href: 'https://northwind.example/spring', origin: 'https://northwind.example' },
+    location: { href: 'https://treecommerce.example/spring', origin: 'https://treecommerce.example' },
   });
 });
 
@@ -69,7 +69,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('reading the click off the page', () => {
   it('takes the click id and the deep-link path the tracking link put there', () => {
-    const found = carriedClick('https://northwind.example/spring?tbrs_click_id=clk_abc12345&tbrs_deep_link=/product/42');
+    const found = carriedClick('https://treecommerce.example/spring?tbrs_click_id=clk_abc12345&tbrs_deep_link=/product/42');
     expect(found).toEqual({ clickId: 'clk_abc12345', deepLinkPath: '/product/42' });
   });
 
@@ -79,19 +79,19 @@ describe('reading the click off the page', () => {
      * opens the features page, and taps the store button THERE — where the address has never had a
      * click id on it. Without this the whole feature only works on single-page landers.
      */
-    carriedClick('https://northwind.example/spring?tbrs_click_id=clk_abc12345');
-    expect(carriedClick('https://northwind.example/features')).toEqual({
+    carriedClick('https://treecommerce.example/spring?tbrs_click_id=clk_abc12345');
+    expect(carriedClick('https://treecommerce.example/features')).toEqual({
       clickId: 'clk_abc12345',
       deepLinkPath: null,
     });
   });
 
   it('lets a fresh click id replace a remembered one', () => {
-    carriedClick('https://northwind.example/spring?tbrs_click_id=clk_abc12345');
-    const second = carriedClick('https://northwind.example/summer?tbrs_click_id=clk_zzz99999');
+    carriedClick('https://treecommerce.example/spring?tbrs_click_id=clk_abc12345');
+    const second = carriedClick('https://treecommerce.example/summer?tbrs_click_id=clk_zzz99999');
     expect(second?.clickId).toBe('clk_zzz99999');
     // And the new one is what a later page reads, not the first.
-    expect(carriedClick('https://northwind.example/features')?.clickId).toBe('clk_zzz99999');
+    expect(carriedClick('https://treecommerce.example/features')?.clickId).toBe('clk_zzz99999');
   });
 
   it('refuses a click id that is not one of ours', () => {
@@ -99,15 +99,15 @@ describe('reading the click off the page', () => {
      * A query string is a place anybody can put anything. Accepting it would put a stranger's value
      * on the customer's store button, where it becomes the referrer an install is measured by.
      */
-    expect(carriedClick('https://northwind.example/?tbrs_click_id=../../etc/passwd')).toBeNull();
-    expect(carriedClick('https://northwind.example/?tbrs_click_id=short')).toBeNull();
-    expect(carriedClick(`https://northwind.example/?tbrs_click_id=${'x'.repeat(200)}`)).toBeNull();
+    expect(carriedClick('https://treecommerce.example/?tbrs_click_id=../../etc/passwd')).toBeNull();
+    expect(carriedClick('https://treecommerce.example/?tbrs_click_id=short')).toBeNull();
+    expect(carriedClick(`https://treecommerce.example/?tbrs_click_id=${'x'.repeat(200)}`)).toBeNull();
   });
 
   it('keeps the click and drops only the path when the path is not a path', () => {
     // The two are independently useful: a bad path costs somebody the screen they land on, where a
     // dropped click id costs the campaign its credit. One must not take the other with it.
-    const found = carriedClick('https://northwind.example/?tbrs_click_id=clk_abc12345&tbrs_deep_link=https://evil.test/x');
+    const found = carriedClick('https://treecommerce.example/?tbrs_click_id=clk_abc12345&tbrs_deep_link=https://evil.test/x');
     expect(found).toEqual({ clickId: 'clk_abc12345', deepLinkPath: null });
   });
 
@@ -116,16 +116,16 @@ describe('reading the click off the page', () => {
       get localStorage(): Storage {
         throw new Error('blocked');
       },
-      location: { href: 'https://northwind.example/', origin: 'https://northwind.example' },
+      location: { href: 'https://treecommerce.example/', origin: 'https://treecommerce.example' },
     });
     // The id is still read off the address, so a store button on THIS page is still carried. Only
     // the memory across pages is lost, which is the right thing to lose.
-    expect(carriedClick('https://northwind.example/?tbrs_click_id=clk_abc12345')?.clickId).toBe('clk_abc12345');
-    expect(carriedClick('https://northwind.example/features')).toBeNull();
+    expect(carriedClick('https://treecommerce.example/?tbrs_click_id=clk_abc12345')?.clickId).toBe('clk_abc12345');
+    expect(carriedClick('https://treecommerce.example/features')).toBeNull();
   });
 
   it('stores under the generated key, so nothing here invents a second spelling', () => {
-    carriedClick('https://northwind.example/?tbrs_click_id=clk_abc12345');
+    carriedClick('https://treecommerce.example/?tbrs_click_id=clk_abc12345');
     expect(storage.getItem(STORAGE_KEYS.acquisitionClick)).toContain('clk_abc12345');
   });
 });
@@ -155,8 +155,8 @@ describe('the referrer it builds', () => {
 
 describe('which links get touched', () => {
   it('recognises Play, in both of its spellings', () => {
-    expect(isPlayLink('https://play.google.com/store/apps/details?id=com.northwind')).toBe(true);
-    expect(isPlayLink('market://details?id=com.northwind')).toBe(true);
+    expect(isPlayLink('https://play.google.com/store/apps/details?id=com.treecommerce')).toBe(true);
+    expect(isPlayLink('market://details?id=com.treecommerce')).toBe(true);
   });
 
   it('leaves the App Store exactly as written', () => {
@@ -177,17 +177,17 @@ describe('which links get touched', () => {
   });
 
   it('puts the referrer on a Play link', () => {
-    const link = anchor('https://play.google.com/store/apps/details?id=com.northwind');
+    const link = anchor('https://play.google.com/store/apps/details?id=com.treecommerce');
     expect(carryOntoAnchor(link, CLICK)).toBe(true);
     expect(new URL(link.href).searchParams.get('referrer')).toBe('tbrs_click_id=clk_abc12345');
     // The app id survives: a rewrite that lost it would send everybody to a broken store page.
-    expect(new URL(link.href).searchParams.get('id')).toBe('com.northwind');
+    expect(new URL(link.href).searchParams.get('id')).toBe('com.treecommerce');
   });
 
   it('puts it on a market:// link too, which `new URL` cannot be trusted with', () => {
-    const link = anchor('market://details?id=com.northwind');
+    const link = anchor('market://details?id=com.treecommerce');
     expect(carryOntoAnchor(link, CLICK)).toBe(true);
-    expect(link.href).toBe('market://details?id=com.northwind&referrer=tbrs_click_id%3Dclk_abc12345');
+    expect(link.href).toBe('market://details?id=com.treecommerce&referrer=tbrs_click_id%3Dclk_abc12345');
   });
 
   it('does not overwrite a referrer the customer put there themselves', () => {
@@ -195,7 +195,7 @@ describe('which links get touched', () => {
      * Some teams set their own and read it in their own tooling. Overwriting it would break
      * something that was working, to fix something they never asked us to fix.
      */
-    const link = anchor('https://play.google.com/store/apps/details?id=com.northwind&referrer=utm_source%3Dnewsletter');
+    const link = anchor('https://play.google.com/store/apps/details?id=com.treecommerce&referrer=utm_source%3Dnewsletter');
     expect(carryOntoAnchor(link, CLICK)).toBe(false);
     expect(link.href).toContain('utm_source%3Dnewsletter');
   });
@@ -203,7 +203,7 @@ describe('which links get touched', () => {
   it('is idempotent, because a tap can be repeated', () => {
     // The listener runs on every click, and somebody who taps twice must not get a referrer with
     // two click ids in it.
-    const link = anchor('https://play.google.com/store/apps/details?id=com.northwind');
+    const link = anchor('https://play.google.com/store/apps/details?id=com.treecommerce');
     carryOntoAnchor(link, CLICK);
     const once = link.href;
     expect(carryOntoAnchor(link, CLICK)).toBe(false);
@@ -213,7 +213,7 @@ describe('which links get touched', () => {
   it('reads the attribute rather than the resolved property', () => {
     // A relative Play link is unusual but legal, and `.href` would have resolved it against the
     // customer's own origin — making it not a Play link at all, silently.
-    const link = anchor('//play.google.com/store/apps/details?id=com.northwind');
+    const link = anchor('//play.google.com/store/apps/details?id=com.treecommerce');
     expect(carryOntoAnchor(link, CLICK)).toBe(true);
     expect(link.href).toContain('referrer=tbrs_click_id');
   });
@@ -231,6 +231,8 @@ describe('a visit from an ad that pointed at the site itself', () => {
     // An ordinary visit is not a click; recording one would credit organic traffic to a campaign.
     expect(hasAdClick('https://shop.example/sale?fbclid=IwAR123')).toBe(true);
     expect(hasAdClick('https://shop.example/sale?gclid=Cj0K')).toBe(true);
+    expect(hasAdClick('https://shop.example/sale?ScCid=9f3c2a1e')).toBe(true);
+    expect(hasAdClick('https://shop.example/sale?msclkid=abc123')).toBe(true);
     expect(hasAdClick('https://shop.example/sale?utm_source=newsletter')).toBe(true);
     expect(hasAdClick('https://shop.example/sale')).toBe(false);
   });

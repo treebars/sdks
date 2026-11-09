@@ -30,6 +30,18 @@ final class InAppTests: XCTestCase {
         super.tearDown()
     }
 
+    // MARK: - Only from the notification
+
+    func testCompanionPushTriggerFiresForTheMessagesOwnPushAndNoOtherOpen() {
+        let only = trigger("companion_push")
+        let key = TreebarsConstants.companionOfKey
+        XCTAssertTrue(inAppTriggerMatches(only, eventName: "notification_opened", properties: [key: "m1"], screenName: nil, deliveryId: "m1"))
+        XCTAssertFalse(inAppTriggerMatches(only, eventName: "notification_opened", properties: [key: "m2"], screenName: nil, deliveryId: "m1"))
+        XCTAssertFalse(inAppTriggerMatches(only, eventName: "notification_opened", properties: [:], screenName: nil, deliveryId: "m1"))
+        XCTAssertFalse(inAppTriggerMatches(only, eventName: "app_open", properties: [key: "m1"], screenName: nil, deliveryId: "m1"))
+        XCTAssertFalse(inAppTriggerMatches(only, eventName: "notification_opened", properties: [key: "m1"], screenName: nil))
+    }
+
     // MARK: - Fixtures
 
     private func trigger(

@@ -241,8 +241,8 @@ public final class TreebarsBridge: NSObject {
                 inAppLedgerJson: adopt["inAppLedgerJson"] as? String,
                 sdkName: adopt["sdkName"] as? String
             ),
-            // Absent is false, the core's own default: consent is never assumed on anybody's behalf.
-            acquisitionConsent: (config["acquisition_consent"] as? Bool) ?? false,
+            // Absent is true, the core's own default; an app that must ask first passes false.
+            acquisitionConsent: (config["acquisition_consent"] as? Bool) ?? true,
             deferredHandoff: (config["deferred_handoff"] as? Bool) ?? false,
             // The app's own associated domains; absent asks nothing, the core's own default.
             linkHosts: (config["link_hosts"] as? [String]) ?? []

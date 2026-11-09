@@ -141,8 +141,9 @@ export function inAppEnvJson(env: InAppEnv): string {
 }
 
 /**
- * The `<style id="tb-env">` the page reads its environment from. `color-scheme: normal`, as the frame's element says
- * too, because a browser paints an opaque backdrop behind a frame whose colour scheme differs from the page around it.
+ * The `<style id="tb-env">` the page reads its environment from. `color-scheme: normal`: a document that names no scheme
+ * of its own is drawn light, and the frame's element says `light` to match it, because a browser paints an opaque
+ * backdrop behind a frame whose colour scheme differs from its document's.
  */
 export function inAppEnvStyle(env: InAppEnv): string {
   const { safe, keyboard } = env;

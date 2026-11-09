@@ -199,7 +199,15 @@ export function hostMarkup(options: MarkupHostOptions): MarkupHost {
     const created = document.createElement('iframe');
     created.setAttribute('sandbox', IN_APP_FRAME_SANDBOX);
     created.setAttribute('title', options.title);
-    created.style.cssText = 'border:0;display:block;width:100%;height:100%;background:transparent;color-scheme:normal';
+    /*
+     * `color-scheme: light`, because that is what the frame's document is: it says `normal`, and a document that names
+     * no scheme of its own is drawn light. A browser paints an opaque backdrop behind a frame whose scheme differs from
+     * its document's, and `normal` on the frame itself is not neutral — it takes the scheme the page around it offers, so
+     * on a page whose `<meta name="color-scheme">` offers dark it is dark for a visitor who prefers dark, and on a page
+     * that offers dark alone it is dark for everyone. On those pages `normal` puts a white sheet behind a message that
+     * fills the window, and the whole page disappears behind it.
+     */
+    created.style.cssText = 'border:0;display:block;width:100%;height:100%;background:transparent;color-scheme:light';
     return created;
   }
 

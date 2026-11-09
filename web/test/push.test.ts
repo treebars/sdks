@@ -27,6 +27,14 @@ describe('the page a push opened', () => {
     expect(replaced).toEqual(['https://shop.example.com/cart?x=1']);
   });
 
+  it('carries the message a companion push was sent beside, for its trigger', () => {
+    vi.stubGlobal('location', { href: 'https://shop.example.com/?treebars_delivery_id=d1&treebars_companion_of=m1' });
+    vi.stubGlobal('history', { state: null, replaceState: () => {} });
+    const tracked: [string, Record<string, unknown>][] = [];
+    new WebPush({ track: (e, p) => tracked.push([e, p]), flush: () => {}, persist: () => true }).trackOpened();
+    expect(tracked).toEqual([['notification_opened', { treebars_delivery_id: 'd1', treebars_companion_of: 'm1' }]]);
+  });
+
   it('does nothing on an ordinary page', () => {
     vi.stubGlobal('location', { href: 'https://shop.example.com/' });
     vi.stubGlobal('history', { state: null, replaceState: () => {} });

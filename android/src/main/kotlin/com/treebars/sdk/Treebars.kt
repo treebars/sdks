@@ -368,8 +368,16 @@ object Treebars {
     private var firstSeenAt: String? = null
     private var firstLaunch = false
 
+    /** The app's own answer, through [setAcquisitionConsent]. It outranks [initialize]'s in either order. */
     @Volatile
-    private var acquisitionConsent = false
+    private var acquisitionConsentAnswer: Boolean? = null
+
+    /** [initialize]'s `acquisitionConsent`: on unless the app passed `false`. */
+    @Volatile
+    private var acquisitionConsentDefault = true
+
+    private val acquisitionConsent: Boolean
+        get() = acquisitionConsentAnswer ?: acquisitionConsentDefault
     private lateinit var acquisition: AcquisitionCapture
     private lateinit var deferredDeepLink: DeferredDeepLink
 
@@ -476,16 +484,17 @@ object Treebars {
         adopt: Adoption = Adoption(),
         /**
          * Whether this install may read and report how it arrived — the Play Install Referrer,
-         * sent once as `install_referrer`. **Off unless the host app says otherwise.**
+         * sent once as `install_referrer`. **On unless the host app says otherwise.**
          *
-         * The referrer carries the click that led to the install, and in some consent regimes
-         * reading it needs the person's agreement first, so the default is the one that is
-         * never wrong. This never asks anybody anything: an app with a consent prompt passes
-         * the answer here, or to [setAcquisitionConsent] once it has one. Nothing is lost by
-         * waiting — the read is owed from the first launch and made whenever consent arrives.
-         * `true` here grants; only [setAcquisitionConsent] withdraws.
+         * Reading the referrer needs no permission and shows no prompt, and without it no install
+         * can be credited to the link or ad that brought it. So it is on. The referrer carries the
+         * click that led to the install, and an app under a consent regime that wants agreement
+         * before reading it passes `false`, then `setAcquisitionConsent(true)` once its person
+         * agrees. Nothing is lost by waiting — the read is owed from the first launch and made
+         * whenever consent arrives. An answer given through [setAcquisitionConsent] outranks this
+         * parameter, before or after [initialize].
          */
-        acquisitionConsent: Boolean = false,
+        acquisitionConsent: Boolean = true,
         /**
          * The domains this app declares for App Links — `open.example.com` — and the only hosts
          * [handleLink] asks what a link means. Empty asks nothing: a tracker link carrying its click
@@ -519,9 +528,9 @@ object Treebars {
         this.env = env
         this.autoTrackLifecycle = autoTrackLifecycle
         this.autoTrackSessions = autoTrackSessions
-        // Grant-only: a [setAcquisitionConsent] made before this call must not be undone by a
-        // parameter nobody passed. Withdrawing is the setter's job alone.
-        if (acquisitionConsent) this.acquisitionConsent = true
+        // The default, which an answer through [setAcquisitionConsent] outranks whenever it came: an app
+        // that asked its person before initialising is never overruled by a parameter it did not pass.
+        this.acquisitionConsentDefault = acquisitionConsent
         TreebarsLogger.debug = debug
 
         val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -945,7 +954,7 @@ object Treebars {
      */
     @JvmStatic
     fun setAcquisitionConsent(granted: Boolean) {
-        acquisitionConsent = granted
+        acquisitionConsentAnswer = granted
         if (granted && writeKey != null) scope.launch { settleAcquisition() }
     }
 
@@ -2096,7 +2105,7 @@ object Treebars {
             for (message in store.list().sortedByDescending { it.content?.display?.priority ?: 5 }) {
                 val content = message.content ?: continue
                 if (content.surface != "overlay" || content.display?.selfHandled != true) continue
-                if (!inAppTriggerMatches(content.trigger, eventName, properties, currentScreen, dimensions)) continue
+                if (!inAppTriggerMatches(content.trigger, eventName, properties, currentScreen, dimensions, message.deliveryId)) continue
                 if (inAppBlockedBy(message, content, store) != null) continue
                 TreebarsLogger.log("in-app: ${message.deliveryId} is self-handled; handed to the app")
                 mainHandler.post { runCatching { selfHandled.onSelfHandledAvailable(message) } }
@@ -2160,7 +2169,7 @@ object Treebars {
             if (isNudge(message)) continue
             // The app's own, above, while it listens for them.
             if (content.display?.selfHandled == true && selfHandled != null) continue
-            if (!inAppTriggerMatches(content.trigger, eventName, properties, currentScreen, dimensions)) {
+            if (!inAppTriggerMatches(content.trigger, eventName, properties, currentScreen, dimensions, message.deliveryId)) {
                 TreebarsLogger.log(
                     "in-app: ${message.deliveryId} trigger ${content.trigger.kind} " +
                         "does not match '$eventName'",
@@ -2258,7 +2267,7 @@ object Treebars {
             val content = message.content ?: continue
             if (content.surface != "overlay" || !isNudge(message) || !drawsItself(content)) continue
             if (nudgeSlots.holds(message.deliveryId)) continue
-            if (!inAppTriggerMatches(content.trigger, eventName, properties, currentScreen, dimensions)) continue
+            if (!inAppTriggerMatches(content.trigger, eventName, properties, currentScreen, dimensions, message.deliveryId)) continue
             val blocked = inAppBlockedBy(message, content, store)
             if (blocked != null) {
                 if (blocked != "done") reportInAppFailure(message, blocked, store)
@@ -2979,6 +2988,25 @@ object Treebars {
         track(EVENT_SCREEN_VIEW, enriched)
     }
 
+    /** The push this session was opened from: its delivery and the session it opened. Read under [recordMutex]. */
+    private var pushSource: Pair<String, String>? = null
+
+    /**
+     * The push this session was opened from, on every in-app event that follows it in the same session, as
+     * `treebars_source_delivery_id`: what lets a report follow a person from a push to the message they then saw. A
+     * later push opened in the same session replaces it, and a new session forgets it: an open tomorrow was not caused
+     * by a push today. An event that already names a source keeps its own.
+     */
+    private fun withPushSource(eventName: String, properties: Map<String, Any?>, sessionId: String): Map<String, Any?> {
+        if (eventName == "notification_opened") {
+            (properties[DELIVERY_ID_KEY] as? String)?.takeIf { it.isNotEmpty() }?.let { pushSource = it to sessionId }
+            return properties
+        }
+        if (!eventName.startsWith("in_app_") || properties.containsKey(TreebarsConstants.SOURCE_DELIVERY_ID_KEY)) return properties
+        val source = pushSource?.takeIf { it.second == sessionId } ?: return properties
+        return properties + (TreebarsConstants.SOURCE_DELIVERY_ID_KEY to source.first)
+    }
+
     /**
      * Puts one event on the queue, with the session boundaries it revealed ahead of it.
      *
@@ -3005,7 +3033,7 @@ object Treebars {
             queue.append(
                 buildEvent(
                     eventName,
-                    properties,
+                    withPushSource(eventName, properties, step.sessionId),
                     sessionId = step.sessionId,
                     userIdOverride = userIdOverride,
                     snapshot = device,
@@ -3596,6 +3624,8 @@ object Treebars {
         data[CAMPAIGN_ID_KEY]?.takeIf { it.isNotEmpty() }?.let { properties[CAMPAIGN_ID_KEY] = it }
         // Which of a push's buttons was pressed, when it was one.
         data[TreebarsConstants.RICH_PUSH_BUTTON_ID_KEY]?.takeIf { it.isNotEmpty() }?.let { properties[TreebarsConstants.RICH_PUSH_BUTTON_ID_KEY] = it }
+        // The message a companion push was sent beside, which that message's "Only from the notification" trigger reads.
+        data[TreebarsConstants.COMPANION_OF_KEY]?.takeIf { it.isNotEmpty() }?.let { properties[TreebarsConstants.COMPANION_OF_KEY] = it }
         return properties
     }
 

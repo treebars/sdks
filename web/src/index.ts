@@ -126,6 +126,8 @@ const FAILED_KEY = 'treebars.in_app_failed.v1';
 const HELD_EVENTS_MAX = 8;
 /** The id of this browser's first session, which is what a "new visitor" session rule asks about. */
 const FIRST_SESSION_KEY = 'treebars.first_session.v1';
+/** The push this session was opened from (`withPushSource`): a delivery id and the session it opened. */
+const PUSH_SOURCE_KEY = 'treebars.push_source.v1';
 /** How often a previewed draft asks whether it was saved again: a save in the editor shows within this long. */
 const PREVIEW_POLL_MS = 2_000;
 /** How long `contextToken()` waits for the server: a checkout is waiting on the answer, and without one it goes ahead unlinked. */
@@ -263,7 +265,7 @@ import { TriggerEvents, readTriggerList, type TriggerList } from './triggers';
 import { RemoteConfig, type ConfigAnswer, type ConfigAsk, type ConfigAttributes } from './config';
 import { Uploader, UploaderStore, type PendingBatch, type UploadResponse } from './uploader';
 import { claimWithRetries, rewardRefusal, type RewardAttempt } from './reward-claim';
-import { BATCH_SIZE, CONFIG_READY_TIMEOUT_MS, CONTEXT_SETTLE_MS, DEFAULT_BACKEND_URL, ENDPOINTS, HEADERS, PARAMS, SDK_NAME, SDK_VERSION, ACQUISITION, IN_APP_PRESENTATION_HOLD_MS, PUSH_PERMISSION_LINK, WEB_EVENTS } from './generated/constants';
+import { BATCH_SIZE, CONFIG_READY_TIMEOUT_MS, CONTEXT_SETTLE_MS, DEFAULT_BACKEND_URL, ENDPOINTS, HEADERS, PARAMS, SDK_NAME, SDK_VERSION, ACQUISITION, DELIVERY_ID_KEY, SOURCE_DELIVERY_ID_KEY, IN_APP_PRESENTATION_HOLD_MS, PUSH_PERMISSION_LINK, WEB_EVENTS } from './generated/constants';
 
 /**
  * The SDK's own reports that the page is going away, which are never a moment to show anything.
@@ -1034,13 +1036,17 @@ class TreebarsWeb {
    * session first when the last one has expired, and it is the moment a queued in-app message waiting on this event is
    * shown. Does nothing before `init` or after `optOut()`.
    */
+  /** The push this session was opened from, read through `withPushSource`. */
+  private pushSource: { delivery: string; session: string } | null = null;
+
   track(eventName: string, properties: EventProperties = {}): void {
     if (!this.started || !this.store || !this.sessions || this.optedOut) return;
 
     const { sessionId, isNew } = this.advanceSession(true);
+    const stamped = this.withPushSource(eventName, properties, sessionId);
 
     // The dimensions this event was stamped with, which a trigger's dimension row reads.
-    const dimensions = this.enqueue(eventName, properties, sessionId);
+    const dimensions = this.enqueue(eventName, stamped, sessionId);
 
     /*
      * The sync, at session start and on coming back to the tab — and above the in-app switch,
@@ -1058,6 +1064,33 @@ class TreebarsWeb {
     if (this.store.size >= (this.config?.batchSize ?? BATCH_SIZE)) {
       void this.flush();
     }
+  }
+
+  /**
+   * The push this session was opened from, on every in-app event that follows it in the same session, as
+   * `treebars_source_delivery_id`: what lets a report follow a person from a push to the message they then saw.
+   *
+   * Kept for the page's session in storage, because a push often opens one page and the message shows on the next. A
+   * later push opened in the same session replaces it; a new session forgets it, since an open tomorrow was not caused
+   * by a push today. An event that already names a source keeps its own.
+   */
+  private withPushSource(eventName: string, properties: EventProperties, sessionId: string): EventProperties {
+    if (eventName === 'notification_opened') {
+      const delivery = properties[DELIVERY_ID_KEY];
+      if (typeof delivery === 'string' && delivery && this.persist) safeSet(PUSH_SOURCE_KEY, JSON.stringify({ delivery, session: sessionId }));
+      if (typeof delivery === 'string' && delivery) this.pushSource = { delivery, session: sessionId };
+      return properties;
+    }
+    if (!eventName.startsWith('in_app_') || properties[SOURCE_DELIVERY_ID_KEY] !== undefined) return properties;
+    if (!this.pushSource && this.persist) {
+      try {
+        this.pushSource = JSON.parse(safeGet(PUSH_SOURCE_KEY) ?? 'null') as { delivery: string; session: string } | null;
+      } catch {
+        this.pushSource = null;
+      }
+    }
+    const source = this.pushSource;
+    return source && source.session === sessionId ? { ...properties, [SOURCE_DELIVERY_ID_KEY]: source.delivery } : properties;
   }
 
   /**
@@ -1887,7 +1920,7 @@ class TreebarsWeb {
   private triggerFires(message: InAppMessage, eventName: string, properties: EventProperties, context: Parameters<typeof triggerMatches>[3], sessionId: string): boolean {
     const trigger = message.content.in_app!.trigger;
     if (trigger.kind === 'session_start' && this.inApp?.drawnInSession(message.delivery_id, sessionId)) return false;
-    return triggerMatches(trigger, eventName, properties, context);
+    return triggerMatches(trigger, eventName, properties, { ...context, deliveryId: message.delivery_id });
   }
 
   /**

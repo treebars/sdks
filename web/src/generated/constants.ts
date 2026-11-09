@@ -82,6 +82,8 @@ export const FNV_PRIME = 0x01000193;
 
 export const DELIVERY_ID_KEY = 'treebars_delivery_id';
 export const CAMPAIGN_ID_KEY = 'treebars_campaign_id';
+export const COMPANION_OF_KEY = 'treebars_companion_of';
+export const SOURCE_DELIVERY_ID_KEY = 'treebars_source_delivery_id';
 /** Which element of an in-app message was pressed, on in_app_clicked. */
 export const IN_APP_BUTTON_INDEX_KEY = 'button_index';
 export const IN_APP_BUTTON_LABEL_KEY = 'button_label';
@@ -131,7 +133,7 @@ export const ACQUISITION = {
 /** Play's cap on the referrer it hands back, so a page cannot build one the store will truncate. */
 export const MAX_REFERRER_LENGTH = 1000;
 
-export const SDK_VERSION = '0.12.1';
+export const SDK_VERSION = '0.12.2';
 export const SDK_NAME = 'treebars-web';
 export const DEVICE_ID_PREFIX = 'dev_';
 

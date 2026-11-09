@@ -3,6 +3,15 @@
 Every release of the Treebars SDKs carries one version number across Android, iOS, React Native and
 the web. Releases before 0.9.0 are not described here.
 
+## 0.12.2
+
+- **Acquisition consent is on by default.** Neither read it allows shows a prompt or needs a permission, so an app that
+  never set it reported nothing about how its installs arrived. An app under a consent regime passes `false` and calls
+  `setAcquisitionConsent(true)` once its person agrees; an answer through `setAcquisitionConsent` outranks the default,
+  in either order.
+- **The push a session was opened from is named on what follows it**, and an in-app message can be set to show only after
+  its own push is opened ("Only from the notification"). An older SDK never shows such a message.
+
 ## 0.12.1
 
 - **A tap that launched the app is held until the app listens, however long its start takes.** 0.12.0 held it only

@@ -41,6 +41,8 @@
 (function () {
   var DELIVERY = 'treebars_delivery_id';
   var CAMPAIGN = 'treebars_campaign_id';
+  // On a push an in-app message sent beside itself: that message, which its "Only from the notification" trigger waits for.
+  var COMPANION = 'treebars_companion_of';
   var BUTTON = 'treebars_button_id';
   var AUTO_DISMISS_MS = 8000;
 
@@ -133,6 +135,7 @@
     if (url.origin === self.location.origin && data[DELIVERY]) {
       url.searchParams.set(DELIVERY, data[DELIVERY]);
       if (data[CAMPAIGN]) url.searchParams.set(CAMPAIGN, data[CAMPAIGN]);
+      if (data[COMPANION]) url.searchParams.set(COMPANION, data[COMPANION]);
       if (button) url.searchParams.set(BUTTON, button.id);
     }
     event.waitUntil(self.clients.openWindow(url.href));

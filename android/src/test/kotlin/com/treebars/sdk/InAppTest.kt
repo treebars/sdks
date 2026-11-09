@@ -122,6 +122,17 @@ class InAppTest {
         assertFalse(inAppTriggerMatches(InAppTrigger("geofence", null, null), "purchase", emptyMap(), null))
     }
 
+    @Test
+    fun `Only from the notification fires for the push that names this message and no other open`() {
+        val trigger = InAppTrigger("companion_push", null, null)
+        val opened = { companion: String? -> if (companion == null) emptyMap() else mapOf(TreebarsConstants.COMPANION_OF_KEY to companion) }
+        assertTrue(inAppTriggerMatches(trigger, "notification_opened", opened("m1"), null, deliveryId = "m1"))
+        assertFalse(inAppTriggerMatches(trigger, "notification_opened", opened("m2"), null, deliveryId = "m1"))
+        assertFalse(inAppTriggerMatches(trigger, "notification_opened", opened(null), null, deliveryId = "m1"))
+        assertFalse(inAppTriggerMatches(trigger, "app_open", opened("m1"), null, deliveryId = "m1"))
+        assertFalse(inAppTriggerMatches(trigger, "notification_opened", opened("m1"), null))
+    }
+
     // --- InAppStore.allows --------------------------------------------------------------
 
     // --- the caps this device counts -------------------------------------------------------

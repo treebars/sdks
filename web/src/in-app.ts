@@ -1,5 +1,6 @@
 import { safeGet, safeSet } from './storage';
 import {
+  COMPANION_OF_KEY,
   DEVICE_FIELD_LENGTH,
   FILTER_OPERATOR_CODES,
   IN_APP_BUTTON_INDEX_KEY,
@@ -56,7 +57,9 @@ export type InAppTrigger =
   | { kind: 'screen_view'; screen_name: string }
   | { kind: 'event'; event_name: string; filters?: InAppFilter[] }
   /** The page a web push opened — any push, or one campaign's. */
-  | { kind: 'push_click'; campaign_id?: string };
+  | { kind: 'push_click'; campaign_id?: string }
+  /** Only the people who open the app from this message's own push: the push names the message it came with. */
+  | { kind: 'companion_push' };
 
 /**
  * One condition row on an event trigger, as a browser receives it. `type` says how the value compares — as text, a
@@ -794,6 +797,8 @@ export class InAppStore {
 export interface InAppContext {
   screen?: string | null;
   dimensions?: Record<string, unknown> | null;
+  /** The message's own delivery, which a `companion_push` trigger looks for on the push that was opened. */
+  deliveryId?: string | null;
 }
 
 /**
@@ -826,6 +831,9 @@ export function triggerMatches(
     case 'push_click':
       // The page a web push opened reports `notification_opened` with the campaign that sent it.
       return eventName === 'notification_opened' && (!trigger.campaign_id || properties.treebars_campaign_id === trigger.campaign_id);
+    case 'companion_push':
+      // Its own push and no other: the one that names this message. Any other open, or no message to compare, is no.
+      return eventName === 'notification_opened' && !!context.deliveryId && properties[COMPANION_OF_KEY] === context.deliveryId;
     default:
       return false;
   }

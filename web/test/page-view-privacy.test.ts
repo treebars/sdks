@@ -104,11 +104,11 @@ describe('the address a page view carries', () => {
 
   it('keeps the campaign labels and click ids, and drops every other parameter and the fragment', async () => {
     stubPage(
-      `https://shop.test/reset?token=${TOKEN}&email=${encodeURIComponent(EMAIL)}&utm_source=newsletter&utm_campaign=fall&gclid=G-1&tbrs_click_id=C-1#access_token=${TOKEN}`,
+      `https://shop.test/reset?token=${TOKEN}&email=${encodeURIComponent(EMAIL)}&utm_source=newsletter&utm_campaign=fall&gclid=G-1&ScCid=S-1&tbrs_click_id=C-1#access_token=${TOKEN}`,
     );
     const properties = await pageView(start());
 
-    expect(properties.url).toBe('https://shop.test/reset?utm_source=newsletter&utm_campaign=fall&gclid=G-1&tbrs_click_id=C-1');
+    expect(properties.url).toBe('https://shop.test/reset?utm_source=newsletter&utm_campaign=fall&gclid=G-1&ScCid=S-1&tbrs_click_id=C-1');
     expect(properties.path).toBe('/reset');
     expect(JSON.stringify(properties)).not.toContain(TOKEN);
     expect(JSON.stringify(properties)).not.toContain('ada');

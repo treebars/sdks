@@ -73,6 +73,8 @@ internal object TreebarsConstants {
 
     const val DELIVERY_ID_KEY = "treebars_delivery_id"
     const val CAMPAIGN_ID_KEY = "treebars_campaign_id"
+    const val COMPANION_OF_KEY = "treebars_companion_of"
+    const val SOURCE_DELIVERY_ID_KEY = "treebars_source_delivery_id"
     const val IN_APP_BUTTON_INDEX_KEY = "button_index"
     const val IN_APP_BUTTON_LABEL_KEY = "button_label"
     /** App actions: what onAction records, the name and payload it accepts, and how long an action waits for a handler. */
@@ -125,7 +127,7 @@ internal object TreebarsConstants {
     /** Our click id's parameter, read out of the URL that opened the app. */
     const val ACQUISITION_CLICK_ID_PARAM = "tbrs_click_id"
 
-    const val SDK_VERSION = "0.12.1"
+    const val SDK_VERSION = "0.12.2"
     const val SDK_NAME = "treebars-android"
     const val DEVICE_ID_PREFIX = "dev_"
 

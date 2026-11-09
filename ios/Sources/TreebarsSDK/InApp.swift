@@ -1346,7 +1346,9 @@ func inAppTriggerMatches(
     eventName: String,
     properties: [String: Any],
     screenName: String?,
-    dimensions: [String: Any]? = nil
+    dimensions: [String: Any]? = nil,
+    /// The message's own delivery, which a `companion_push` trigger looks for on the push that was opened.
+    deliveryId: String? = nil
 ) -> Bool {
     switch trigger.kind {
     case "immediate":
@@ -1364,6 +1366,10 @@ func inAppTriggerMatches(
         guard eventName == "notification_opened" else { return false }
         guard let want = trigger.campaign_id else { return true }
         return properties[TreebarsConstants.campaignIdKey] as? String == want
+    case "companion_push":
+        // "Only from the notification": its own push and no other — the one that names this message.
+        guard eventName == "notification_opened", let deliveryId else { return false }
+        return properties[TreebarsConstants.companionOfKey] as? String == deliveryId
     default:
         // An unrecognised kind fails closed: showing a message to people who do not
         // qualify is worse than showing it to nobody.
