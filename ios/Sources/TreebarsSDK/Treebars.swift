@@ -2175,22 +2175,37 @@ public final class Treebars {
      queue of in-app messages authored as rows, still actionable and still styled, while this is the
      history, keeping what expiry and dismissal take out of that queue.
 
-     `limit` is the page size, `cursor` the previous page's `nextCursor`, and `channels` narrows the
-     rows to those channels. When the network cannot be reached the first page comes from the copy
-     kept on the device (`fromCache`); a later page cannot, and comes back empty with its cursor so
-     the call can be retried. Empty before `initialize` and while opted out.
+     `limit` is the page size, `cursor` the previous page's `nextCursor`, `channels` narrows the
+     rows to those channels, and `topic` to one tab's (a `NotificationTopic.key`; nil is All). A
+     first page carries the tabs as `topics`. When the network cannot be reached the first page
+     comes from the copy kept on the device (`fromCache`) — for a `topic`, that copy's rows of the
+     tab; a later page cannot, and comes back empty with its cursor so the call can be retried.
+     Empty before `initialize` and while opted out.
      */
     public static func notifications(
         limit: Int? = nil,
         cursor: String? = nil,
-        channels: [String]? = nil
+        channels: [String]? = nil,
+        topic: String? = nil
     ) async -> NotificationPage {
-        await shared.notificationPage(limit: limit, cursor: cursor, channels: channels)
+        await shared.notificationPage(limit: limit, cursor: cursor, channels: channels, topic: topic)
     }
 
-    /// The badge. One number, at the cost of the same round trip as a page.
-    public static func unreadNotificationCount() async -> Int {
-        await notifications(limit: 1).unreadCount
+    /**
+     The centre's tabs with their counts — All first, then each topic the project keeps — asked of
+     the server with a one-row read, with this device's unwritten marks taken off
+     (`NotificationStore.overlayTopics`). Empty when the server sent no tabs, or could not be
+     reached and none were kept.
+     */
+    public static func notificationTopics() async -> [NotificationTopic] {
+        await notifications(limit: 1).topics ?? []
+    }
+
+    /// The badge — of everything, or of one tab (`topic`), which is that tab's count from
+    /// `notificationTopics()`. One number, at the cost of the same round trip as a page.
+    public static func unreadNotificationCount(topic: String? = nil) async -> Int {
+        guard let topic else { return await notifications(limit: 1).unreadCount }
+        return await notificationTopics().first { $0.key == topic }?.unread ?? 0
     }
 
     /// Marks one send read, on every device this person owns.
@@ -2209,20 +2224,20 @@ public final class Treebars {
     }
 
     /**
-     Marks everything read.
+     Marks everything read — or, given a `topic`, everything in that one tab.
 
      Sends the server's own `server_time` as a watermark rather than a list of ids: a list
      cannot express somebody returning to nine hundred unread — a capped one leaves the tail
      unread and the badge stuck — and the server clamps the instant to its own `NOW()`, so a
      handset with a fast clock cannot pre-read what has not been sent yet.
      */
-    public static func markAllNotificationsRead() {
+    public static func markAllNotificationsRead(topic: String? = nil) {
         Task {
-            _ = await shared.notificationPage(limit: 1, cursor: nil, channels: nil)
+            _ = await shared.notificationPage(limit: 1, cursor: nil, channels: nil, topic: topic)
             guard let through = shared.lastNotificationServerTime else { return }
-            shared.notificationStore.noteReadThrough(through)
+            shared.notificationStore.noteReadThrough(through, topic: topic)
             shared.emitNotificationChange()
-            await shared.writeNotificationState(readThrough: through)
+            await shared.writeNotificationState(readThrough: through, readThroughTopic: topic)
         }
     }
 
@@ -2256,11 +2271,14 @@ public final class Treebars {
     private func notificationPage(
         limit: Int?,
         cursor: String?,
-        channels: [String]?
+        channels: [String]?,
+        topic: String? = nil
     ) async -> NotificationPage {
         let empty = NotificationPage(
             notifications: [], unreadCount: 0, nextCursor: cursor, fromCache: true
         )
+        // A tab's first page falls back to the cached All page's rows of that tab, never to All itself.
+        let cachedFirst = { topic.map(self.notificationStore.cachedTopic) ?? self.notificationStore.cached() }
         guard !optedOut, let client = backendClient else { return empty }
 
         // Before the request, so an answer for somebody who has since signed out is not shown as the next person's.
@@ -2273,7 +2291,8 @@ public final class Treebars {
             signature: userSignature,
             limit: limit,
             cursor: cursor,
-            channels: channels
+            channels: channels,
+            topic: topic
         )
 
         guard let data,
@@ -2283,25 +2302,26 @@ public final class Treebars {
             // because what a bell needs in a tunnel is its first screen — so it hands the
             // cursor back and the caller retries.
             if cursor != nil { return empty }
-            return notificationStore.cached() ?? empty
+            return cachedFirst() ?? empty
         }
 
-        if asked != notificationStore.generation { return notificationStore.cached() ?? empty }
+        if asked != notificationStore.generation { return cachedFirst() ?? empty }
         if body.signature_required == true { warnSignatureRequired() }
 
         if body.claim_required == true {
             await reportDeviceContext(force: true)
             await uploader?.flush()
-            return cursor != nil ? empty : (notificationStore.cached() ?? empty)
+            return cursor != nil ? empty : (cachedFirst() ?? empty)
         }
 
         lastNotificationServerTime = body.server_time
 
-        let notifications = notificationStore.overlay(body.notifications)
-        let page = NotificationPage(
-            notifications: notifications,
-            // Counted against the server's own rows, never the overlaid ones.
-            unreadCount: notificationStore.overlayCount(body.unread_count, body.notifications),
+        if let tabs = body.topics { notificationStore.settleTopics(tabs) }
+        // Counted against the server's own rows, never the overlaid ones.
+        let page = notificationStore.present(
+            body.notifications,
+            serverCount: body.unread_count,
+            serverTabs: body.topics,
             nextCursor: body.next_cursor,
             fromCache: false
         )
@@ -2313,9 +2333,10 @@ public final class Treebars {
          * a page with an explicit `limit` is a probe — `unreadCount()` and `markAllRead()`
          * both ask for one row, the latter only to learn the server's clock. Caching a
          * one-row answer over the real first page leaves the unread arithmetic running
-         * against a single row, and the badge then disagrees with the list beside it.
+         * against a single row, and the badge then disagrees with the list beside it. And a page
+         * of one tab is not the first page: cached as it, it would stand in for All offline.
          */
-        if cursor == nil && limit == nil {
+        if cursor == nil && limit == nil && topic == nil {
             guard notificationStore.accept(owner: userId ?? DeviceInfo.getDeviceId(), page: page, askedAt: asked) else {
                 return notificationStore.cached() ?? empty
             }
@@ -2336,7 +2357,8 @@ public final class Treebars {
         read: [String] = [],
         dismissed: [String] = [],
         readThrough: String? = nil,
-        opened: [String] = []
+        opened: [String] = [],
+        readThroughTopic: String? = nil
     ) async {
         guard !optedOut, let client = backendClient else { return }
 
@@ -2344,7 +2366,11 @@ public final class Treebars {
         if let userId { payload["user_id"] = userId }
         if !read.isEmpty { payload["read"] = read }
         if !dismissed.isEmpty { payload["dismissed"] = dismissed }
-        if let readThrough { payload["read_through"] = readThrough }
+        if let readThrough {
+            payload["read_through"] = readThrough
+            // The mark-all is of this one tab.
+            if let readThroughTopic { payload["topic"] = readThroughTopic }
+        }
         if !opened.isEmpty { payload["opened"] = opened }
 
         let data = try? await client.postNotificationState(

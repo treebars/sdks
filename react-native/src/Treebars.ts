@@ -8,6 +8,7 @@ import type {
   EventProperties,
   NotificationChannel,
   NotificationPage,
+  NotificationTopic,
   PushOpen,
   TreebarsConfig,
   TreebarsEventName,
@@ -375,10 +376,16 @@ export class TreebarsSDK {
     return {
       /**
        * One page of the centre. Pass the page's `nextCursor` back as `cursor` for the next one;
-       * `channels` limits the page to push or in-app rows.
+       * `channels` limits the page to push or in-app rows, and `topic` to one tab's (a key from
+       * `topics()`; absent is All). A first page carries the tabs as `topics`.
        */
       list: async (
-        options: { limit?: number; cursor?: string | null; channels?: NotificationChannel[] } = {},
+        options: {
+          limit?: number;
+          cursor?: string | null;
+          channels?: NotificationChannel[];
+          topic?: string | null;
+        } = {},
       ): Promise<NotificationPage> => {
         await this.ready;
         return parse<NotificationPage>(
@@ -387,8 +394,18 @@ export class TreebarsSDK {
         );
       },
 
-      /** The number of unread notifications: the first page's `unreadCount`, as both native SDKs derive it. */
-      unreadCount: async (): Promise<number> => {
+      /** The centre's tabs with their counts, All first, as both native SDKs answer them; empty when there are none. */
+      topics: async (): Promise<NotificationTopic[]> => {
+        await this.ready;
+        return parse<NotificationTopic[]>(await this.module().notificationsTopics(), 'the notification topics');
+      },
+
+      /**
+       * The number of unread notifications: the first page's `unreadCount`, as both native SDKs derive it — or, given
+       * a `topic`, that tab's count from `topics()`.
+       */
+      unreadCount: async (topic?: string | null): Promise<number> => {
+        if (topic) return (await this.notifications.topics()).find((tab) => tab.key === topic)?.unread ?? 0;
         const page = await this.notifications.list({ limit: 1 });
         return page.unreadCount;
       },
@@ -403,10 +420,10 @@ export class TreebarsSDK {
         await this.ready;
         await this.module().notificationsMarkOpened(groupId);
       },
-      /** Marks everything in the centre read. */
-      markAllRead: async (): Promise<void> => {
+      /** Marks everything in the centre read — or, given a `topic`, everything in that one tab. */
+      markAllRead: async (topic?: string | null): Promise<void> => {
         await this.ready;
-        await this.module().notificationsMarkAllRead();
+        await this.module().notificationsMarkAllRead(topic ?? null);
       },
       /** Removes one notification from the centre, for this person on every device they own. */
       dismiss: async (groupId: string): Promise<void> => {

@@ -15,6 +15,26 @@ const LEDGER_KEY = 'treebars.notification_ledger.v1';
 
 export type NotificationChannel = 'push' | 'in_app';
 
+/**
+ * The topic a notification was sent under: one of the project's tabs for the centre, by its `key` (what `list` and
+ * `markAllRead` take) and the `name` a tab shows.
+ */
+export interface NotificationTopicRef {
+  key: string;
+  name: string;
+}
+
+/**
+ * One tab of the centre, with its counts. `key` null is All, which comes first and counts everything — the sends with
+ * no topic included — so its `unread` is the badge.
+ */
+export interface NotificationTopic {
+  key: string | null;
+  name: string;
+  unread: number;
+  total: number;
+}
+
 export interface TreebarsNotification {
   /**
    * One send, however many devices it reached.
@@ -41,6 +61,8 @@ export interface TreebarsNotification {
   opened_at: string | null;
   expires_at: string | null;
   style?: InAppTokens;
+  /** The topic it was sent under, or null when it has none. Absent on rows kept from before topics existed. */
+  topic?: NotificationTopicRef | null;
 }
 
 export interface NotificationPage {
@@ -49,12 +71,18 @@ export interface NotificationPage {
   nextCursor: string | null;
   /** True when the network could not be reached and this is what was last persisted. */
   fromCache: boolean;
+  /**
+   * The centre's tabs with their counts, All first, on a first page only. Absent when the server sent none — a
+   * project's centre with no topics, or a server older than them — and a page then draws no topic tabs.
+   */
+  topics?: NotificationTopic[];
 }
 
 export interface NotificationWireResponse {
   notifications: TreebarsNotification[];
   unread_count: number;
   next_cursor: string | null;
+  topics?: NotificationTopic[];
   claim_required?: boolean;
   /** Set when a live environment wanted a valid `signature` (see `identify`) for the signed-in account id, and the read had none. */
   signature_required?: boolean;
@@ -67,12 +95,16 @@ interface CachedFeed {
   notifications: TreebarsNotification[];
   unreadCount: number;
   nextCursor: string | null;
+  /** The tabs as they came with these rows, so the two are drawn again as one answer. */
+  topics?: NotificationTopic[];
 }
 
 interface Ledger {
   read: Record<string, true>;
   dismissed: Record<string, true>;
   readThrough: string | null;
+  /** A mark-all of one tab: the `server_time` it was taken against, by topic key. */
+  topicReadThrough: Record<string, string>;
 }
 
 /**
@@ -82,7 +114,7 @@ interface Ledger {
  * the same `read` and `dismissed` maps — marking a row read in one would mark it read in all
  * of them. A fresh object each time keeps every store, and every `reset()`, its own.
  */
-const emptyLedger = (): Ledger => ({ read: {}, dismissed: {}, readThrough: null });
+const emptyLedger = (): Ledger => ({ read: {}, dismissed: {}, readThrough: null, topicReadThrough: {} });
 
 /**
  * Synchronous throughout, like everything else in this package.
@@ -115,16 +147,95 @@ export class NotificationStore {
    * the reader clicks again. Entries are dropped as soon as the server's own row agrees.
    */
   overlay(notifications: TreebarsNotification[]): TreebarsNotification[] {
-    const through = this.ledger.readThrough ? Date.parse(this.ledger.readThrough) : 0;
     return notifications
       .filter((notification) => !this.ledger.dismissed[notification.group_id])
       .map((notification) => {
         if (notification.read_at) return notification;
-        const locallyRead =
-          this.ledger.read[notification.group_id] ||
-          (through > 0 && Date.parse(notification.created_at) <= through);
+        const locallyRead = this.ledger.read[notification.group_id] || this.coveredByWatermark(notification);
         return locallyRead ? { ...notification, read_at: new Date().toISOString() } : notification;
       });
+  }
+
+  /** Whether a mark-all this browser made — of everything, or of this row's own tab — reaches back to this row. */
+  private coveredByWatermark(notification: TreebarsNotification): boolean {
+    const created = Date.parse(notification.created_at);
+    if (Number.isNaN(created)) return false;
+    const all = this.ledger.readThrough ? Date.parse(this.ledger.readThrough) : 0;
+    if (all > 0 && created <= all) return true;
+    const key = notification.topic?.key;
+    const tab = key ? this.ledger.topicReadThrough[key] : undefined;
+    return tab !== undefined && created <= Date.parse(tab);
+  }
+
+  /**
+   * The server's tabs with this browser's unwritten marks taken off them, as nearly as one answer allows.
+   *
+   * A mark-all of everything empties every tab, and a mark-all of one tab empties that tab and takes its unread off
+   * All. A row marked on its own is taken off its tab and off All only when it came in the same answer as the tabs —
+   * a tab's other rows are not here to look at, and the write that marks it is usually acknowledged before anybody
+   * reads the tabs again. `badge` is the page's own unread count, and All is never more than it, so the two agree.
+   */
+  overlayTopics(serverTabs: NotificationTopic[], serverRows: TreebarsNotification[], badge: number): NotificationTopic[] {
+    const everything = this.ledger.readThrough !== null;
+    const watermarked = (key: string) => everything || this.ledger.topicReadThrough[key] !== undefined;
+    const offTab = new Map<string, number>();
+    let offAll = 0;
+    for (const tab of serverTabs) {
+      if (tab.key !== null && watermarked(tab.key)) {
+        offTab.set(tab.key, tab.unread);
+        offAll += tab.unread;
+      }
+    }
+    for (const row of serverRows) {
+      if (row.read_at || !(this.ledger.read[row.group_id] || this.ledger.dismissed[row.group_id])) continue;
+      const key = row.topic?.key ?? null;
+      if (key !== null && watermarked(key)) continue;
+      offAll += 1;
+      if (key !== null) offTab.set(key, (offTab.get(key) ?? 0) + 1);
+    }
+    return serverTabs.map((tab) => {
+      if (tab.key === null) {
+        const unread = everything ? 0 : Math.max(0, tab.unread - offAll);
+        return { ...tab, unread: Math.min(unread, badge) };
+      }
+      return { ...tab, unread: Math.max(0, tab.unread - (offTab.get(tab.key) ?? 0)) };
+    });
+  }
+
+  /**
+   * Forgets a tab's mark-all once the server agrees there is nothing unread in it, or no longer has the tab.
+   *
+   * Kept apart from the rows' own reconciliation because a first page may hold no row of that tab at all, and "every
+   * row of it is read" is then true of nothing — which would drop the mark while its write is still in flight.
+   */
+  settleTopics(serverTabs: NotificationTopic[]): void {
+    const unreadByKey = new Map(serverTabs.map((tab) => [tab.key, tab.unread]));
+    let changed = false;
+    for (const key of Object.keys(this.ledger.topicReadThrough)) {
+      const unread = unreadByKey.get(key);
+      if (unread === undefined || unread === 0) {
+        delete this.ledger.topicReadThrough[key];
+        changed = true;
+      }
+    }
+    if (changed) this.write();
+  }
+
+  /** The rows, the badge and the tabs as this browser should draw them, from one answer of the server's. */
+  present(
+    serverRows: TreebarsNotification[],
+    serverCount: number,
+    serverTabs: NotificationTopic[] | undefined,
+  ): Pick<NotificationPage, 'notifications' | 'unreadCount' | 'topics'> {
+    const unreadCount = this.overlayCount(serverCount, serverRows);
+    if (!serverTabs) return { notifications: this.overlay(serverRows), unreadCount };
+    const topics = this.overlayTopics(serverTabs, serverRows, unreadCount);
+    return {
+      notifications: this.overlay(serverRows),
+      // All's tab is the badge; when the tabs know of more marked than the rows do, the badge follows them.
+      unreadCount: Math.min(unreadCount, topics[0]?.key === null ? topics[0].unread : unreadCount),
+      topics,
+    };
   }
 
   /**
@@ -165,6 +276,7 @@ export class NotificationStore {
       notifications: page.notifications,
       unreadCount: page.unreadCount,
       nextCursor: page.nextCursor,
+      ...(page.topics ? { topics: page.topics } : {}),
     };
     this.forgetConfirmed(page.notifications);
     this.write();
@@ -174,13 +286,21 @@ export class NotificationStore {
     if (!this.feed) return null;
     // The stored rows are the server's answer as it stood; overlay for display, count
     // against the originals.
-    const notifications = this.overlay(this.feed.notifications);
     return {
-      notifications,
-      unreadCount: this.overlayCount(this.feed.unreadCount, this.feed.notifications),
+      ...this.present(this.feed.notifications, this.feed.unreadCount, this.feed.topics),
       nextCursor: this.feed.nextCursor,
       fromCache: true,
     };
+  }
+
+  /**
+   * One tab's rows out of the cached first page, for when the network cannot answer for that tab. Only what the first
+   * page held, and no cursor: a tab's own pages are network-only.
+   */
+  cachedTopic(topic: string): NotificationPage | null {
+    const page = this.cached();
+    if (!page) return null;
+    return { ...page, notifications: page.notifications.filter((row) => row.topic?.key === topic), nextCursor: null };
   }
 
   noteRead(groupId: string): void {
@@ -188,8 +308,10 @@ export class NotificationStore {
     this.write();
   }
 
-  noteReadThrough(serverTime: string): void {
-    this.ledger.readThrough = serverTime;
+  /** A mark-all, of everything or of one tab (`topic`), taken against the server's own clock. */
+  noteReadThrough(serverTime: string, topic?: string | null): void {
+    if (topic) this.ledger.topicReadThrough[topic] = serverTime;
+    else this.ledger.readThrough = serverTime;
     this.write();
   }
 

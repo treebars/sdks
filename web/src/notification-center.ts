@@ -1,5 +1,5 @@
 import type { InAppCard, InAppTokens } from './in-app';
-import type { NotificationPage, TreebarsNotification } from './notifications';
+import type { NotificationPage, NotificationTopic, TreebarsNotification } from './notifications';
 
 /*
  * A ready-made notification centre — for a site that wants the list without writing one. The data API stays the
@@ -7,8 +7,9 @@ import type { NotificationPage, TreebarsNotification } from './notifications';
  * centre's cannot touch, and a site with its own design keeps drawing its own.
  *
  * What it draws: every notification and card the person was sent, pinned cards first among what is loaded, an unread
- * dot, a tab per card category when there is more than one, a way to dismiss each and to mark all read, and "Show
- * more" while the server has more. A tap marks the row opened — the campaign report's Opened — then goes where the
+ * dot, a tab per topic with its unread count — or, where the server sends no topics, a tab per card category when there
+ * is more than one — a way to dismiss each and to mark all read (of the tab in view), and "Show more" while the server
+ * has more. A tap marks the row opened — the campaign report's Opened — then goes where the
  * card or the push said, unless `onOpen` handles it.
  */
 
@@ -22,9 +23,10 @@ export interface NotificationCenterOptions {
 }
 
 export interface NotificationCenterHost {
-  list: (options: { cursor?: string | null }) => Promise<NotificationPage>;
+  /** `topic` is the tab in view, null for All. */
+  list: (options: { cursor?: string | null; topic?: string | null }) => Promise<NotificationPage>;
   markOpened: (groupId: string) => Promise<void>;
-  markAllRead: () => Promise<void>;
+  markAllRead: (topic?: string | null) => Promise<void>;
   dismiss: (groupId: string) => Promise<void>;
   onChange: (callback: (page: NotificationPage) => void) => () => void;
 }
@@ -97,14 +99,24 @@ export function mountNotificationCenter(target: HTMLElement, host: NotificationC
     rows = [...firstPage, ...deeper.filter((row) => !first.has(row.group_id))];
   };
   let cursor: string | null = null;
+  /** A card category, in the fallback where the server sends no topics; filtered here, from what is loaded. */
   let tab: string | null = null;
+  /**
+   * The server's tabs, as the last page that carried them had them; null while none has, which is the category
+   * fallback. A topic tab is listed by the server, so `rows` then holds only that tab's.
+   */
+  let topics: NotificationTopic[] | null = null;
+  /** The topic tab in view; null is All. */
+  let topic: string | null = null;
+  /** Moved on by every tab change, so a page asked for the tab before it is dropped when it lands. */
+  let view = 0;
   let loading = false;
 
   const header = el('div', `display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid rgba(0,0,0,.08)`);
   const title = el('strong', 'flex:1;font-size:15px', options.title ?? 'Notifications');
   const readAll = el('button', `font:inherit;font-size:13px;border:0;background:none;color:${tokens.accent};cursor:pointer;padding:4px`, 'Mark all read');
   readAll.type = 'button';
-  readAll.addEventListener('click', () => void host.markAllRead());
+  readAll.addEventListener('click', () => void host.markAllRead(topics ? topic : null));
   header.append(title, readAll);
   const tabs = el('div', 'display:flex;gap:6px;padding:8px 14px 0;flex-wrap:wrap');
   tabs.setAttribute('role', 'tablist');
@@ -113,16 +125,54 @@ export function mountNotificationCenter(target: HTMLElement, host: NotificationC
   more.type = 'button';
   frame.append(header, tabs, list, more);
 
+  const tabStyle = (selected: boolean) =>
+    `font:inherit;font-size:13px;padding:4px 10px;border-radius:999px;cursor:pointer;border:1px solid ${tokens.on_surface_muted};background:${selected ? tokens.accent : 'transparent'};color:${selected ? tokens.on_accent : tokens.on_surface}`;
+
+  /** A topic tab chosen: its own first page, from the server, in place of the last tab's rows. */
+  const show = (key: string | null) => {
+    topic = key;
+    view += 1;
+    firstPage = [];
+    deeper = [];
+    cursor = null;
+    join();
+    draw();
+    void load(null);
+  };
+
+  const drawTopicTabs = (all: NotificationTopic[]) => {
+    // All alone is no choice to offer.
+    if (all.length < 2) return;
+    for (const one of all) {
+      const selected = topic === one.key;
+      const button = el('button', tabStyle(selected), one.name);
+      if (one.unread > 0) {
+        const count = el('span', `margin-left:6px;font-size:12px;font-weight:600;opacity:${selected ? 1 : 0.75}`, String(one.unread));
+        count.setAttribute('aria-hidden', 'true');
+        button.appendChild(count);
+        button.setAttribute('aria-label', `${one.name}, ${one.unread} unread`);
+      }
+      button.type = 'button';
+      button.setAttribute('role', 'tab');
+      button.setAttribute('aria-selected', String(selected));
+      button.addEventListener('click', () => {
+        if (topic !== one.key) show(one.key);
+      });
+      tabs.appendChild(button);
+    }
+  };
+
   const draw = () => {
-    const categories = categoriesOf(rows);
     tabs.replaceChildren();
+    if (topics) {
+      drawTopicTabs(topics);
+      drawRows(orderForCenter(rows));
+      return;
+    }
+    const categories = categoriesOf(rows);
     if (categories.length > 1) {
       for (const name of [null, ...categories]) {
-        const button = el(
-          'button',
-          `font:inherit;font-size:13px;padding:4px 10px;border-radius:999px;cursor:pointer;border:1px solid ${tokens.on_surface_muted};background:${tab === name ? tokens.accent : 'transparent'};color:${tab === name ? tokens.on_accent : tokens.on_surface}`,
-          name ?? 'All',
-        );
+        const button = el('button', tabStyle(tab === name), name ?? 'All');
         button.type = 'button';
         button.setAttribute('role', 'tab');
         button.setAttribute('aria-selected', String(tab === name));
@@ -134,7 +184,10 @@ export function mountNotificationCenter(target: HTMLElement, host: NotificationC
       }
     } else tab = null;
 
-    const shown = orderForCenter(rows).filter((row) => tab === null || cardOf(row)?.category === tab);
+    drawRows(orderForCenter(rows).filter((row) => tab === null || cardOf(row)?.category === tab));
+  };
+
+  const drawRows = (shown: TreebarsNotification[]) => {
     list.replaceChildren();
     if (shown.length === 0) list.appendChild(el('li', `padding:24px 14px;color:${tokens.on_surface_muted};text-align:center`, options.emptyText ?? 'Nothing here yet.'));
     for (const row of shown) list.appendChild(item(row));
@@ -204,24 +257,53 @@ export function mountNotificationCenter(target: HTMLElement, host: NotificationC
     return li;
   };
 
+  /** Settles which topic tab is in view once the tabs have changed: one the server no longer has goes back to All. */
+  const keepTopic = (): boolean => {
+    if (topic === null || topics?.some((one) => one.key === topic)) return true;
+    show(null);
+    return false;
+  };
+
+  /*
+   * A first page always loads, so a tab chosen mid-load is not ignored; "Show more" waits for its own last one. Either
+   * is dropped if it lands for a tab no longer in view.
+   */
   const load = async (next: string | null) => {
-    if (loading) return;
-    loading = true;
+    if (next && loading) return;
+    const asked = view;
+    if (next) loading = true;
     try {
-      const page = await host.list({ cursor: next });
+      const page = await host.list({ cursor: next, ...(topic ? { topic } : {}) });
+      if (asked !== view) return;
       if (next) deeper = [...deeper, ...page.notifications];
-      else firstPage = page.notifications;
+      else {
+        firstPage = page.notifications;
+        if (page.topics) topics = page.topics;
+      }
       join();
       cursor = page.nextCursor;
+      if (!keepTopic()) return;
       draw();
     } finally {
-      loading = false;
+      if (next) loading = false;
     }
   };
   more.addEventListener('click', () => void load(cursor));
 
   // A change to the first page (a mark, a dismissal, a refresh) replaces it; deeper pages are kept.
   const stop = host.onChange((page) => {
+    if (page.topics) topics = page.topics;
+    // An emptied centre — a sign-out — keeps its tabs and none of the last person's counts.
+    else if (topics && page.notifications.length === 0 && page.unreadCount === 0) {
+      topics = topics.map((one) => ({ ...one, unread: 0, total: 0 }));
+    }
+    if (!keepTopic()) return;
+    // What changes is All's first page; a topic tab is the server's own list of that tab, so it is asked for again.
+    if (topics && topic !== null) {
+      draw();
+      void load(null);
+      return;
+    }
     firstPage = page.notifications;
     join();
     draw();

@@ -174,4 +174,110 @@ describe('the mounted notification centre', () => {
     expect(calls).toEqual(['stopped']);
     expect(body.children).toHaveLength(0);
   });
+
+  it('draws the server’s topic tabs with their unread counts, lists a tab from the server, and marks that tab read', async () => {
+    const { body } = install();
+    const tabsOf = (unread: [number, number, number]) => [
+      { key: null, name: 'All', unread: unread[0], total: 5 },
+      { key: 'offers', name: 'Offers', unread: unread[1], total: 3 },
+      { key: 'news', name: 'News', unread: unread[2], total: 0 },
+    ];
+    const asked: (string | null)[] = [];
+    const calls: string[] = [];
+    let listener: ((next: NotificationPage) => void) | null = null;
+    const byTopic: Record<string, NotificationPage> = {
+      all: { ...page([row('a', { card: { category: 'Ignored' } }), row('b')]), topics: tabsOf([3, 2, 0]) },
+      offers: { ...page([row('o1'), row('o2')], 'o-next'), topics: tabsOf([3, 2, 0]) },
+      'o-next': page([row('o3')]),
+    };
+    const host: NotificationCenterHost = {
+      list: async ({ cursor, topic }) => {
+        asked.push(cursor ? `${topic} ${cursor}` : (topic ?? null));
+        return byTopic[cursor ?? topic ?? 'all']!;
+      },
+      markOpened: async (id) => void calls.push(`opened ${id}`),
+      markAllRead: async (topic) => void calls.push(`all read ${topic ?? 'everything'}`),
+      dismiss: async (id) => void calls.push(`dismissed ${id}`),
+      onChange: (callback) => {
+        listener = callback;
+        return () => (listener = null);
+      },
+    };
+    mountNotificationCenter(body as never, host);
+    await settle();
+    const tabs = () => body.all().filter((node) => node.getAttribute('role') === 'tab').map((node) => `${node.textContent}${node.getAttribute('aria-selected') === 'true' ? '*' : ''}`);
+    // The server's tabs win over the card categories, and a tab with nothing unread shows no count.
+    expect(tabs()).toEqual(['All3*', 'Offers2', 'News']);
+    expect(body.byName('Offers, 2 unread')).toBeDefined();
+    expect(titles(body)).toEqual(['a', 'b']);
+
+    body.find((node) => node.getAttribute('role') === 'tab' && node.textContent.startsWith('Offers'))!.click();
+    await settle();
+    expect(tabs()).toEqual(['All3', 'Offers2*', 'News']);
+    expect(titles(body)).toEqual(['o1', 'o2']);
+    body.byName('Show more')!.click();
+    await settle();
+    expect(titles(body)).toEqual(['o1', 'o2', 'o3']);
+    expect(asked).toEqual([null, 'offers', 'offers o-next']);
+
+    body.byName('Mark all read')!.click();
+    expect(calls).toEqual(['all read offers']);
+
+    // A change while a topic tab is in view takes the new counts and asks the server for that tab again.
+    byTopic.offers = { ...page([row('o1', { read_at: '2026-10-11T13:00:00.000Z' })]), topics: tabsOf([1, 0, 0]) };
+    listener!({ ...page([row('a')]), topics: tabsOf([1, 0, 0]) });
+    await settle();
+    expect(tabs()).toEqual(['All1', 'Offers*', 'News']);
+    // The tab's first page again, and the deeper page kept, as on All.
+    expect(titles(body)).toEqual(['o1', 'o3']);
+    expect(asked.at(-1)).toBe('offers');
+
+    // A tab the server no longer has goes back to All.
+    byTopic.all = { ...page([row('a')]), topics: [{ key: null, name: 'All', unread: 1, total: 1 }, { key: 'news', name: 'News', unread: 0, total: 0 }] };
+    listener!(byTopic.all);
+    await settle();
+    expect(tabs()).toEqual(['All1*', 'News']);
+    expect(titles(body)).toEqual(['a']);
+    body.byName('Mark all read')!.click();
+    expect(calls.at(-1)).toBe('all read everything');
+  });
+
+  it('drops a tab’s page that lands after another tab was chosen, and draws no tabs for All alone', async () => {
+    const { body } = install();
+    let release: (() => void) | null = null;
+    const host: NotificationCenterHost = {
+      list: ({ topic }) =>
+        topic === 'slow'
+          ? new Promise((resolve) => (release = () => resolve({ ...page([row('late')]) })))
+          : Promise.resolve({
+              ...page([row(topic ?? 'all')]),
+              topics: [
+                { key: null, name: 'All', unread: 0, total: 2 },
+                { key: 'slow', name: 'Slow', unread: 0, total: 1 },
+                { key: 'fast', name: 'Fast', unread: 0, total: 1 },
+              ],
+            }),
+      markOpened: async () => {},
+      markAllRead: async () => {},
+      dismiss: async () => {},
+      onChange: () => () => {},
+    };
+    mountNotificationCenter(body as never, host);
+    await settle();
+    const tab = (name: string) => body.find((node) => node.getAttribute('role') === 'tab' && node.textContent === name)!;
+    tab('Slow').click();
+    await settle();
+    tab('Fast').click();
+    await settle();
+    expect(titles(body)).toEqual(['fast']);
+    release!();
+    await settle();
+    expect(titles(body)).toEqual(['fast']);
+
+    const lone = install();
+    mountNotificationCenter(lone.body as never, hostOf({ ...page([row('a', { card: { category: 'Offers' } }), row('b', { card: { category: 'News' } })]), topics: [{ key: null, name: 'All', unread: 2, total: 2 }] }).host);
+    await settle();
+    // The server said there are no topics: no tabs, and not the category fallback either.
+    expect(lone.body.all().filter((node) => node.getAttribute('role') === 'tab')).toHaveLength(0);
+  });
 });

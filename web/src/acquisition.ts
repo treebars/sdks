@@ -40,11 +40,11 @@ export interface CarriedClick {
  * The click ids ad networks put on the address of a site their ad points at. A visit carrying one came
  * from an ad, which is the only visit worth recording as a click — see `recordAdClick` in `index.ts`.
  *
- * Google, Meta, TikTok, Snapchat, Microsoft Advertising, LinkedIn, X and Reddit, in that order. Each is
+ * Google, Meta, TikTok, Snapchat, ChatGPT ads (`oppref`), Microsoft Advertising, LinkedIn, X and Reddit, in that order. Each is
  * also kept on a page view's address (`KEPT_URL_PARAMS`), which is how a visit is told apart from an ad
  * click at all: a parameter not listed here is removed before the page view is sent.
  */
-export const AD_CLICK_PARAMS = ['gclid', 'gbraid', 'wbraid', 'fbclid', 'ttclid', 'ScCid', 'msclkid', 'li_fat_id', 'twclid', 'rdt_cid'] as const;
+export const AD_CLICK_PARAMS = ['gclid', 'gbraid', 'wbraid', 'fbclid', 'ttclid', 'ScCid', 'oppref', 'msclkid', 'li_fat_id', 'twclid', 'rdt_cid'] as const;
 
 /** Whether this address came from an ad: a network click id, or a `utm_source` that may name a source. */
 export function hasAdClick(href: string): boolean {

@@ -25,6 +25,57 @@ import Foundation
  * which reads as a bell that has stopped ringing rather than as a decode that failed.
  */
 
+/// The topic a notification was sent under: one of the project's tabs for the centre, by its `key` (what
+/// `Treebars.notifications(topic:)` and `markAllNotificationsRead(topic:)` take) and the `name` a tab shows.
+public struct NotificationTopicRef: Codable, Sendable, Equatable {
+    public let key: String
+    public let name: String
+}
+
+/**
+ One tab of the centre, with its counts. `key` nil is All, which comes first and counts everything — the sends with no
+ topic included — so its `unread` is the badge.
+ */
+public struct NotificationTopic: Codable, Sendable, Equatable {
+    public let key: String?
+    public let name: String
+    public let unread: Int
+    public let total: Int
+
+    public init(key: String?, name: String, unread: Int, total: Int) {
+        self.key = key
+        self.name = name
+        self.unread = unread
+        self.total = total
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case key, name, unread, total
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        key = container.tolerant(.key)
+        name = container.tolerant(.name, or: "")
+        unread = container.tolerant(.unread, or: 0)
+        total = container.tolerant(.total, or: 0)
+    }
+
+    /// All's `key` is written as null rather than left out, which is how the wire says it and how the React Native
+    /// types read it.
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(key, forKey: .key)
+        try container.encode(name, forKey: .name)
+        try container.encode(unread, forKey: .unread)
+        try container.encode(total, forKey: .total)
+    }
+
+    func with(unread: Int) -> NotificationTopic {
+        NotificationTopic(key: key, name: name, unread: unread, total: total)
+    }
+}
+
 public struct TreebarsNotificationContent: Codable, Sendable {
     public let title: String?
     public let body: String?
@@ -69,6 +120,8 @@ public struct TreebarsNotification: Codable, Sendable {
     /// does. Declared because the store and the React Native bridge re-encode this struct, and a card drawn from the
     /// render plan on a dark iPhone would otherwise be drawn light where Android draws it dark.
     public var style_dark: InAppTokens? = nil
+    /// The topic it was sent under, or nil when it has none.
+    public var topic: NotificationTopicRef? = nil
 }
 
 extension TreebarsNotification {
@@ -103,6 +156,7 @@ extension TreebarsNotification {
         expires_at = container.tolerant(.expires_at)
         style = container.tolerant(.style)
         style_dark = container.tolerant(.style_dark)
+        topic = container.tolerant(.topic)
     }
 }
 
@@ -118,12 +172,18 @@ public struct NotificationPage: Sendable {
      lying about a round trip. An app can badge it, or ignore it.
      */
     public let fromCache: Bool
+    /**
+     The centre's tabs with their counts, All first, on a first page only. Nil when the server sent none — a project with
+     no topics, or a server older than them — and a screen then draws no topic tabs.
+     */
+    public var topics: [NotificationTopic]? = nil
 }
 
 struct NotificationWireResponse: Codable {
     let notifications: [TreebarsNotification]
     let unread_count: Int
     let next_cursor: String?
+    let topics: [NotificationTopic]?
     let claim_required: Bool?
     let signature_required: Bool?
     let server_time: String
@@ -143,6 +203,7 @@ extension NotificationWireResponse {
         notifications = container.tolerantList(.notifications, of: TreebarsNotification.self)
         unread_count = container.tolerant(.unread_count, or: 0)
         next_cursor = container.tolerant(.next_cursor)
+        topics = container.tolerant(.topics)
         claim_required = container.tolerant(.claim_required)
         signature_required = container.tolerant(.signature_required)
         server_time = container.tolerant(.server_time, or: Iso8601.now())
@@ -178,6 +239,8 @@ private struct CachedFeed: Codable {
     let notifications: [TreebarsNotification]
     let unreadCount: Int
     let nextCursor: String?
+    /// The tabs as they came with these rows, so the two are drawn again as one answer.
+    let topics: [NotificationTopic]?
 }
 
 extension CachedFeed {
@@ -193,6 +256,7 @@ extension CachedFeed {
         notifications = container.tolerantList(.notifications, of: TreebarsNotification.self)
         unreadCount = container.tolerant(.unreadCount, or: 0)
         nextCursor = container.tolerant(.nextCursor)
+        topics = container.tolerant(.topics)
     }
 }
 
@@ -202,6 +266,8 @@ private struct NotificationLedger: Codable {
     var dismissed: [String: Bool] = [:]
     /// The `server_time` a mark-all was taken against, if one is outstanding.
     var readThrough: String?
+    /// A mark-all of one tab: the `server_time` it was taken against, by topic key.
+    var topicReadThrough: [String: String] = [:]
 }
 
 extension NotificationLedger {
@@ -213,6 +279,7 @@ extension NotificationLedger {
         read = container.tolerant(.read, or: [:])
         dismissed = container.tolerant(.dismissed, or: [:])
         readThrough = container.tolerant(.readThrough)
+        topicReadThrough = container.tolerant(.topicReadThrough, or: [:])
     }
 }
 
@@ -247,17 +314,13 @@ final class NotificationStore {
      what keeps the ledger from growing without bound.
      */
     func overlay(_ notifications: [TreebarsNotification]) -> [TreebarsNotification] {
-        let through = ledger.readThrough.flatMap(InAppStore.parse)
         let now = Iso8601.now()
 
         return notifications.compactMap { notification in
             if ledger.dismissed[notification.group_id] == true { return nil }
             if notification.read_at != nil { return notification }
 
-            var locallyRead = ledger.read[notification.group_id] == true
-            if !locallyRead, let through, let created = InAppStore.parse(notification.created_at) {
-                locallyRead = created <= through
-            }
+            let locallyRead = ledger.read[notification.group_id] == true || coveredByWatermark(notification)
             guard locallyRead else { return notification }
 
             return TreebarsNotification(
@@ -271,9 +334,97 @@ final class NotificationStore {
                 opened_at: notification.opened_at,
                 expires_at: notification.expires_at,
                 style: notification.style,
-                style_dark: notification.style_dark
+                style_dark: notification.style_dark,
+                topic: notification.topic
             )
         }
+    }
+
+    /// Whether a mark-all this device made — of everything, or of this row's own tab — reaches back to this row.
+    private func coveredByWatermark(_ notification: TreebarsNotification) -> Bool {
+        guard let created = InAppStore.parse(notification.created_at) else { return false }
+        if let through = ledger.readThrough.flatMap(InAppStore.parse), created <= through { return true }
+        guard let key = notification.topic?.key,
+              let tab = ledger.topicReadThrough[key].flatMap(InAppStore.parse)
+        else { return false }
+        return created <= tab
+    }
+
+    /**
+     The server's tabs with this device's unwritten marks taken off them, as nearly as one answer allows.
+
+     A mark-all of everything empties every tab, and a mark-all of one tab empties that tab and takes its unread off
+     All. A row marked on its own is taken off its tab and off All only when it came in the same answer as the tabs — a
+     tab's other rows are not here to look at, and the write that marks it is usually acknowledged before anybody reads
+     the tabs again. `badge` is the page's own unread count, and All is never more than it, so the two agree.
+     */
+    func overlayTopics(
+        _ serverTabs: [NotificationTopic],
+        _ serverRows: [TreebarsNotification],
+        badge: Int
+    ) -> [NotificationTopic] {
+        let everything = ledger.readThrough != nil
+        let watermarked = { (key: String) in everything || self.ledger.topicReadThrough[key] != nil }
+        var offTab: [String: Int] = [:]
+        var offAll = 0
+        for tab in serverTabs {
+            guard let key = tab.key, watermarked(key) else { continue }
+            offTab[key] = tab.unread
+            offAll += tab.unread
+        }
+        for row in serverRows {
+            guard row.read_at == nil,
+                  ledger.read[row.group_id] == true || ledger.dismissed[row.group_id] == true
+            else { continue }
+            let key = row.topic?.key
+            if let key, watermarked(key) { continue }
+            offAll += 1
+            if let key { offTab[key, default: 0] += 1 }
+        }
+        return serverTabs.map { tab in
+            guard let key = tab.key else {
+                let unread = everything ? 0 : max(0, tab.unread - offAll)
+                return tab.with(unread: min(unread, badge))
+            }
+            return tab.with(unread: max(0, tab.unread - (offTab[key] ?? 0)))
+        }
+    }
+
+    /**
+     Forgets a tab's mark-all once the server agrees there is nothing unread in it, or no longer has the tab.
+
+     Kept apart from the rows' own reconciliation because a first page may hold no row of that tab at all, and "every
+     row of it is read" is then true of nothing — which would drop the mark while its write is still in flight.
+     */
+    func settleTopics(_ serverTabs: [NotificationTopic]) {
+        var unreadByKey: [String: Int] = [:]
+        for tab in serverTabs { if let key = tab.key { unreadByKey[key] = tab.unread } }
+        let confirmed = ledger.topicReadThrough.keys.filter { (unreadByKey[$0] ?? 0) == 0 }
+        guard !confirmed.isEmpty else { return }
+        for key in confirmed { ledger.topicReadThrough.removeValue(forKey: key) }
+        save()
+    }
+
+    /// The rows, the badge and the tabs as this device should draw them, from one answer of the server's.
+    func present(
+        _ serverRows: [TreebarsNotification],
+        serverCount: Int,
+        serverTabs: [NotificationTopic]?,
+        nextCursor: String?,
+        fromCache: Bool
+    ) -> NotificationPage {
+        let count = overlayCount(serverCount, serverRows)
+        let tabs = serverTabs.map { overlayTopics($0, serverRows, badge: count) }
+        // All's tab is the badge; when the tabs know of more marked than the rows do, the badge follows them.
+        var badge = count
+        if let all = tabs?.first, all.key == nil { badge = min(count, all.unread) }
+        return NotificationPage(
+            notifications: overlay(serverRows),
+            unreadCount: badge,
+            nextCursor: nextCursor,
+            fromCache: fromCache,
+            topics: tabs
+        )
     }
 
     /**
@@ -310,7 +461,8 @@ final class NotificationStore {
             owner: owner,
             notifications: page.notifications,
             unreadCount: page.unreadCount,
-            nextCursor: page.nextCursor
+            nextCursor: page.nextCursor,
+            topics: page.topics
         )
         forgetConfirmed(page.notifications)
         save()
@@ -321,12 +473,25 @@ final class NotificationStore {
         guard let feed else { return nil }
         // The stored rows are the server's answer as it stood; overlay for display, count
         // against the originals.
-        let notifications = overlay(feed.notifications)
-        return NotificationPage(
-            notifications: notifications,
-            unreadCount: overlayCount(feed.unreadCount, feed.notifications),
+        return present(
+            feed.notifications,
+            serverCount: feed.unreadCount,
+            serverTabs: feed.topics,
             nextCursor: feed.nextCursor,
             fromCache: true
+        )
+    }
+
+    /// One tab's rows out of the cached first page, for when the network cannot answer for that tab. Only what the
+    /// first page held, and no cursor: a tab's own pages are network-only.
+    func cachedTopic(_ topic: String) -> NotificationPage? {
+        guard let page = cached() else { return nil }
+        return NotificationPage(
+            notifications: page.notifications.filter { $0.topic?.key == topic },
+            unreadCount: page.unreadCount,
+            nextCursor: nil,
+            fromCache: true,
+            topics: page.topics
         )
     }
 
@@ -335,8 +500,13 @@ final class NotificationStore {
         save()
     }
 
-    func noteReadThrough(_ serverTime: String) {
-        ledger.readThrough = serverTime
+    /// A mark-all, of everything or of one tab (`topic`), taken against the server's own clock.
+    func noteReadThrough(_ serverTime: String, topic: String? = nil) {
+        if let topic {
+            ledger.topicReadThrough[topic] = serverTime
+        } else {
+            ledger.readThrough = serverTime
+        }
         save()
     }
 

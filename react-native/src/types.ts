@@ -238,6 +238,26 @@ export type ConfigAttributes = Record<string, string | number | boolean>;
 
 export type NotificationChannel = 'push' | 'in_app';
 
+/**
+ * The topic a notification was sent under: one of the project's tabs for the centre, by its `key` (what `list` and
+ * `markAllRead` take) and the `name` a tab shows.
+ */
+export interface NotificationTopicRef {
+  key: string;
+  name: string;
+}
+
+/**
+ * One tab of the centre, with its counts. `key` null is All, which comes first and counts everything — the sends with
+ * no topic included — so its `unread` is the badge.
+ */
+export interface NotificationTopic {
+  key: string | null;
+  name: string;
+  unread: number;
+  total: number;
+}
+
 export interface TreebarsNotification {
   /**
    * One notification as the person sees it, across all their devices: a send that reached
@@ -263,6 +283,8 @@ export interface TreebarsNotification {
   expires_at: string | null;
   /** In-app rows only: the message's resolved style, as an in-app message carries it. */
   style?: InAppTokens;
+  /** The topic it was sent under, or null when it has none. */
+  topic?: NotificationTopicRef | null;
 }
 
 export interface NotificationPage {
@@ -277,4 +299,9 @@ export interface NotificationPage {
    * screen lying about a round trip. An app can badge it, or ignore it.
    */
   fromCache: boolean;
+  /**
+   * The centre's tabs with their counts, All first, on a first page only. Absent when the server sent none — a
+   * project with no topics, or a server older than them.
+   */
+  topics?: NotificationTopic[];
 }

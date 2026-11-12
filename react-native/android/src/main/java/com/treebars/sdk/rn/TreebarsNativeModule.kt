@@ -9,6 +9,7 @@ import com.treebars.sdk.InAppButton
 import com.treebars.sdk.InAppMessage
 import com.treebars.sdk.InAppTokens
 import com.treebars.sdk.NotificationPage
+import com.treebars.sdk.NotificationTopic
 import com.treebars.sdk.PushProvider
 import com.treebars.sdk.Treebars
 import com.treebars.sdk.TreebarsPush
@@ -825,11 +826,19 @@ class TreebarsNativeModule(reactContext: ReactApplicationContext) :
     val channels = options.optJSONArray("channels")?.let { array ->
       (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotEmpty) }
     }
+    val topic = options.stringOrNull("topic")
 
     scope.launch {
       answer(promise, "the notification page") {
-        pageJson(Treebars.notifications(limit, cursor, channels)).toString()
+        pageJson(Treebars.notifications(limit, cursor, channels, topic)).toString()
       }
+    }
+  }
+
+  override fun notificationsTopics(promise: Promise) {
+    if (!ready(promise)) return
+    scope.launch {
+      answer(promise, "the notification topics") { topicsJson(Treebars.notificationTopics()).toString() }
     }
   }
 
@@ -839,9 +848,9 @@ class TreebarsNativeModule(reactContext: ReactApplicationContext) :
     promise.resolve(null)
   }
 
-  override fun notificationsMarkAllRead(promise: Promise) {
+  override fun notificationsMarkAllRead(topic: String?, promise: Promise) {
     if (!ready(promise)) return
-    Treebars.markAllNotificationsRead()
+    Treebars.markAllNotificationsRead(topic?.takeIf { it.isNotEmpty() })
     promise.resolve(null)
   }
 
@@ -1054,6 +1063,20 @@ class TreebarsNativeModule(reactContext: ReactApplicationContext) :
     .put("unreadCount", page.unreadCount)
     .put("nextCursor", page.nextCursor ?: JSONObject.NULL)
     .put("fromCache", page.fromCache)
+    .apply { page.topics?.let { put("topics", topicsJson(it)) } }
+
+  /** The tabs in the wire's own shape — All's `key` as JSON null, which `put(key, null)` would drop instead. */
+  private fun topicsJson(topics: List<NotificationTopic>): JSONArray = JSONArray().apply {
+    for (tab in topics) {
+      put(
+        JSONObject()
+          .put("key", tab.key ?: JSONObject.NULL)
+          .put("name", tab.name)
+          .put("unread", tab.unread)
+          .put("total", tab.total),
+      )
+    }
+  }
 
   /**
    * The wire's own spelling, which is snake_case and not this data class's.

@@ -1787,24 +1787,44 @@ object Treebars {
      * while this is the history of everything sent to this person, push included, keeping
      * what expiry and dismissal take out of that queue.
      *
-     * Only the default first page (no [limit], no [cursor]) is cached. When the network cannot
-     * be reached, a call without a [cursor] returns that cache, and a later page comes back empty
-     * with the same cursor for the caller to retry. Empty while opted out.
+     * Only the default first page of All (no [limit], no [cursor], no [topic]) is cached. When the
+     * network cannot be reached, a call without a [cursor] returns that cache — for a [topic], the
+     * cached rows of that tab — and a later page comes back empty with the same cursor for the
+     * caller to retry. A first page carries the tabs as [NotificationPage.topics]. Empty while opted out.
      *
      * @param limit how many rows to return; null for the default page size.
      * @param cursor [NotificationPage.nextCursor] from the previous page; null for the first.
      * @param channels only rows sent on these channels; null for every channel.
+     * @param topic only one tab's rows, by [NotificationTopic.key]; null for All.
      */
     @JvmStatic
     suspend fun notifications(
         limit: Int? = null,
         cursor: String? = null,
         channels: List<String>? = null,
-    ): NotificationPage = notificationPage(limit, cursor, channels)
+        topic: String? = null,
+    ): NotificationPage = notificationPage(limit, cursor, channels, topic)
 
-    /** The unread count, for a badge. One number, at the cost of the same round trip as a page. */
+    /**
+     * The centre's tabs with their counts — All first, then each topic the project keeps — asked of
+     * the server with a one-row read, with this device's unwritten marks taken off
+     * ([NotificationStore.overlayTopics]). Empty when the server sent no tabs, or could not be
+     * reached and none were kept.
+     */
     @JvmStatic
-    suspend fun unreadNotificationCount(): Int = notifications(limit = 1).unreadCount
+    suspend fun notificationTopics(): List<NotificationTopic> = notifications(limit = 1).topics.orEmpty()
+
+    /**
+     * The unread count, for a badge — of everything, or of one tab ([topic]), which is that tab's
+     * count from [notificationTopics]. One number, at the cost of the same round trip as a page.
+     */
+    @JvmStatic
+    suspend fun unreadNotificationCount(topic: String? = null): Int =
+        if (topic == null) {
+            notifications(limit = 1).unreadCount
+        } else {
+            notificationTopics().firstOrNull { it.key == topic }?.unread ?: 0
+        }
 
     /** Marks one send read, on every device this person owns. */
     @JvmStatic
@@ -1826,7 +1846,8 @@ object Treebars {
     }
 
     /**
-     * Marks everything read, on every device this person owns.
+     * Marks everything read, on every device this person owns — or, given a [topic], everything in
+     * that one tab.
      *
      * Sends the server's own `server_time` as a watermark rather than a list of ids: a list
      * cannot express somebody returning to nine hundred unread — a capped one leaves the
@@ -1834,13 +1855,14 @@ object Treebars {
      * fast clock cannot mark as read what has not been sent yet.
      */
     @JvmStatic
-    fun markAllNotificationsRead() {
+    @JvmOverloads
+    fun markAllNotificationsRead(topic: String? = null) {
         scope.launch {
-            notificationPage(limit = 1, cursor = null, channels = null)
+            notificationPage(limit = 1, cursor = null, channels = null, topic = topic)
             val through = lastNotificationServerTime ?: return@launch
-            notificationStore?.noteReadThrough(through)
+            notificationStore?.noteReadThrough(through, topic)
             emitNotificationChange()
-            writeNotificationState(readThrough = through)
+            writeNotificationState(readThrough = through, readThroughTopic = topic)
         }
     }
 
@@ -1876,6 +1898,7 @@ object Treebars {
         limit: Int?,
         cursor: String?,
         channels: List<String>?,
+        topic: String? = null,
     ): NotificationPage {
         val empty = NotificationPage(emptyList(), 0, cursor, true)
         if (optedOut) return empty
@@ -1885,7 +1908,9 @@ object Treebars {
         // A cursored call has no cache to fall back to — deep pages are network-only,
         // because what a bell needs in a tunnel is its first screen — so it hands the
         // cursor back and the caller retries.
-        val fallback = if (cursor != null) empty else store.cached() ?: empty
+        // A tab's first page falls back to the cached All page's rows of that tab, never to All itself.
+        val cachedFirst = { if (topic != null) store.cachedTopic(topic) else store.cached() }
+        val fallback = if (cursor != null) empty else cachedFirst() ?: empty
         // Before the request, so an answer for somebody who has since signed out is not shown as the next person's.
         val asked = store.generation
 
@@ -1899,11 +1924,11 @@ object Treebars {
          */
         val body = kotlinx.coroutines.withContext(Dispatchers.IO) {
             transport.getNotifications(
-                deviceId(), fetchSecret(), userId, userSignature, limit, cursor, channels,
+                deviceId(), fetchSecret(), userId, userSignature, limit, cursor, channels, topic,
             )
         } ?: return fallback
 
-        if (asked != store.generation) return store.cached() ?: empty
+        if (asked != store.generation) return cachedFirst() ?: empty
         if (body.optBoolean("signature_required", false)) warnSignatureRequired()
 
         if (body.optBoolean("claim_required", false)) {
@@ -1917,10 +1942,13 @@ object Treebars {
         lastNotificationServerTime = body.optString("server_time").takeIf { it.isNotEmpty() }
 
         val serverRows = parseNotifications(body.optJSONArray("notifications") ?: JSONArray())
-        val page = NotificationPage(
-            notifications = store.overlay(serverRows),
-            // Counted against the server's own rows, never the overlaid ones.
-            unreadCount = store.overlayCount(body.optInt("unread_count", 0), serverRows),
+        val serverTabs = body.optJSONArray("topics")?.let(::parseNotificationTopics)
+        serverTabs?.let(store::settleTopics)
+        // Counted against the server's own rows, never the overlaid ones.
+        val page = store.present(
+            serverRows,
+            body.optInt("unread_count", 0),
+            serverTabs,
             nextCursor = body.optString("next_cursor").takeIf { it.isNotEmpty() && it != "null" },
             fromCache = false,
         )
@@ -1933,9 +1961,10 @@ object Treebars {
          * [markAllNotificationsRead] both ask for one row, the latter only to learn the server's
          * clock. Caching a
          * one-row answer over the real first page leaves the unread arithmetic running
-         * against a single row, and the badge then disagrees with the list beside it.
+         * against a single row, and the badge then disagrees with the list beside it. And a page
+         * of one tab is not the first page: cached as it, it would stand in for All offline.
          */
-        if (cursor == null && limit == null) {
+        if (cursor == null && limit == null && topic == null) {
             if (!store.accept(userId ?: deviceId(), page, asked)) return store.cached() ?: empty
             emitNotificationChange(page)
         }
@@ -1955,6 +1984,7 @@ object Treebars {
         dismissed: List<String> = emptyList(),
         readThrough: String? = null,
         opened: List<String> = emptyList(),
+        readThroughTopic: String? = null,
     ) {
         if (optedOut) return
         val transport = client ?: return
@@ -1964,6 +1994,8 @@ object Treebars {
         if (read.isNotEmpty()) payload.put("read", JSONArray(read))
         if (dismissed.isNotEmpty()) payload.put("dismissed", JSONArray(dismissed))
         readThrough?.let { payload.put("read_through", it) }
+        // With `read_through` only: the mark-all is of this one tab.
+        if (readThrough != null) readThroughTopic?.let { payload.put("topic", it) }
         if (opened.isNotEmpty()) payload.put("opened", JSONArray(opened))
 
         // Null means the write did not land. The marks stay in the ledger, so the row still

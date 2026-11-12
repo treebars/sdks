@@ -356,12 +356,15 @@ internal class BackendClient(
         limit: Int?,
         cursor: String?,
         channels: List<String>?,
+        topic: String? = null,
     ): JSONObject? {
         val query = buildMap {
             put("device_id", deviceId)
             limit?.let { put("limit", it.toString()) }
             cursor?.let { put("cursor", it) }
             if (!channels.isNullOrEmpty()) put("channels", channels.joinToString(","))
+            // One tab of the centre; absent is All.
+            topic?.let { put("topic", it) }
         }
         return get(TreebarsConstants.NOTIFICATIONS_PATH, query, secret, userId, signature.takeIf { userId != null })
     }

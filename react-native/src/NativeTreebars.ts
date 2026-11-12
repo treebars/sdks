@@ -205,10 +205,13 @@ export interface Spec extends TurboModule {
   // ---------------------------------------------------------------------------------------
 
   notificationsList(optionsJson: string): Promise<string>;
+  /** The centre's tabs with their counts, All first: a JSON array of `NotificationTopic`. */
+  notificationsTopics(): Promise<string>;
   notificationsMarkRead(groupId: string): Promise<void>;
   /** A notification or card tapped in the centre — opened, and read with it. */
   notificationsMarkOpened(groupId: string): Promise<void>;
-  notificationsMarkAllRead(): Promise<void>;
+  /** Everything read, or only one tab's (`topic`, a `NotificationTopic.key`); null is everything. */
+  notificationsMarkAllRead(topic: string | null): Promise<void>;
   notificationsDismiss(groupId: string): Promise<void>;
 
   /**

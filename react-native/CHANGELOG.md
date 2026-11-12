@@ -4,6 +4,11 @@ Every release of the Treebars SDKs carries one version number across Android, iO
 the web, and this package runs the Android and iOS SDKs of the same version. Releases before 0.9.0 are
 not described here.
 
+## 0.12.3
+
+- **The notification centre has topic tabs**, from the Android and iOS cores: a row's `topic`, a first page's `topics`,
+  `notifications.list({ topic })`, `notifications.topics()`, `unreadCount(topic)` and `markAllRead(topic)`.
+
 ## 0.12.2
 
 - **Acquisition consent is on by default** on Android and iOS: `init` without `acquisition_consent` reads it as `true`.

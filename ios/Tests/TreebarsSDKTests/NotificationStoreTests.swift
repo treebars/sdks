@@ -38,7 +38,8 @@ final class NotificationStoreTests: XCTestCase {
     private func notification(
         groupID: String = "grp_1",
         createdAt: String = "2026-08-01T00:00:00.000Z",
-        readAt: String? = nil
+        readAt: String? = nil,
+        topic: String? = nil
     ) -> TreebarsNotification {
         TreebarsNotification(
             group_id: groupID,
@@ -56,8 +57,61 @@ final class NotificationStoreTests: XCTestCase {
             read_at: readAt,
             opened_at: nil,
             expires_at: nil,
-            style: nil
+            style: nil,
+            topic: topic.map { NotificationTopicRef(key: $0, name: $0.capitalized) }
         )
+    }
+
+    private func tabs(_ all: Int, _ offers: Int, _ news: Int) -> [NotificationTopic] {
+        [
+            NotificationTopic(key: nil, name: "All", unread: all, total: 9),
+            NotificationTopic(key: "offers", name: "Offers", unread: offers, total: 4),
+            NotificationTopic(key: "news", name: "News", unread: news, total: 3),
+        ]
+    }
+
+    // MARK: - topics
+
+    func testAMarkAllOfOneTabMarksOnlyItsRowsEmptiesItAndTakesItOffAll() {
+        store.noteReadThrough("2026-08-02T00:00:00.000Z", topic: "offers")
+        let rows = [
+            notification(groupID: "o1", topic: "offers"),
+            notification(groupID: "n1", topic: "news"),
+            notification(groupID: "x1"),
+        ]
+        let page = store.present(rows, serverCount: 5, serverTabs: tabs(5, 2, 1), nextCursor: nil, fromCache: false)
+        XCTAssertEqual(page.notifications.map { $0.read_at != nil }, [true, false, false])
+        XCTAssertEqual(page.topics?.map(\.unread), [3, 0, 1])
+        // All is the badge.
+        XCTAssertEqual(page.unreadCount, 3)
+        // And the overlaid row keeps its topic.
+        XCTAssertEqual(page.notifications[0].topic?.key, "offers")
+    }
+
+    func testAMarkAllOfEverythingEmptiesEveryTab() {
+        store.noteReadThrough("2026-08-02T00:00:00.000Z")
+        let page = store.present([notification(topic: "offers")], serverCount: 3, serverTabs: tabs(3, 2, 1), nextCursor: nil, fromCache: false)
+        XCTAssertEqual(page.topics?.map(\.unread), [0, 0, 0])
+        XCTAssertEqual(page.unreadCount, 0)
+    }
+
+    func testForgetsATabsMarkAllOnceTheServerCountsNothingUnreadInIt() {
+        store.noteReadThrough("2026-08-02T00:00:00.000Z", topic: "offers")
+        store.settleTopics(tabs(3, 2, 1))
+        XCTAssertEqual(store.present([], serverCount: 3, serverTabs: tabs(3, 2, 1), nextCursor: nil, fromCache: false).topics?[1].unread, 0)
+        store.settleTopics(tabs(1, 0, 1))
+        XCTAssertEqual(store.present([notification(topic: "offers")], serverCount: 2, serverTabs: tabs(2, 1, 1), nextCursor: nil, fromCache: false).topics?[1].unread, 1)
+    }
+
+    func testWritesAllsKeyAsNullAndReadsItBack() throws {
+        let data = try JSONEncoder().encode(tabs(1, 1, 0))
+        XCTAssertTrue(String(decoding: data, as: UTF8.self).contains("\"key\":null"))
+        XCTAssertEqual(try JSONDecoder().decode([NotificationTopic].self, from: data), tabs(1, 1, 0))
+    }
+
+    func testAnswersATabOfflineFromTheCachedFirstPagesRowsOfIt() {
+        store.accept(owner: "user_a", page: page([notification(groupID: "o1", topic: "offers"), notification(groupID: "n1", topic: "news")]))
+        XCTAssertEqual(store.cachedTopic("news")?.notifications.map(\.group_id), ["n1"])
     }
 
     private func page(_ notifications: [TreebarsNotification], unread: Int? = nil) -> NotificationPage {

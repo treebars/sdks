@@ -3,6 +3,15 @@
 Every release of the Treebars SDKs carries one version number across Android, iOS, React Native and
 the web. Releases before 0.9.0 are not described here.
 
+## 0.12.3
+
+- **The notification centre has topic tabs.** A row carries the `topic` it was sent under, a first page carries the
+  tabs with their counts (`topics`, All first), `notifications.list({ topic })` lists one tab, `notifications.topics()`
+  answers the tabs, `unreadCount(topic)` one tab's count, and `markAllRead(topic)` marks one tab read. The ready-made
+  centre draws a tab per topic with its unread count, and keeps its card-category tabs where no topics are sent.
+- **ChatGPT ads' click id, `oppref`, is read as an ad click** and kept on the page view's address, so a visit from
+  an ad in ChatGPT is told apart from ChatGPT recommending the site.
+
 ## 0.12.2
 
 - **Five more networks' click ids are read as an ad click:** Snapchat (`ScCid`), Microsoft Advertising (`msclkid`),

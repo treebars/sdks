@@ -1000,14 +1000,33 @@ RCT_EXPORT_MODULE()
   });
 }
 
-- (void)notificationsMarkAllRead:(RCTPromiseResolveBlock)resolve
+- (void)notificationsTopics:(RCTPromiseResolveBlock)resolve
+                     reject:(RCTPromiseRejectBlock)reject
+{
+  TreebarsAnswer(reject, ^{
+    if (TreebarsRejectedUnstarted(reject)) {
+      return;
+    }
+    [TreebarsBridge notificationsTopics:^(NSString *topics, TreebarsBridgeFailure *failure) {
+      TreebarsAnswer(reject, ^{
+        if (TreebarsRejected(failure, reject)) {
+          return;
+        }
+        resolve(topics);
+      });
+    }];
+  });
+}
+
+- (void)notificationsMarkAllRead:(NSString *_Nullable)topic
+                         resolve:(RCTPromiseResolveBlock)resolve
                           reject:(RCTPromiseRejectBlock)reject
 {
   TreebarsAnswer(reject, ^{
     if (TreebarsRejectedUnstarted(reject)) {
       return;
     }
-    [TreebarsBridge notificationsMarkAllRead];
+    [TreebarsBridge notificationsMarkAllRead:topic];
     resolve(nil);
   });
 }

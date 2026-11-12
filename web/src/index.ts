@@ -80,6 +80,7 @@ import {
   NotificationStore,
   type NotificationChannel,
   type NotificationPage,
+  type NotificationTopic,
   type NotificationWireResponse,
 } from './notifications';
 
@@ -301,6 +302,8 @@ export { inAppBodyMode, inAppShape, readInAppHtmlAction } from './in-app';
 export type {
   NotificationChannel,
   NotificationPage,
+  NotificationTopic,
+  NotificationTopicRef,
   TreebarsNotification,
 } from './notifications';
 import { WebPush } from './push';
@@ -2731,14 +2734,16 @@ class TreebarsWeb {
   get notifications() {
     return {
       /**
-       * One page of the history: up to `limit` rows after `cursor`, optionally only from some `channels`. When the server
-       * cannot answer, the first page comes from this browser's cache (`fromCache: true`), and a later page comes back
-       * empty with the same `nextCursor`, to try again. Never throws.
+       * One page of the history: up to `limit` rows after `cursor`, optionally only from some `channels`, or only one
+       * tab's (`topic`, a key from `topics()`; absent is All). A first page carries the tabs as `topics`. When the server
+       * cannot answer, the first page comes from this browser's cache (`fromCache: true`) — for a tab, the cached first
+       * page's rows of that tab — and a later page comes back empty with the same `nextCursor`, to try again. Never throws.
        */
       list: async (options: {
         limit?: number;
         cursor?: string | null;
         channels?: NotificationChannel[];
+        topic?: string | null;
       } = {}): Promise<NotificationPage> => {
         const page = await this.fetchNotificationPage(options);
         if (page) return page;
@@ -2748,18 +2753,27 @@ class TreebarsWeb {
         if (options.cursor) {
           return { notifications: [], unreadCount: 0, nextCursor: options.cursor, fromCache: true };
         }
-        return (
-          this.notificationStore?.cached() ?? {
-            notifications: [],
-            unreadCount: 0,
-            nextCursor: null,
-            fromCache: true,
-          }
-        );
+        const cached = options.topic
+          ? this.notificationStore?.cachedTopic(options.topic)
+          : this.notificationStore?.cached();
+        return cached ?? { notifications: [], unreadCount: 0, nextCursor: null, fromCache: true };
       },
 
-      /** How many notifications are unread, asked of the server with a one-row read. */
-      unreadCount: async (): Promise<number> => (await this.notifications.list({ limit: 1 })).unreadCount,
+      /**
+       * The centre's tabs with their counts — All first, then each topic the project keeps — asked of the server with a
+       * one-row read, with this browser's unwritten marks taken off (see `NotificationStore.overlayTopics`). Empty when
+       * the server sent no tabs, or could not be reached and none were kept.
+       */
+      topics: async (): Promise<NotificationTopic[]> => (await this.notifications.list({ limit: 1 })).topics ?? [],
+
+      /**
+       * How many notifications are unread, asked of the server with a one-row read — of everything, or of one tab
+       * (`topic`), which is that tab's count from `topics()`.
+       */
+      unreadCount: async (topic?: string | null): Promise<number> => {
+        if (!topic) return (await this.notifications.list({ limit: 1 })).unreadCount;
+        return (await this.notifications.topics()).find((tab) => tab.key === topic)?.unread ?? 0;
+      },
 
       /** Marks one notification read, here at once and then on the server, and reports `notification_read`. */
       markRead: async (groupId: string): Promise<void> => {
@@ -2771,19 +2785,19 @@ class TreebarsWeb {
       },
 
       /**
-       * Marks everything read.
+       * Marks everything read — or, given a `topic`, everything in that one tab.
        *
        * Sends the server's own `server_time` as a watermark rather than a list of ids: a
        * list cannot express somebody returning to nine hundred unread, and the server
        * clamps the instant to its own clock so a fast clock cannot pre-read the future.
        */
-      markAllRead: async (): Promise<void> => {
+      markAllRead: async (topic?: string | null): Promise<void> => {
         const through =
-          (await this.fetchNotificationPage({ limit: 1 })) && this.lastNotificationServerTime;
+          (await this.fetchNotificationPage({ limit: 1, ...(topic ? { topic } : {}) })) && this.lastNotificationServerTime;
         if (!through) return;
-        this.notificationStore?.noteReadThrough(through);
+        this.notificationStore?.noteReadThrough(through, topic);
         this.emitNotificationChange();
-        await this.writeNotificationState({ read_through: through });
+        await this.writeNotificationState({ read_through: through, ...(topic ? { topic } : {}) });
       },
 
       /**
@@ -2821,6 +2835,7 @@ class TreebarsWeb {
     limit?: number;
     cursor?: string | null;
     channels?: NotificationChannel[];
+    topic?: string | null;
   }): Promise<NotificationPage | null> {
     if (!this.config || !this.notificationStore || this.optedOut) return null;
 
@@ -2828,6 +2843,7 @@ class TreebarsWeb {
     if (options.limit) params.set('limit', String(options.limit));
     if (options.cursor) params.set('cursor', options.cursor);
     if (options.channels?.length) params.set('channels', options.channels.join(','));
+    if (options.topic) params.set('topic', options.topic);
 
     let body: NotificationWireResponse;
     const epoch = this.identityEpoch;
@@ -2861,11 +2877,10 @@ class TreebarsWeb {
 
     this.lastNotificationServerTime = body.server_time;
 
-    const notifications = this.notificationStore.overlay(body.notifications);
+    if (body.topics) this.notificationStore.settleTopics(body.topics);
     const page: NotificationPage = {
-      notifications,
       // Counted against the server's own rows, never the overlaid ones — see overlayCount.
-      unreadCount: this.notificationStore.overlayCount(body.unread_count, body.notifications),
+      ...this.notificationStore.present(body.notifications, body.unread_count, body.topics),
       nextCursor: body.next_cursor,
       fromCache: false,
     };
@@ -2876,9 +2891,10 @@ class TreebarsWeb {
      * A cursored page is a scroll position rather than a screen somebody comes back to. And
      * a page with an explicit `limit` is a probe — `unreadCount()` and `markAllRead()` both
      * ask for one row. Caching a one-row answer over the real first page would run the unread
-     * arithmetic against a single row, and the badge would disagree with the list.
+     * arithmetic against a single row, and the badge would disagree with the list. And a
+     * page of one tab is not the first page: cached as it, it would stand in for All offline.
      */
-    if (!options.cursor && options.limit === undefined) {
+    if (!options.cursor && options.limit === undefined && !options.topic) {
       this.notificationStore.accept(this.userId ?? this.deviceId, page);
       this.emitNotificationChange(page);
     }
@@ -2897,6 +2913,8 @@ class TreebarsWeb {
     read?: string[];
     dismissed?: string[];
     read_through?: string;
+    /** With `read_through` only: the mark-all is of this one tab. */
+    topic?: string;
     opened?: string[];
   }): Promise<void> {
     if (!this.config || this.optedOut) return;
@@ -2960,16 +2978,16 @@ class TreebarsWeb {
 
   /**
    * A ready-made notification centre, drawn into `target` from `notifications`: cards and notifications, pinned first,
-   * category tabs, unread dots, dismiss and mark-all-read, and a tap that marks it opened and goes where it says.
+   * a tab per topic with its unread count (or per card category, where the server sends no topics), unread dots, dismiss and mark-all-read, and a tap that marks it opened and goes where it says.
    * Returns the function that takes it down. A site with its own design draws its own from `notifications` instead.
    */
   mountNotificationCenter(target: HTMLElement, options: NotificationCenterOptions = {}): () => void {
     return mountNotificationCenter(
       target,
       {
-        list: (page) => this.notifications.list({ cursor: page.cursor ?? null }),
+        list: (page) => this.notifications.list({ cursor: page.cursor ?? null, ...(page.topic ? { topic: page.topic } : {}) }),
         markOpened: (groupId) => this.notifications.markOpened(groupId),
-        markAllRead: () => this.notifications.markAllRead(),
+        markAllRead: (topic) => this.notifications.markAllRead(topic),
         dismiss: (groupId) => this.notifications.dismiss(groupId),
         onChange: (callback) => this.notifications.onChange(callback),
       },

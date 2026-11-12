@@ -225,7 +225,62 @@ class NotificationStoreTest {
         assertNull(store.cached())
     }
 
+    // ---- topics ------------------------------------------------------------------------
+
+    @Test
+    fun `a mark-all of one tab marks only that tab's rows, empties it, and takes it off All`() {
+        store.noteReadThrough("2026-08-02T00:00:00.000Z", "offers")
+        val rows = listOf(
+            notification(groupId = "o1", topic = "offers"),
+            notification(groupId = "n1", topic = "news"),
+            notification(groupId = "x1"),
+        )
+        val page = store.present(rows, 5, tabs(5, 2, 1), null, false)
+        assertEquals(listOf(true, false, false), page.notifications.map { it.readAt != null })
+        assertEquals(listOf(3, 0, 1), page.topics!!.map { it.unread })
+        // All is the badge.
+        assertEquals(3, page.unreadCount)
+    }
+
+    @Test
+    fun `a mark-all of everything empties every tab`() {
+        store.noteReadThrough("2026-08-02T00:00:00.000Z")
+        val page = store.present(listOf(notification(topic = "offers")), 3, tabs(3, 2, 1), null, false)
+        assertEquals(listOf(0, 0, 0), page.topics!!.map { it.unread })
+        assertEquals(0, page.unreadCount)
+    }
+
+    @Test
+    fun `forgets a tab's mark-all once the server counts nothing unread in it, and not before`() {
+        store.noteReadThrough("2026-08-02T00:00:00.000Z", "offers")
+        store.settleTopics(tabs(3, 2, 1))
+        assertEquals(0, store.present(emptyList(), 3, tabs(3, 2, 1), null, false).topics!![1].unread)
+        store.settleTopics(tabs(1, 0, 1))
+        assertEquals(1, store.present(listOf(notification(topic = "offers")), 2, tabs(2, 1, 1), null, false).topics!![1].unread)
+    }
+
+    @Test
+    fun `reads All's key as null and a row's topic from the wire`() {
+        val parsed = parseNotificationTopics(notificationTopicsJson(tabs(1, 1, 0)))
+        assertNull(parsed[0].key)
+        assertEquals("offers", parsed[1].key)
+        assertEquals(NotificationTopicRef("offers", "Offers"), notification(topic = "offers").topic)
+        assertNull(notification().topic)
+    }
+
+    @Test
+    fun `answers a tab offline from the cached first page's rows of it`() {
+        store.accept("user_a", page(listOf(notification(groupId = "o1", topic = "offers"), notification(groupId = "n1", topic = "news"))))
+        assertEquals(listOf("n1"), store.cachedTopic("news")!!.notifications.map { it.groupId })
+    }
+
     // ---- fixtures ----------------------------------------------------------------------
+
+    private fun tabs(all: Int, offers: Int, news: Int) = listOf(
+        NotificationTopic(null, "All", all, 9),
+        NotificationTopic("offers", "Offers", offers, 4),
+        NotificationTopic("news", "News", news, 3),
+    )
 
     /**
      * Built from the wire shape rather than by calling the constructor, so every row carries the
@@ -237,6 +292,7 @@ class NotificationStoreTest {
         groupId: String = "grp_1",
         createdAt: String = "2026-08-01T00:00:00.000Z",
         readAt: String? = null,
+        topic: String? = null,
     ): TreebarsNotification {
         val row = JSONObject()
             .put("group_id", groupId)
@@ -246,6 +302,7 @@ class NotificationStoreTest {
             .put("content", JSONObject().put("title", "Hello").put("body", "There"))
             .put("created_at", createdAt)
         if (readAt != null) row.put("read_at", readAt)
+        row.put("topic", topic?.let { JSONObject().put("key", it).put("name", it.replaceFirstChar(Char::uppercase)) } ?: JSONObject.NULL)
         return parseNotifications(JSONArray().put(row)).single()
     }
 

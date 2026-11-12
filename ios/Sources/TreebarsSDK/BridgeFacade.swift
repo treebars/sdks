@@ -888,9 +888,10 @@ public final class TreebarsBridge: NSObject {
         let limit = (options["limit"] as? NSNumber)?.intValue
         let cursor = options["cursor"] as? String
         let channels = options["channels"] as? [String]
+        let topic = options["topic"] as? String
 
         Task {
-            let page = await Treebars.notifications(limit: limit, cursor: cursor, channels: channels)
+            let page = await Treebars.notifications(limit: limit, cursor: cursor, channels: channels, topic: topic)
             guard let json = encode(NotificationPageWire(page)) else {
                 completion(
                     nil,
@@ -910,9 +911,28 @@ public final class TreebarsBridge: NSObject {
         Treebars.markNotificationRead(groupId)
     }
 
-    @objc(notificationsMarkAllRead)
-    public static func notificationsMarkAllRead() {
-        Treebars.markAllNotificationsRead()
+    /// The centre's tabs, as a JSON array in the wire's shape — All's `key` null.
+    @objc(notificationsTopics:)
+    public static func notificationsTopics(
+        _ completion: @escaping @Sendable (String?, TreebarsBridgeFailure?) -> Void
+    ) {
+        Task {
+            let topics = await Treebars.notificationTopics()
+            guard let json = encode(topics) else {
+                completion(
+                    nil,
+                    TreebarsBridgeFailure(BridgeCode.badPayload, "notifications.topics: the tabs could not be encoded")
+                )
+                return
+            }
+            completion(json, nil)
+        }
+    }
+
+    /// A nil or empty `topic` marks everything read.
+    @objc(notificationsMarkAllRead:)
+    public static func notificationsMarkAllRead(_ topic: String?) {
+        Treebars.markAllNotificationsRead(topic: topic?.isEmpty == false ? topic : nil)
     }
 
     @objc(notificationsDismiss:)
@@ -980,16 +1000,18 @@ private struct NotificationPageWire: Encodable {
     let unreadCount: Int
     let nextCursor: String?
     let fromCache: Bool
+    let topics: [NotificationTopic]?
 
     init(_ page: NotificationPage) {
         notifications = page.notifications
         unreadCount = page.unreadCount
         nextCursor = page.nextCursor
         fromCache = page.fromCache
+        topics = page.topics
     }
 
     enum CodingKeys: String, CodingKey {
-        case notifications, unreadCount, nextCursor, fromCache
+        case notifications, unreadCount, nextCursor, fromCache, topics
     }
 
     /// Explicit for `nextCursor` for the reason `PresentationWire` gives: the wrapper declares
@@ -1001,6 +1023,8 @@ private struct NotificationPageWire: Encodable {
         try container.encode(unreadCount, forKey: .unreadCount)
         try container.encode(nextCursor, forKey: .nextCursor)
         try container.encode(fromCache, forKey: .fromCache)
+        // Left out when the server sent no tabs, which the wrapper's optional `topics` reads as none.
+        try container.encodeIfPresent(topics, forKey: .topics)
     }
 }
 

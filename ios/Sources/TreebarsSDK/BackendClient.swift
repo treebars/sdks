@@ -371,12 +371,15 @@ final class BackendClient: EventTransport {
         signature: String?,
         limit: Int?,
         cursor: String?,
-        channels: [String]?
+        channels: [String]?,
+        topic: String? = nil
     ) async throws -> Data? {
         var query = ["device_id": deviceID]
         if let limit { query["limit"] = String(limit) }
         if let cursor { query["cursor"] = cursor }
         if let channels, !channels.isEmpty { query["channels"] = channels.joined(separator: ",") }
+        // One tab of the centre; absent is All.
+        if let topic { query["topic"] = topic }
 
         guard let request = readRequest(
             path: TreebarsConstants.notificationsPath, query: query, secret: secret,

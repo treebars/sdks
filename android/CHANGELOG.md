@@ -3,6 +3,13 @@
 Every release of the Treebars SDKs carries one version number across Android, iOS, React Native and
 the web. Releases before 0.9.0 are not described here.
 
+## 0.12.3
+
+- **The notification centre has topic tabs.** A row carries the `topic` it was sent under, a first page carries the
+  tabs with their counts (`NotificationPage.topics`, All first), `notifications(topic = …)` lists one tab,
+  `notificationTopics()` answers the tabs, `unreadNotificationCount(topic)` one tab's count, and
+  `markAllNotificationsRead(topic)` marks one tab read.
+
 ## 0.12.2
 
 - **Acquisition consent is on by default.** Neither read it allows shows a prompt or needs a permission, so an app that
