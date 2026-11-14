@@ -1,0 +1,27 @@
+name: treebars_flutter_sdk
+description: Treebars analytics and engagement for Flutter apps, over the native Treebars SDKs for Android and iOS.
+version: 0.12.3
+homepage: https://treebars.com/docs
+repository: https://github.com/treebars/sdks/tree/main/flutter
+
+environment:
+  sdk: ^3.5.0
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.treebars.sdk.flutter
+        pluginClass: TreebarsFlutterPlugin
+      ios:
+        pluginClass: TreebarsFlutterPlugin

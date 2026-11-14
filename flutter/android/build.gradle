@@ -1,0 +1,54 @@
+/*
+ * The Android half of the Treebars Flutter SDK.
+ *
+ * No pinned plugin versions: a Flutter plugin is built as a subproject of the host app, so AGP and
+ * Kotlin come from the app's own build. Pinning our own would put two versions of the same plugin
+ * in one build and fail it.
+ */
+group = "com.treebars.sdk.flutter"
+version = "0.12.3"
+
+apply plugin: "com.android.library"
+apply plugin: "org.jetbrains.kotlin.android"
+
+android {
+    namespace = "com.treebars.sdk.flutter"
+    compileSdk = 36
+
+    defaultConfig {
+        minSdk = 24
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    sourceSets {
+        main.java.srcDirs += "src/main/kotlin"
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+}
+
+dependencies {
+    /*
+     * The Android SDK this plugin bridges, pinned to the exact version this package carries, so the
+     * bridge and the SDK cannot disagree about which SDK they are.
+     */
+    implementation "com.treebars:sdk-android:0.12.3"
+
+    /*
+     * Declared here as well as in the SDK, and it has to be: the SDK declares coroutines
+     * `implementation`, which keeps them off the compile classpath of anything that depends on it,
+     * and the bridge calls its suspending reads. The same version the SDK pins.
+     */
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
+}
